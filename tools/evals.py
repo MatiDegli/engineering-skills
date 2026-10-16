@@ -50,9 +50,13 @@ def prepare(case: Path, destination: Path) -> None:
 
 
 def report_statuses(text: str) -> dict[str, list[str]]:
-    """Map each criterion ID to every status the report gives it."""
+    """Map each criterion ID to every status the report gives it.
+
+    Coverage IDs may be listed inline after the status or as indented bullets below it, one ID per
+    bullet; IDs inside parenthesized reasons are ignored.
+    """
     statuses: dict[str, list[str]] = {}
-    in_findings = False
+    in_findings, coverage_status = False, None
     for line in text.splitlines():
         stripped = line.strip()
         if stripped.startswith("|"):
@@ -63,11 +67,17 @@ def report_statuses(text: str) -> dict[str, list[str]]:
                 statuses.setdefault(cells[0], []).append(cells[1].lower())
             continue
         in_findings = False
-        match = COVERAGE_LINE.match(stripped)
+        match = COVERAGE_LINE.match(line)
         if match:
-            listed = re.sub(r"\([^)]*\)", "", match[2])
-            for identifier in CRITERION.findall(listed):
-                statuses.setdefault(identifier, []).append(match[1].lower())
+            coverage_status = match[1].lower()
+            found = CRITERION.findall(re.sub(r"\([^)]*\)", "", match[2]))
+        elif coverage_status and line[:1].isspace() and stripped[:1] in ("-", "*"):
+            found = CRITERION.findall(re.sub(r"\([^)]*\)", "", stripped))[:1]
+        else:
+            coverage_status = coverage_status if not stripped else None
+            continue
+        for identifier in found:
+            statuses.setdefault(identifier, []).append(coverage_status)
     return statuses
 
 

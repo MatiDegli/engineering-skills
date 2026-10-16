@@ -36,6 +36,17 @@ class ScoringTests(unittest.TestCase):
             },
         )
 
+    def test_coverage_accepts_one_indented_bullet_per_id(self):
+        report = (
+            "## Coverage\n- meets:\n  - REPO-01 (README:3 states it)\n\n"
+            "  - TEST-02 deterministic, unlike CI-02\n- not-applicable:\n"
+            "  - OPS-02 (no data, see CI-09)\n\n## Limitations\n  - CI-09 is not a list item here\n"
+        )
+        self.assertEqual(
+            report_statuses(report),
+            {"REPO-01": ["meets"], "TEST-02": ["meets"], "OPS-02": ["not-applicable"]},
+        )
+
     def test_complete_report_has_no_problems(self):
         expected = {"must_find": ["CI-02", "SEC-05"], "must_not_flag": ["TEST-02"]}
         result = score(report_statuses(REPORT), CATALOG_IDS, expected)
