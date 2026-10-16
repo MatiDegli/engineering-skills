@@ -11,7 +11,7 @@ from tools.validate_repo import ROOT, markdown_errors, secret_like, validate
 
 class ValidationTests(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix="portfolio-validation-")
+        self.temp = tempfile.TemporaryDirectory(prefix="engineering-skills-validation-")
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name).resolve()
 
