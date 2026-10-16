@@ -7,7 +7,16 @@ import unittest
 from pathlib import Path
 
 from tools.check_skills import criteria_ids
-from tools.evals import CASES, CATALOG, prepare, report_statuses, score
+from tools.evals import (
+    CASES,
+    CATALOG,
+    compare,
+    finding_rows,
+    prepare,
+    priority_summary,
+    report_statuses,
+    score,
+)
 
 REPORT = """## Findings
 | ID | Status | Priority | Evidence | Improvement |
@@ -63,6 +72,38 @@ class ScoringTests(unittest.TestCase):
         self.assertEqual(result["duplicated"], ["REPO-01"])
         self.assertEqual(result["unknown"], ["XYZ-99"])
         self.assertEqual(result["invalid_status"], ["REPO-01"])
+
+
+PRIORITIZED = """## Findings
+| ID | Status | Priority | Evidence | Improvement |
+| --- | --- | --- | --- | --- |
+| SEC-05 | partial | high | **Reproduced:** `settings.py:1` | Rotate |
+| CI-02 | `partial` | high | `ci.yml:3` uses a tag | Pin it |
+| TEST-02 | pending-implementation | low | Inferred: no tests | Add tests |
+"""
+
+
+class PriorityTests(unittest.TestCase):
+    def test_rows_keep_priority_and_unmarked_high_findings_fail(self):
+        rows = finding_rows(PRIORITIZED)
+        self.assertEqual(rows["CI-02"]["priority"], "high")
+        self.assertEqual(rows["TEST-02"]["status"], "pending-implementation")
+        expected = {"must_find": ["SEC-05"], "must_not_flag": []}
+        result = score(report_statuses(PRIORITIZED), list(rows), expected, rows)
+        self.assertEqual(result["unmarked_high"], ["CI-02"])
+        self.assertEqual(
+            priority_summary(PRIORITIZED),
+            "priorities: high 2, medium 0, low 1; high reproduced 1, inferred 0",
+        )
+
+    def test_compare_reports_overlap_and_priority_differences(self):
+        second = PRIORITIZED.replace("| CI-02 | `partial` | high", "| CI-02 | partial | medium")
+        second = second.replace("| TEST-02 | pending-implementation", "| OPS-02 | partial")
+        result = compare(PRIORITIZED, second)
+        self.assertEqual(result["flagged_overlap"], (2, 4))
+        self.assertEqual(result["priority_agreement"], (1, 2))
+        self.assertEqual(result["priority_differences"], ["CI-02 high/medium"])
+        self.assertEqual((result["only_first"], result["only_second"]), (["TEST-02"], ["OPS-02"]))
 
 
 class CaseTests(unittest.TestCase):
