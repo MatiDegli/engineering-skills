@@ -49,11 +49,18 @@ class ScoringTests(unittest.TestCase):
         report = (
             "## Coverage\n- meets:\n  - REPO-01 (README:3 states it)\n\n"
             "  - TEST-02 deterministic, unlike CI-02\n- not-applicable:\n"
-            "  - OPS-02 (no data, see CI-09)\n\n## Limitations\n  - CI-09 is not a list item here\n"
+            "  - OPS-02 (no data, see CI-09)\n  - REPO-02, `AGENT-01` (no agents; unlike DEL-01)\n\n"
+            "## Limitations\n  - CI-09 is not a list item here\n"
         )
         self.assertEqual(
             report_statuses(report),
-            {"REPO-01": ["meets"], "TEST-02": ["meets"], "OPS-02": ["not-applicable"]},
+            {
+                "REPO-01": ["meets"],
+                "TEST-02": ["meets"],
+                "OPS-02": ["not-applicable"],
+                "REPO-02": ["not-applicable"],
+                "AGENT-01": ["not-applicable"],
+            },
         )
 
     def test_complete_report_has_no_problems(self):

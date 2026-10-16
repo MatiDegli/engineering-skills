@@ -22,6 +22,7 @@ COVERAGE_STATUSES = {"meets", "not-applicable"}
 CRITERION = re.compile(r"\b[A-Z]+-\d{2}\b")
 COVERAGE_LINE = re.compile(r"[-*]\s*(meets|not-applicable)\s*:\s*(.*)", re.I)
 EVIDENCE_MARK = re.compile(r"[*_`\s]*(reproduced|inferred)\s*:", re.I)
+LEADING_IDS = re.compile(r"[-*]\s*`?((?:[A-Z]+-\d{2}`?\s*,\s*`?)*[A-Z]+-\d{2})")
 FIXED_IDENTITY = {
     "GIT_AUTHOR_NAME": "Evaluation Fixture",
     "GIT_AUTHOR_EMAIL": "fixture@example.invalid",
@@ -54,8 +55,8 @@ def prepare(case: Path, destination: Path) -> None:
 def report_statuses(text: str) -> dict[str, list[str]]:
     """Map each criterion ID to every status the report gives it.
 
-    Coverage IDs may be listed inline after the status or as indented bullets below it, one ID per
-    bullet; IDs inside parenthesized reasons are ignored.
+    Coverage IDs may be listed inline after the status or as indented bullets below it. A bullet
+    counts the comma-separated IDs that open it; IDs inside reasons are ignored.
     """
     statuses: dict[str, list[str]] = {}
     in_findings, coverage_status = False, None
@@ -74,7 +75,8 @@ def report_statuses(text: str) -> dict[str, list[str]]:
             coverage_status = match[1].lower()
             found = CRITERION.findall(re.sub(r"\([^)]*\)", "", match[2]))
         elif coverage_status and line[:1].isspace() and stripped[:1] in ("-", "*"):
-            found = CRITERION.findall(re.sub(r"\([^)]*\)", "", stripped))[:1]
+            leading = LEADING_IDS.match(stripped)
+            found = CRITERION.findall(leading[1]) if leading else []
         else:
             coverage_status = coverage_status if not stripped else None
             continue
