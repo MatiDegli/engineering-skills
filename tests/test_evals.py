@@ -1,0 +1,89 @@
+"""Check report parsing, scoring outcomes, case consistency, and fixture preparation."""
+
+import json
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+
+from tools.check_skills import criteria_ids
+from tools.evals import CASES, CATALOG, prepare, report_statuses, score
+
+REPORT = """## Findings
+| ID | Status | Priority | Evidence | Improvement |
+| --- | --- | --- | --- | --- |
+| CI-02 | `partial` | high | `ci.yml:3` runs `pytest || true` | Pin it |
+| SEC-05 | pending-implementation | high | `settings.py:1` | Rotate |
+
+## Coverage
+- meets: REPO-01, TEST-02
+- not-applicable: OPS-02 (no persistent data, unlike CI-09), CI-09 (no merge queue)
+"""
+CATALOG_IDS = ["REPO-01", "TEST-02", "CI-02", "CI-09", "SEC-05", "OPS-02"]
+
+
+class ScoringTests(unittest.TestCase):
+    def test_report_statuses_read_findings_and_coverage(self):
+        self.assertEqual(
+            report_statuses(REPORT),
+            {
+                "CI-02": ["partial"],
+                "SEC-05": ["pending-implementation"],
+                "REPO-01": ["meets"],
+                "TEST-02": ["meets"],
+                "OPS-02": ["not-applicable"],
+                "CI-09": ["not-applicable"],
+            },
+        )
+
+    def test_complete_report_has_no_problems(self):
+        expected = {"must_find": ["CI-02", "SEC-05"], "must_not_flag": ["TEST-02"]}
+        result = score(report_statuses(REPORT), CATALOG_IDS, expected)
+        self.assertEqual(result["found"], ["CI-02", "SEC-05"])
+        self.assertFalse(any(v for k, v in result.items() if k != "found"))
+
+    def test_each_problem_is_reported(self):
+        expected = {"must_find": ["OPS-02"], "must_not_flag": ["CI-02"]}
+        report = REPORT + "| ID | Status |\n| --- | --- |\n| REPO-01 | maybe |\n| XYZ-99 | partial |\n"
+        result = score(report_statuses(report), CATALOG_IDS + ["DEL-01"], expected)
+        self.assertEqual(result["missed"], ["OPS-02"])
+        self.assertEqual(result["false_flags"], ["CI-02"])
+        self.assertEqual(result["uncovered"], ["DEL-01"])
+        self.assertEqual(result["duplicated"], ["REPO-01"])
+        self.assertEqual(result["unknown"], ["XYZ-99"])
+        self.assertEqual(result["invalid_status"], ["REPO-01"])
+
+
+class CaseTests(unittest.TestCase):
+    def test_cases_use_catalog_ids_without_overlap(self):
+        catalog = set(criteria_ids(CATALOG.read_text(encoding="utf-8")))
+        for expected_path in sorted(CASES.glob("*/expected.json")):
+            with self.subTest(case=expected_path.parent.name):
+                expected = json.loads(expected_path.read_text(encoding="utf-8"))
+                must_find, must_not = set(expected["must_find"]), set(expected["must_not_flag"])
+                self.assertTrue(must_find)
+                self.assertLessEqual(must_find | must_not, catalog)
+                self.assertFalse(must_find & must_not)
+                self.assertTrue((expected_path.parent / "repo").is_dir())
+
+    def test_prepare_commits_a_copy_and_refuses_existing_destinations(self):
+        with tempfile.TemporaryDirectory() as directory:
+            case = Path(directory) / "case"
+            (case / "repo").mkdir(parents=True)
+            (case / "repo" / "README.md").write_text("# Fixture\n")
+            destination = Path(directory) / "audit"
+            prepare(case, destination)
+            log = subprocess.run(
+                ["git", "log", "--format=%an %s"],
+                cwd=destination,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            self.assertEqual(log.stdout, "Evaluation Fixture Initial commit\n")
+            with self.assertRaises(SystemExit):
+                prepare(case, destination)
+
+
+if __name__ == "__main__":
+    unittest.main()
