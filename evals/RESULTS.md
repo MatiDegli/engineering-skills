@@ -249,3 +249,152 @@ Notes:
 - Three typescript-cli audits (runs 8, 9, and 10) wrote 11 npm debug logs to the user's npm log
   directory before redirecting npm's paths. The logs contain only scratch paths and were not
   removed.
+
+## 2026-10-16 — Runs 13 to 18 (baseline)
+
+- Skill `8de1b07`, cases `6c22cf9`, method `28b19b4`, scored with `1d968a6`. The skill and the
+  catalog were exported from `28b19b4` with `git archive` to directories outside this repository.
+- Agent: Claude Code 2.1.292 headless (`claude -p --model opus`), started by the maintainer from a
+  WSL2 terminal, six at a time, each in its prepared repository. Bash, Read, Grep, and Glob were
+  allowed; Write, Edit, WebFetch, and WebSearch were not. `modelUsage` reported `claude-opus-5-5`
+  for all 18. Two earlier launches failed before any model call because the CLI was not logged in;
+  they used no tokens and are not counted.
+- Levels, as defined in [README.md](README.md#baselines):
+  - Full skill (runs 13 and 14): the prompt of runs 11 and 12, with the skill directory.
+  - Catalog only (runs 15 and 16): "Audit the repository in the current directory against the
+    criteria in `<catalog>/criteria.md`. Do not modify the repository or install dependencies. Work
+    only in this repository, that directory, and scratch directories you create; do not read any
+    other path. Reply with only the final report, in this format:", followed by the Findings table
+    header, the status and priority values, the two Coverage lines, and "Every ID in the catalog
+    appears exactly once, in Findings or in Coverage."
+  - No skill (runs 17 and 18): "Audit the repository in the current directory and list its
+    problems, with evidence for each. Do not modify the repository or install dependencies. Work
+    only in this repository and scratch directories you create; do not read any other path. Reply
+    with only the final report."
+- The tool calls of every run were checked: none touched this repository, `expected.json`, another
+  prepared repository, or material outside its level.
+- Prepared revisions: python-service `c67d66d`, typescript-cli `7f27a08`, well-maintained `5780341`.
+
+| Case | Run | Level | Seeded gaps found | False flags | IDs covered | Findings | Meets | Not applicable | High (reproduced) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| python-service | 13 | Full | 16 of 16 | none | 68 of 69 (no ARCH-02) | 35 | 5 | 28 | 4 (2) |
+| python-service | 14 | Full | 16 of 16 | none | 69 of 69 | 33 | 4 | 32 | 5 (2) |
+| python-service | 15 | Catalog | 16 of 16 | none | 69 of 69 | 34 | 4 | 31 | 14 (unmarked) |
+| python-service | 16 | Catalog | 16 of 16 | none | 69 of 69 | 33 | 5 | 31 | 14 (unmarked) |
+| python-service | 17 | None | 12 of 16 (by hand) | none | — | — | — | — | — |
+| python-service | 18 | None | 13 of 16 (by hand) | none | — | — | — | — | — |
+| typescript-cli | 13 | Full | 13 of 13 | none | 69 of 69 | 36 | 6 | 27 | 6 (2) |
+| typescript-cli | 14 | Full | 13 of 13 | none | 67 of 69 (no QUAL-04, TEST-03 malformed) | 32 | 8 | 27 | 5 (2) |
+| typescript-cli | 15 | Catalog | 13 of 13 | none | 69 of 69 | 31 | 10 | 28 | 14 (unmarked) |
+| typescript-cli | 16 | Catalog | 13 of 13 | none | 69 of 69 | 36 | 7 | 26 | 14 (unmarked) |
+| typescript-cli | 17 | None | 11 of 13 (by hand) | none | — | — | — | — | — |
+| typescript-cli | 18 | None | 12 of 13 (by hand) | none | — | — | — | — | — |
+| well-maintained | 13 | Full | 2 of 2 | none | 69 of 69 | 5 | 27 | 37 | 0 |
+| well-maintained | 14 | Full | 2 of 2 | none | 66 of 69 (three IDs written as "X and Y") | 5 | 27 | 34 | 0 |
+| well-maintained | 15 | Catalog | 2 of 2 | none | 69 of 69 | 4 | 25 | 40 | 0 |
+| well-maintained | 16 | Catalog | 2 of 2 | none | 69 of 69 | 5 | 27 | 37 | 0 |
+| well-maintained | 17 | None | 0 of 2 (by hand) | none | — | — | — | — | — |
+| well-maintained | 18 | None | 1 of 2 (by hand) | none | — | — | — | — | — |
+
+Report SHA-256 hashes (the scorer's for full and catalog runs; `sha256sum` for the others):
+
+- python-service run 13: `5f6a9a2f3ae7ba13e55c4c4cf15301d2f15d0f0ecd5752aa3f993e897c7dae6b`
+- python-service run 14: `547ed043bfc00c74fe4ef764d8651117abdf107e11411b7dd657bd223b5ca08f`
+- python-service run 15: `e525cbc12af08404fcc37f0994833ada957b953a6b524f7594b95981407375ef`
+- python-service run 16: `faaea4e3a2ec06ebfe498a70cbfe246de69f32abee710ebad36ec0b4842e9a25`
+- python-service run 17: `11bbafbc43fa457c38aff24f9de85f640c2518ef26a1837646c1b91d103ef9d3`
+- python-service run 18: `df1d42e2d7927ed90d2c5c63993b3075e402a08472b6a13ed2665112a29c4d00`
+- typescript-cli run 13: `a23281f8f37852eb438ba93059232be16126f3cbdf65111720fe063facd70d8f`
+- typescript-cli run 14: `0e5782c137787e705550ee9d4979c1a1902f58fa4f5ee3190764cb791b73edaf`
+- typescript-cli run 15: `3a1e0657d135c7cde03373f95dedd8b8f7f3fab7ca3b5536c975bc6b5e7ce9aa`
+- typescript-cli run 16: `b9de78b17b014443506257f7dcd2a3668726c14c09bd0839eccdc526a00db907`
+- typescript-cli run 17: `ebd298cdd516d0ca66aac0a6c09436778a57bee50b1ee6952a5a86a3d5a76718`
+- typescript-cli run 18: `04522abbd0c9fd36df1308a343052a36d07fa7b8b4e1a88932563fc70b0c1d3a`
+- well-maintained run 13: `09a39c69e8d6f02cb8e21ced6c410f2d11320759db2ccf2fb0d8e4d2f6715d2b`
+- well-maintained run 14: `1f3dd4dd3b0020c0f02da30efd406cc2bc135047c59273f484385b3c248d18ff`
+- well-maintained run 15: `5be16f27a071a73b7c9ea5d1791eff732c8b99491caff73ecd60439bb0dd473b`
+- well-maintained run 16: `9a9541c93d8db139fee74874d5bb28ec0699d51f2e204ad0477c2a900b66364e`
+- well-maintained run 17: `c0db1e650bd52feeba08331cbaebbc1fa5bee37f492a876de9ffc5054fd6b506`
+- well-maintained run 18: `c17897c1f3e601296cd8744f6a74791ba4850605db6366217c35fa220453d14e`
+
+Summary by level:
+
+| Level | Seeded gaps found, per run | Seeded password copied | High per run, python-service and typescript-cli | Reports with every ID readable | Mean minutes | Mean cost reported by the CLI |
+| --- | --- | --- | --- | --- | --- | --- |
+| Full skill | 31 and 31 of 31 | 0 of 2 reports | 4 to 6 | 3 of 6 | 1.8 | USD 0.54 |
+| Catalog only | 31 and 31 of 31 | 2 of 2 reports | 14 | 6 of 6 | 1.2 | USD 0.36 |
+| No skill | 23 and 26 of 31 | 2 of 2 reports | — | — | 0.7 | USD 0.22 |
+
+Agreement, summed over the three cases:
+
+| Runs | Flagged overlap | Status agreement | Priority agreement |
+| --- | --- | --- | --- |
+| 13 and 14 (full with full) | 67 of 79 | 180 of 201 | 61 of 67 |
+| 15 and 16 (catalog with catalog) | 66 of 77 | 190 of 207 | 58 of 66 |
+| 13 and 15 (full with catalog) | 66 of 79 | 175 of 206 | 38 of 66 |
+
+Manual scoring of runs 17 and 18, with the rules in [README.md](README.md#baselines); `#n` is the
+report's item number. No claim contradicted a `must_not_flag` reason.
+
+| Case | ID | Run 17 | Run 18 |
+| --- | --- | --- | --- |
+| python-service | REPO-01 | missed (#17 names configuration, API, and deployment, not requirements or validation) | #19 "how to run the tests" |
+| python-service | QUAL-02 | #14 no lint or type check | #19 same |
+| python-service | QUAL-03 | #11 `pytest \|\| true` | #11 same |
+| python-service | DEP-01 | #15 no versions or lock file | #17 same |
+| python-service | TEST-01 | #13 invalid input and failures untested | #16 same |
+| python-service | TEST-02 | #12 real request to the warehouse host | #14 same |
+| python-service | CI-01 | #15 `3.x` and unpinned pytest | #13 same |
+| python-service | CI-02 | missed | missed |
+| python-service | CI-03 | missed | missed |
+| python-service | CI-04 | missed | missed |
+| python-service | SEC-02 | #3 no authentication, #9 no validation | #3, #4 same |
+| python-service | SEC-03 | #6 no timeout | #8 same |
+| python-service | SEC-04 | #1 `debug=True` on `0.0.0.0` | #1 same |
+| python-service | SEC-05 | #2 committed password, value copied | #2 same |
+| python-service | ARCH-05 | #4 blanket `except` | #5 same |
+| python-service | PERF-01 | #16 unsupported throughput claim | #18 same |
+| typescript-cli | QUAL-02 | #9 no tests, #10 `"strict": false` | #6, #8 same |
+| typescript-cli | QUAL-03 | #8 `\|\| exit 0` | #7 same |
+| typescript-cli | QUAL-05 | #8 file-wide `eslint-disable` | #7 same |
+| typescript-cli | QUAL-09 | #10 `any` parameters | #8 same |
+| typescript-cli | DEP-01 | #11 no lockfile, #12 no `engines` | #9, #10 same |
+| typescript-cli | TEST-01 | #9 `npm test` only echoes | #6 same |
+| typescript-cli | CI-02 | missed | #9 actions pinned by tag |
+| typescript-cli | CI-03 | #1 no `permissions:` block | #1, only in its fix ("Set minimal `permissions:`"); counted, borderline |
+| typescript-cli | CI-04 | missed | missed |
+| typescript-cli | CI-10 | #1 `pull_request_target` publishes PR code with the token | #1 same |
+| typescript-cli | SEC-02 | #2 shell injection | #2 same |
+| typescript-cli | DEL-01 | #3 no gate before publishing, #11 `npm install` without a lockfile | #9 same |
+| typescript-cli | DEL-03 | #3 every PR event publishes | #1 same |
+| well-maintained | QUAL-02 | missed | #4 no lint or type check |
+| well-maintained | CI-06 | missed | missed |
+
+Notes:
+
+- Without the skill, Opus missed 8 and 5 of the 31 seeded gaps: CI-04 in all four service and CLI
+  reports, CI-02 and CI-03 in both python-service reports, CI-06 in both well-maintained reports,
+  and REPO-01, CI-02 (typescript-cli), and QUAL-02 (well-maintained) in run 17.
+- With the catalog alone, Opus found all 31, as with the full skill. On these cases the catalog
+  accounts for the whole difference in recall; the procedure adds none. The cases cannot separate
+  the two levels, so harder cases are needed.
+- Differences the procedure did make: the catalog-only runs rated 14 findings high in each
+  python-service and typescript-cli report, against 4 to 6 with the skill's rubric; every report
+  without the procedure copied the seeded password, and neither full-skill report did; both
+  catalog-only well-maintained runs left clones under `/tmp`, removed afterwards, while the
+  full-skill runs removed theirs.
+- The full skill did worse on format: run 13 python-service omits ARCH-02, run 14 typescript-cli
+  omits QUAL-04 and writes TEST-03 in a malformed ID cell, and run 14 well-maintained lists three
+  IDs as "X and Y", which the scorer does not read. Every catalog-only report covered all 69 IDs.
+  The scorer was not changed.
+- The catalog-only and no-skill prompts did not ask for priority actions, so this round does not
+  compare next steps. The cost is the CLI's estimate; the runs used a subscription.
+- These are headless runs; runs 7 and 8 were subagents, so comparisons across the two rounds also
+  compare harnesses.
+- Run 13 well-maintained ran Python once without disabling bytecode and left an ignored
+  `slugkit/__pycache__/` in its prepared repository; `git status --porcelain --ignored` was empty in
+  the other 17. Run 18 well-maintained queried GitHub with `git ls-remote` to check the action
+  SHAs, which its prompt did not forbid.
+- Unseeded defects reported in well-maintained: non-ASCII punctuation is dropped before separators
+  apply, so `foo—bar` becomes `foobar` (run 18); non-ASCII digits are dropped (run 17); and the
+  layout test is stricter than the discovery rule it cites (runs 17 and 18).
