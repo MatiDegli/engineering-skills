@@ -1,0 +1,28 @@
+{
+  "description": "Flask service with seeded gaps in CI, security, tests, dependencies, and claims.",
+  "must_find": {
+    "REPO-01": "README has no requirements or validation command",
+    "QUAL-02": "no formatting, linting, or type checking",
+    "QUAL-03": "CI runs `pytest || true`, so failing tests never fail the job",
+    "DEP-01": "requirements.txt is unpinned and there is no lockfile",
+    "TEST-01": "only the happy path is tested; invalid input and failures are not",
+    "TEST-02": "unit tests call an external host",
+    "CI-01": "CI uses python-version 3.x and unpinned dependencies",
+    "CI-02": "actions are pinned to tags instead of commit SHAs",
+    "CI-03": "no permissions block, and checkout persists credentials by default",
+    "CI-04": "no job timeout",
+    "SEC-02": "the stock count is not validated and there is no authorization",
+    "SEC-03": "the warehouse request has no timeout",
+    "SEC-04": "the server listens on 0.0.0.0 with debug=True",
+    "SEC-05": "settings.py contains a database password",
+    "ARCH-05": "a broad `except Exception: pass` hides failures",
+    "PERF-01": "the README claims 10,000 requests per second without measurements"
+  },
+  "must_not_flag": {
+    "STRUCT-02": "fewer than 20 files in every directory",
+    "STRUCT-04": "no temporary files",
+    "CI-09": "no merge queue",
+    "SEC-09": "no model or LLM features",
+    "TOOL-01": "no tools, skills, or MCP servers configured"
+  }
+}
