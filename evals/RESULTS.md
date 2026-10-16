@@ -97,3 +97,43 @@ Notes:
   had not created. The copies were removed after the runs. The skill needs a scratch-copy rule.
 - The scorer first reported two IDs as uncovered in run 3 because one bullet listed two IDs;
   `1d968a6` fixed the parser, and the table uses the corrected scores.
+
+## 2026-10-16 — Runs 5 and 6 (GLM 5.3)
+
+- Skill `caf7f11`, cases `80adb0a`, scored with `1d968a6`.
+- Agent: Claude Code 2.1.287 headless (`claude -p`) in WSL2, one fresh process per case and run,
+  three at a time, with the maintainer's Z.ai settings. Allowed tools were Bash, Read, Grep, and
+  Glob; Write, Edit, WebFetch, and WebSearch were disallowed, and the report was returned as the
+  final message. The CLI's `modelUsage` metadata reported `glm-5.3[1m]` for every run, so the model
+  is host-observed. No tool call was denied.
+- Prepared revisions: python-service `c67d66d`, typescript-cli `7f27a08`, well-maintained `6578802`.
+
+| Case | Run | Seeded gaps found | False flags | IDs covered | Findings | Meets | Not applicable | High (reproduced) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| python-service | 5 | 16 of 16 | none | 69 of 69 | 31 | 8 | 30 | 4 (2) |
+| python-service | 6 | 16 of 16 | none | 69 of 69 | 31 | 5 | 33 | 2 (1) |
+| typescript-cli | 5 | 13 of 13 | none | 69 of 69 | 33 | 10 | 26 | 3 (1) |
+| typescript-cli | 6 | 13 of 13 | none | 69 of 69 | 34 | 7 | 28 | 3 (2) |
+| well-maintained | 5 | 1 of 2 (missed CI-06) | none | 69 of 69 | 4 | 26 | 39 | 0 |
+| well-maintained | 6 | 1 of 2 (missed CI-06) | none | 69 of 69 | 6 | 26 | 37 | 0 |
+
+Agreement, summed over the three cases:
+
+| Runs | Flagged overlap | Status agreement | Priority agreement |
+| --- | --- | --- | --- |
+| 5 and 6 (GLM with GLM) | 62 of 77 | 184 of 207 | 46 of 62 |
+| 3 and 5 (Opus with GLM) | 64 of 90 | 152 of 207 | 54 of 64 |
+
+Notes:
+
+- Both GLM runs missed CI-06 in well-maintained by marking it not applicable, citing the
+  hosted-settings rule added in `d8876be`. That rule gives "no remote" as an example of a missing
+  indication, but CI-06 applies whenever CI configuration exists; without a remote it is pending
+  verification. Opus applied the rule correctly in all four of its runs. The rule needs to say that
+  a criterion whose condition the repository shows stays applicable, and a new evaluation round
+  must follow that change.
+- GLM reported fewer findings than Opus in the service and CLI cases (31 to 34 against 36 to 42),
+  reproduced 6 of 12 high findings, and agreed less with itself and with Opus on statuses and
+  priorities.
+- GLM had no false flags, left every prepared repository unchanged, and left no copies of the
+  cases under `/tmp`.
