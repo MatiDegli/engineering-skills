@@ -1,0 +1,28 @@
+{
+  "description": "Control case: a small standard-library package that meets most applicable criteria.",
+  "must_find": {
+    "QUAL-02": "tests run in CI, but there is no formatting, linting, or type checking",
+    "CI-06": "the prepared repository has no remote, so no CI result exists for the audited revision"
+  },
+  "must_not_flag": {
+    "REPO-01": "README states purpose, requirements, run, and validation commands, and the validation command passes",
+    "REPO-04": "only source, tests, and configuration are tracked",
+    "QUAL-01": "README and CI run the same validation command",
+    "QUAL-03": "the test command fails the job on any failure",
+    "DEP-01": "the runtime is pinned in .python-version and there are no third-party dependencies",
+    "TEST-02": "tests are deterministic and use no network, clock, or files",
+    "TEST-05": "no personal paths or sibling repositories",
+    "CI-02": "actions are pinned to full commit SHAs",
+    "CI-03": "contents: read permissions and persist-credentials: false",
+    "CI-04": "a job timeout, and only pull request runs are cancelled",
+    "CI-09": "no merge queue",
+    "CI-10": "no secrets or publication in CI",
+    "SEC-04": "no public environment or debug interface",
+    "SEC-05": "no credentials anywhere",
+    "SEC-09": "no model or LLM features",
+    "OPS-01": "a library, not a deployed service",
+    "OPS-02": "no persistent data",
+    "ARCH-05": "errors are raised to the caller; there are no broad catches",
+    "STRUCT-02": "fewer than 20 files in every directory"
+  }
+}
