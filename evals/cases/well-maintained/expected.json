@@ -10,7 +10,7 @@
     "QUAL-01": "README and CI run the same validation command",
     "QUAL-03": "the test command fails the job on any failure",
     "DEP-01": "the runtime is pinned in .python-version and there are no third-party dependencies",
-    "TEST-02": "tests are deterministic and use no network, clock, or files",
+    "TEST-02": "tests are deterministic and use no network or clock; one test only lists the tests directory",
     "TEST-05": "no personal paths or sibling repositories",
     "CI-02": "actions are pinned to full commit SHAs",
     "CI-03": "contents: read permissions and persist-credentials: false",

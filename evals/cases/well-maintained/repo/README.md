@@ -16,10 +16,12 @@ is packaged or published.
 python3 -m slugkit "Hello, World!"
 ```
 
-Prints `hello-world`. Letters that Unicode decomposes into an ASCII letter and accents, such as é or
-ñ, become that letter. Other letters are dropped, including ø, ß, ł, đ, æ, and œ, and Cyrillic or
-Greek letters. Titles longer than 200 characters, and titles left without ASCII letters or digits,
-exit with status 2 and a message.
+Prints `hello-world`. Compatibility characters are first replaced by their standard forms, so ﬁ
+becomes fi and full-width letters become ASCII letters; a slug can therefore be longer than its
+title. Letters that Unicode decomposes into an ASCII letter and accents, such as é or ñ, become that
+letter. Other letters are dropped, including ø, ß, ł, đ, æ, and œ, and Cyrillic or Greek letters.
+Titles longer than 200 characters, and titles left without ASCII letters or digits, exit with
+status 2 and a message.
 
 Put `--` before a title that starts with `-`; otherwise it is read as an option:
 
@@ -33,5 +35,7 @@ python3 -m slugkit -- "-30%"
 python3 -m unittest discover -s tests -p "*.py" -v
 ```
 
-The command runs every module in `tests/`, so a test file is never skipped because of its name. CI
-runs the same command on every push and pull request.
+Discovery skips modules whose names are not Python identifiers and directories that are not
+packages, so test modules live directly in `tests/` with identifier names. `tests/test_layout.py`
+fails when a file or directory there breaks that rule. CI runs the same command on every push and
+pull request.

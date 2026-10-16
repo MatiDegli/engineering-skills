@@ -13,6 +13,9 @@ class SlugifyTests(unittest.TestCase):
     def test_accents_are_transliterated(self):
         self.assertEqual(slugify("Café Ñandú"), "cafe-nandu")
 
+    def test_compatibility_characters_are_expanded(self):
+        self.assertEqual(slugify("ﬁnance ＡＢＣ"), "finance-abc")
+
     def test_letters_without_ascii_transliteration_are_dropped(self):
         self.assertEqual(slugify("Москва 2026"), "2026")
         self.assertEqual(slugify("Ørsted Straße Łódź"), "rsted-strae-odz")
