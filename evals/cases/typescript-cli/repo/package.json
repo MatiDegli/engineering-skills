@@ -1,0 +1,16 @@
+{
+  "name": "csv-tidy",
+  "version": "0.3.0",
+  "bin": {
+    "csv-tidy": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint src || exit 0",
+    "test": "echo \"no tests yet\""
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "typescript": "^5.4.0"
+  }
+}

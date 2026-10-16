@@ -1,0 +1,26 @@
+{
+  "description": "TypeScript CLI with a privileged release workflow, fake checks, and unbounded suppressions.",
+  "must_find": {
+    "QUAL-02": "no real tests, and the compiler runs with strict set to false",
+    "QUAL-03": "lint ends with `|| exit 0`, so violations never fail",
+    "QUAL-05": "tidy.ts disables ESLint for the whole file without a reason",
+    "QUAL-09": "`any` is used for every parameter",
+    "DEP-01": "no lockfile, and the Node version is not pinned for development",
+    "TEST-01": "`npm test` only prints a message",
+    "CI-02": "actions are pinned to tags instead of commit SHAs",
+    "CI-03": "no permissions block, and checkout persists credentials by default",
+    "CI-04": "no job timeout",
+    "CI-10": "pull_request_target checks out the PR head and publishes with the npm token",
+    "SEC-02": "the file path is interpolated into a shell command",
+    "DEL-01": "published builds use `npm install` without a lockfile and skip validation",
+    "DEL-03": "any pull request publishes a release without authorization or recorded changes"
+  },
+  "must_not_flag": {
+    "STRUCT-02": "fewer than 20 files in every directory",
+    "OPS-01": "a command-line tool, not a deployed service",
+    "SEC-04": "no public environment or debug interface",
+    "SEC-09": "no model or LLM features",
+    "CI-09": "no merge queue",
+    "TOOL-01": "no tools, skills, or MCP servers configured"
+  }
+}
