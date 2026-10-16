@@ -33,3 +33,27 @@ disposable environment; some tests call external hosts.
 Add each run to [RESULTS.md](RESULTS.md): date, revision of this repository, agent and model, case,
 score output, and notes. Run every case after changing the skill, the criteria, or a case, and
 compare with the previous results. Results from one agent or model do not transfer to another.
+
+## Baselines
+
+Runs with the skill show what an agent finds with it, not what the skill adds. A baseline runs the
+same cases, model, and harness with less of the skill:
+
+| Level | The agent receives | Scoring |
+| --- | --- | --- |
+| No skill | A request to audit the repository and list its problems with evidence | By hand |
+| Catalog only | `criteria.md` and the report's Findings and Coverage format, without the procedure or the guides | `score` |
+| Full skill | The skill | `score` |
+
+Start every agent in the prepared repository, where it cannot reach this repository, the skill, or
+`expected.json` unless its level provides them, and check its tool calls afterwards.
+
+A report without the skill has no criterion IDs, so score it by hand against `expected.json` with
+these rules, fixed before reading any report:
+
+- A seeded gap is found when the report names the same defect: the same mechanism at the same
+  location or, for a missing control, the same missing control. A broader statement that would also
+  cover it, such as "CI is weak", does not count.
+- A false flag is a claim that contradicts the reason given for a `must_not_flag` entry.
+- Record, for each seeded gap, the report text that matched it or "missed", so that someone else
+  can review the scoring.
