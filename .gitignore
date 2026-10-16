@@ -1,0 +1,40 @@
+# OS files
+Thumbs.db
+.DS_Store
+
+# Editor and IDE
+.vscode/
+.idea/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Local agent settings
+.claude/settings.local.json
+
+# Logs
+*.log
+
+# Temporary and cache directories
+tmp/
+temp/
+.cache/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+venv/
+.venv/
+
+# Node (evaluation fixtures)
+node_modules/
+
+# Build and release output
+dist/
+build/
