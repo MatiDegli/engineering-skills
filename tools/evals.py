@@ -31,13 +31,18 @@ FIXED_IDENTITY = {
 
 
 def prepare(case: Path, destination: Path) -> None:
-    """Copy a case repository and commit it so the audit has a revision to record."""
+    """Copy a case repository and commit it so the audit has a revision to record.
+
+    Identity, dates, and file modes are fixed, so the revision is the same in every environment;
+    without core.fileMode=false, WSL records files under /mnt/c as executable.
+    """
     if destination.exists():
         raise SystemExit(f"Destination already exists: {destination}")
     shutil.copytree(case / "repo", destination)
     environment = {**os.environ, **FIXED_IDENTITY}
     for command in (
         ["git", "init", "-q", "-b", "main"],
+        ["git", "config", "core.fileMode", "false"],
         ["git", "add", "-A"],
         ["git", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "Initial commit"],
     ):

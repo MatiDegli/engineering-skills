@@ -71,16 +71,17 @@ class CaseTests(unittest.TestCase):
             case = Path(directory) / "case"
             (case / "repo").mkdir(parents=True)
             (case / "repo" / "README.md").write_text("# Fixture\n")
+            (case / "repo" / "README.md").chmod(0o755)
             destination = Path(directory) / "audit"
             prepare(case, destination)
-            log = subprocess.run(
-                ["git", "log", "--format=%an %s"],
-                cwd=destination,
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            self.assertEqual(log.stdout, "Evaluation Fixture Initial commit\n")
+
+            def git(*arguments):
+                return subprocess.run(
+                    ["git", *arguments], cwd=destination, capture_output=True, text=True, check=True
+                ).stdout
+
+            self.assertEqual(git("log", "--format=%an %s"), "Evaluation Fixture Initial commit\n")
+            self.assertTrue(git("ls-files", "-s", "README.md").startswith("100644 "))
             with self.assertRaises(SystemExit):
                 prepare(case, destination)
 
