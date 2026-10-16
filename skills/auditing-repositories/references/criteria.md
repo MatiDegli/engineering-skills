@@ -26,6 +26,10 @@ indicates the condition (no `merge_group` trigger, no remote), the criterion is 
 that reason, and the report names the unread settings under Limitations. When the repository
 indicates it, for example a pull request workflow for a shared branch, report pending verification.
 
+That rule covers only conditions that depend solely on hosted settings. A criterion whose condition
+the repository shows still applies when its evidence is remote: CI-06 applies whenever CI
+configuration exists, and without a remote or a readable run it is pending verification.
+
 ## Repository and structure
 
 | ID | Check | Applies when | Guide |
