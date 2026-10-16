@@ -15,6 +15,7 @@ class SlugifyTests(unittest.TestCase):
 
     def test_letters_without_ascii_transliteration_are_dropped(self):
         self.assertEqual(slugify("Москва 2026"), "2026")
+        self.assertEqual(slugify("Ørsted Straße Łódź"), "rsted-strae-odz")
         with self.assertRaises(ValueError):
             slugify("Москва")
 
@@ -41,6 +42,12 @@ class CommandLineTests(unittest.TestCase):
         with contextlib.redirect_stdout(output):
             self.assertEqual(main(["Hello World"]), 0)
         self.assertEqual(output.getvalue(), "hello-world\n")
+
+    def test_title_starting_with_a_hyphen_follows_a_double_dash(self):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(main(["--", "-30%"]), 0)
+        self.assertEqual(output.getvalue(), "30\n")
 
     def test_invalid_title_exits_with_status_2(self):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as raised:

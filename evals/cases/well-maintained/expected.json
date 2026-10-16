@@ -5,7 +5,7 @@
     "CI-06": "the prepared repository has no remote, so no CI result exists for the audited revision"
   },
   "must_not_flag": {
-    "REPO-01": "README states purpose, requirements, run, and validation commands, and `python3` commands work on stock Linux",
+    "REPO-01": "README states purpose, requirements, that nothing is installed, how the publishing tool runs it, and run and validation commands from the root; `python3` commands work on stock Linux",
     "REPO-04": "only source, tests, and configuration are tracked",
     "QUAL-01": "README and CI run the same validation command",
     "QUAL-03": "the test command fails the job on any failure",
