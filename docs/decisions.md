@@ -1,5 +1,15 @@
 # Decisions
 
+## 2026-10-16 — One audit skill; work skills separate
+
+Skills are split by the job the agent is asked to do. `auditing-repositories` evaluates a
+repository across every area, including how the repository uses agents, so one report ranks all
+findings together. Skills that guide the work itself, such as coordinating agents or starting
+projects, are separate skills in this repository that install independently; the first,
+`coordinating-agents`, is planned for v0.3. Splitting the audit by topic was rejected because it
+would duplicate the procedure, report format, scorer, and evaluations, and would produce reports
+whose priorities cannot be compared.
+
 ## 2026-10-16 — Portable frontmatter only
 
 Shipped skills use only the frontmatter fields of the
