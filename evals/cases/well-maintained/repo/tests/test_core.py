@@ -13,6 +13,11 @@ class SlugifyTests(unittest.TestCase):
     def test_accents_are_transliterated(self):
         self.assertEqual(slugify("Café Ñandú"), "cafe-nandu")
 
+    def test_letters_without_ascii_transliteration_are_dropped(self):
+        self.assertEqual(slugify("Москва 2026"), "2026")
+        with self.assertRaises(ValueError):
+            slugify("Москва")
+
     def test_title_at_the_length_limit_is_accepted(self):
         self.assertEqual(slugify("a" * MAX_TITLE_LENGTH), "a" * MAX_TITLE_LENGTH)
 

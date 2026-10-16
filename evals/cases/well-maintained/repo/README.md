@@ -10,16 +10,17 @@ Python 3.12 on Linux, pinned in `.python-version`.
 ## Usage
 
 ```bash
-python -m slugkit "Hello, World!"
+python3 -m slugkit "Hello, World!"
 ```
 
-Prints `hello-world`. Empty titles, titles without letters or digits, and titles longer than 200
-characters exit with status 2 and a message.
+Prints `hello-world`. Accented Latin letters become their ASCII base letter; letters without an ASCII
+transliteration, such as Cyrillic or Greek, are dropped. Titles longer than 200 characters, and
+titles left without ASCII letters or digits, exit with status 2 and a message.
 
 ## Validation
 
 ```bash
-python -m unittest discover -s tests -v
+python3 -m unittest discover -s tests -v
 ```
 
 CI runs the same command on every push and pull request.
