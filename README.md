@@ -37,6 +37,11 @@ run `/auditing-repositories`.
 The report gives the project's context, its strengths, findings by criterion ID with evidence and
 priority, up to five priority actions, the status of every criterion, and the audit's limitations.
 
+An audit can read about 10,000 tokens of guidance into the conversation. In Claude Code, you can
+keep it out of the main context by asking Claude to run the audit in a subagent, or by adding
+`context: fork` to your installed copy. That field is specific to Claude Code and outside the Agent
+Skills specification, so this repository does not ship it.
+
 ## Limits
 
 - The audit does not modify the repository, install dependencies, or run commands with external

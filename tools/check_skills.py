@@ -13,6 +13,7 @@ NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 CRITERION_ID = re.compile(r"[A-Z]+-\d{2}")
 XML_TAG = re.compile(r"<[^>]+>")
 RESERVED_WORDS = ("anthropic", "claude")
+SPEC_FIELDS = {"name", "description", "license", "compatibility", "metadata", "allowed-tools"}
 MAX_BODY_LINES = 500
 
 
@@ -97,6 +98,11 @@ def skill_errors(skill: Path, root: Path) -> list[str]:
         return [f"{label}/SKILL.md: frontmatter must be single-line 'key: value' pairs between '---' lines"]
     fields, body = parsed
     errors = []
+    unknown = sorted(set(fields) - SPEC_FIELDS)
+    if unknown:
+        errors.append(
+            f"{label}/SKILL.md: fields outside the Agent Skills specification: {', '.join(unknown)}"
+        )
     name = fields.get("name", "")
     if not (NAME.fullmatch(name) and len(name) <= 64):
         errors.append(f"{label}/SKILL.md: name must be 1-64 lowercase letters, digits, and single hyphens")

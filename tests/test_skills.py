@@ -59,6 +59,11 @@ class SkillTests(unittest.TestCase):
                 self.write_skill(name, description)
                 self.assertTrue(validate(self.root))
 
+    def test_client_specific_fields_fail(self):
+        path = self.skill / "SKILL.md"
+        path.write_text(path.read_text().replace("---\n\n", "context: fork\n---\n\n", 1))
+        self.assertIn("outside the Agent Skills specification: context", "\n".join(validate(self.root)))
+
     def test_reserved_words_fail(self):
         reserved = self.root / "skills" / "claude-helper"
         self.skill.rename(reserved)

@@ -1,5 +1,14 @@
 # Decisions
 
+## 2026-10-16 — Portable frontmatter only
+
+Shipped skills use only the frontmatter fields of the
+[Agent Skills specification](https://agentskills.io/specification), checked on 2026-10-16:
+`name`, `description`, `license`, `compatibility`, `metadata`, and `allowed-tools`. Client-specific
+fields such as Claude Code's `context: fork` would make the same file behave differently across
+agents and fail strict validators, so the README explains them as a local option instead.
+`tools/check_skills.py` rejects any other field.
+
 ## 2026-10-16 — Origin and scope
 
 This repository turns the engineering guidance of the maintainer's private Portfolio-OS repository
