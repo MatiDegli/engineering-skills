@@ -20,6 +20,12 @@ A criterion is "not applicable" only with a reason taken from the repository, su
 data" or "level 0 experiment". "Not checked" is never a reason: report the criterion as pending
 verification instead.
 
+Some conditions live in hosted settings that the audit may not be able to read, such as a merge
+queue or branch protection. Decide them from repository evidence. When nothing in the repository
+indicates the condition (no `merge_group` trigger, no remote), the criterion is not applicable for
+that reason, and the report names the unread settings under Limitations. When the repository
+indicates it, for example a pull request workflow for a shared branch, report pending verification.
+
 ## Repository and structure
 
 | ID | Check | Applies when | Guide |
