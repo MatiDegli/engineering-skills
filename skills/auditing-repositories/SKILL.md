@@ -26,16 +26,17 @@ is read-only: inspect, run safe existing checks, and report. Implementation is a
 Copy this checklist into your working notes and complete every step:
 
 ```text
-- [ ] 1. Record the revision and working-tree state
+- [ ] 1. Record the date, revision, and working-tree state
 - [ ] 2. Identify purpose, stack, stage, platforms, and security level
-- [ ] 3. Inventory files, manifests, lockfiles, tests, CI, and history
+- [ ] 3. Inventory the repository and choose a sample if it is large
 - [ ] 4. Walk every criterion in references/criteria.md
-- [ ] 5. Verify that existing controls reject violations
+- [ ] 5. Verify that controls reject violations; reproduce decisive findings
 - [ ] 6. Assess performance claims against measurements only
 - [ ] 7. Write the report and run the self-check
 ```
 
-1. **Revision.** Record `git rev-parse HEAD` and `git status --short`. Uncommitted changes are part
+1. **Revision.** Record the date from the clock (`date -u +%Y-%m-%dT%H:%MZ`), never from the
+   conversation, then `git rev-parse HEAD` and `git status --short`. Uncommitted changes are part
    of what you audit; say so in the report.
 2. **Context.** Read the README, agent instructions (such as AGENTS.md or CLAUDE.md), contribution
    guides, manifests, and CI configuration. Determine the stage with the
@@ -43,7 +44,8 @@ Copy this checklist into your working notes and complete every step:
    in [standard.md](references/standard.md#proportionate-security), giving the reason for each.
 3. **Inventory.** List tracked files (`git ls-files`), languages, manifests and lockfiles, test
    locations, CI workflows, deployment files, and documentation. Read recent history with
-   `git log --stat -n 30` for the history criteria.
+   `git log --stat -n 30` for the history criteria. If you cannot read every maintained file,
+   follow [Large repositories](#large-repositories).
 4. **Criteria.** Open [criteria.md](references/criteria.md) and decide applicability for every ID.
    For each applicable criterion, collect evidence: a path with line numbers, a configuration value,
    or command output. Read the linked guide section when the rule needs detail.
@@ -52,11 +54,31 @@ Copy this checklist into your working notes and complete every step:
    codes, `|| true`, `continue-on-error`, `--exit-zero`, warning-only severities, and skip
    conditions), and that it covers new and renamed files. Run the project's validation command once
    when it is safe. Check whether CI actually ran and passed on the audited revision.
+   Reproduce each `high` finding when it is safe: run the command that shows the failure, or apply
+   a mutation in memory or in a scratch copy outside the repository and show that no control rejects
+   it. Start that finding's evidence with `Reproduced:` or `Inferred:`.
 6. **Performance and capacity.** Accept only measurements with a defined load, environment, and
    result. Claims without measurements are a `PERF-01` gap. Do not infer scalability from reading
    code; state what to measure instead, following
    [architecture.md](references/architecture.md#verifiable-optimization).
 7. **Report.** Write the report in the format below, then run the self-check.
+
+## Large repositories
+
+When you cannot read every maintained file, audit a sample chosen by risk and say so:
+
+- Always read in full the README, agent and contribution instructions, manifests and lockfiles, CI
+  and build configuration, and deployment files.
+- Sample source in this order: entry points and public interfaces; trust boundaries such as
+  authentication, input parsing, secrets, persistence, and external calls; then hotspots, the files
+  that change most often. List hotspots with
+  `git log --since=6.months --format= --name-only | sort | uniq -c | sort -rn | head -20` and prefer
+  the larger files among them.
+- Read the tests of every sampled file.
+- In Context, list the sampled paths and the share of maintained files they represent. Evidence
+  based on a sample says so, and Limitations names what was not read.
+- If your environment can run read-only helpers in parallel, split the sample by area and verify
+  their evidence before you report it.
 
 ## Statuses
 
@@ -70,13 +92,23 @@ Copy this checklist into your working notes and complete every step:
 
 `partial`, `pending-implementation`, and `pending-verification` are findings.
 
+## Priority
+
+| Priority | Use when |
+| --- | --- |
+| `high` | A plausible path to unauthorized access, secret exposure, data loss, or a broken or unsafe release, or a control that lets failures pass on code that ships |
+| `medium` | A gap that makes defects or security problems more likely to reach users without a direct path to a high outcome, or an unverified control on a high-impact path |
+| `low` | Maintainability, documentation, or hygiene with limited impact at the current stage |
+
+Judge impact first, then likelihood, never the effort of the fix. Raise a finding one level when
+the security level is 2 or 3 and the gap affects exposed data or users; lower it one level when the
+project's stage makes the control premature.
+
 ## Judgment
 
 - Recommend the smallest change that closes each gap. Preserve equivalent solutions that already
   work; do not impose tools, stacks, or the numeric starting points in the guides.
 - Distinguish an adopted rule, a configured control, and a verified control.
-- Prioritize security and data loss, then delivery and integrity, then developer friction, then
-  measured optimization.
 - Recommend tools from [tooling.md](references/tooling.md) only for a concrete need you found.
 
 ## Report format
@@ -85,8 +117,8 @@ Use these sections in this order. Keep the table columns and status values exact
 
 ```markdown
 ## Context
-Purpose, stack, stage, security level with reason, audited revision and working-tree state, and the
-commands executed with their results.
+Date (UTC), purpose, stack, stage, security level with reason, audited revision and working-tree
+state, the sample when the repository is large, and the commands executed with their results.
 
 ## Strengths
 Up to five, each with evidence.
@@ -94,7 +126,7 @@ Up to five, each with evidence.
 ## Findings
 | ID | Status | Priority | Evidence | Improvement |
 | --- | --- | --- | --- | --- |
-| CI-02 | partial | high | `.github/workflows/ci.yml:12` uses `actions/checkout@v4` | Pin the action to a full commit SHA |
+| CI-02 | partial | medium | `.github/workflows/ci.yml:12` uses `actions/checkout@v4` | Pin the action to a full commit SHA |
 
 ## Priority actions
 Up to five actions, each with scope, an acceptance check, and timing: now, before release, or when
@@ -108,14 +140,15 @@ the need arises.
 What could not be inspected or executed, and anything that needs separate verification.
 ```
 
-Order findings by priority (`high`, `medium`, `low`). Each finding cites concrete evidence: a path
-with line numbers, a configuration value, or a command and its result.
+Order findings by [priority](#priority) (`high`, `medium`, `low`). Each finding cites concrete
+evidence: a path with line numbers, a configuration value, or a command and its result.
 
 Self-check before answering:
 
 - Every ID in criteria.md appears exactly once, either in Findings or in Coverage.
 - Every `not-applicable` entry has a reason taken from the repository.
 - No finding relies on the mere presence of a file, tool, or workflow.
+- Every `high` finding's evidence starts with `Reproduced:` or `Inferred:`.
 
 ## References
 
