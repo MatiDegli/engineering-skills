@@ -1,0 +1,55 @@
+# Contributing
+
+## Editing
+
+- Keep all maintained content in English, including skills, guides, comments, fixtures, and tool
+  messages.
+- Keep one explanation per rule. The guides under `skills/*/references/` explain rules,
+  `criteria.md` lists checks that link to them, and `SKILL.md` holds the procedure. Update the
+  source and link to it instead of repeating it.
+- Write criteria as verifiable checks that name no specific tool. Tools appear only as optional
+  examples in the guides.
+- Criterion IDs are stable. Add new ones at the end of their area. To retire one, remove its row and
+  record the ID in the [decision record](docs/decisions.md) so it is never reused.
+- Keep `SKILL.md` under 500 lines, with references one level deep and links inside the skill
+  directory.
+- Distinguish requirements, recommendations, and examples. Check sources when changing a
+  recommendation and record the date.
+- Follow the [commit policy](skills/auditing-repositories/references/commits.md) for this
+  repository too.
+
+## Validation
+
+Requires Python 3.12+ and Git, with no external Python packages:
+
+```bash
+python3 tools/check.py
+# When changing workflows or their validator:
+bash tools/check_workflows.sh
+# Check external links (requires network access):
+python3 -m tools.check_links
+```
+
+The first command checks local links and heading anchors, JSON/TOML syntax, text hygiene, and
+secret-like filenames. It also checks skill metadata, self-contained links, criterion IDs, and the
+consistency of the evaluation cases, then runs the tests. Use inline links of the form
+`[text](target)` and headings starting with `#`. Technical accuracy and secrets inside file
+contents need separate review.
+
+The second command validates GitHub Actions workflows and their shell code with actionlint and
+ShellCheck, downloaded at pinned versions and verified with SHA-256 hashes. It requires Linux x86_64
+(WSL2 or Ubuntu), Bash, curl, tar/xz, coreutils, and network access. CI runs the first two commands
+on every push and pull request.
+
+The third command reports links that respond with 404 or 410 as broken. Other errors, blocked access,
+and timeouts are reported as unverified, and the command fails in both cases. A valid response does
+not show that the content is current. The `External links` workflow runs the check monthly and on
+demand.
+
+## Evaluations
+
+After changing a skill, `criteria.md`, or an evaluation case, run every case as described in
+[evals/README.md](evals/README.md) and add the results to [evals/RESULTS.md](evals/RESULTS.md). A
+change that lowers coverage or recall, or adds false positives, needs a stated reason.
+
+When handing off work, describe the change, rationale, checks, results, and limitations.
