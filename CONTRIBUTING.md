@@ -46,6 +46,22 @@ and timeouts are reported as unverified, and the command fails in both cases. A 
 not show that the content is current. The `External links` workflow runs the check monthly and on
 demand.
 
+## Integration
+
+`main` requires the `documentation` and `workflows` checks to pass on the exact commit, also for
+administrators, and keeps a linear history without force pushes. Pull requests are optional. To
+integrate directly, push the commits to a branch, wait for both checks to pass on that commit, and
+then fast-forward `main` to the same commit:
+
+```bash
+git push origin HEAD:refs/heads/<branch>
+# After both checks pass on that commit:
+git push origin HEAD:main
+```
+
+GitHub rejects a commit that has no passing checks, so `main` only receives verified commits.
+Delete the branch after integration.
+
 ## Evaluations
 
 After changing a skill, `criteria.md`, or an evaluation case, run every case as described in
