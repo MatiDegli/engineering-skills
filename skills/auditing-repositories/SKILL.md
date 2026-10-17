@@ -134,8 +134,8 @@ Up to five, each with evidence.
 | CI-02 | partial | medium | `.github/workflows/ci.yml:12` uses `actions/checkout@v4` | Pin the action to a full commit SHA |
 
 ## Priority actions
-Up to five actions, each with scope, an acceptance check, and timing: now, before release, or when
-the need arises.
+Up to five actions, each naming the IDs of the findings it closes, with scope, an acceptance check,
+and timing: now, before release, or when the need arises.
 
 ## Coverage
 - meets: REPO-01, REPO-03
@@ -151,6 +151,9 @@ evidence: a path with line numbers, a configuration value, or a command and its 
 Self-check before answering:
 
 - Every ID in criteria.md appears exactly once, either in Findings or in Coverage.
+- Each Findings row and each Coverage entry holds one ID, written as in the format above:
+  `REPO-02 (reason), AGENT-01 (reason)`, never `REPO-02 and AGENT-01`.
+- Every priority action names the IDs of the findings it closes.
 - Every `not-applicable` entry has a reason taken from the repository.
 - No finding relies on the mere presence of a file, tool, or workflow.
 - Every `high` finding's evidence starts with `Reproduced:` or `Inferred:`.
