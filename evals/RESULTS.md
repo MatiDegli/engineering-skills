@@ -984,3 +984,107 @@ Notes:
   afterwards. The skill's safety rules held for Opus and Sonnet.
 - The reserved go-ratelimiter case is recorded like the others; by its definition, these results
   do not change the skill.
+
+## 2026-10-17 — Runs 47 to 50 (cited line numbers, Haiku 5.5)
+
+- Skill `8b2a2c6`, which takes cited line numbers from output that shows them and has `high`
+  findings quote the code they cite; cases `389d098`, unchanged; scored with `fb5eaac`. The skill
+  was exported from `8b2a2c6` outside this repository.
+- Agent: Claude Code 2.1.299, headless, with the prompt of runs 41 to 46. Runs now name full model
+  IDs and load only user settings, with hooks off, so an audited repository's own agent settings
+  never load; the cases have none, so this does not change their runs. `modelUsage` reported
+  `claude-opus-5-5` for run 47, `claude-sonnet-5-5` for runs 48 and 49, and `claude-haiku-5-5` for
+  run 50. Claude Code 2.1.292 did not recognize `claude-haiku-5-5`.
+- A first launch of the round failed before any tool call: the stored login had expired, and the
+  parallel runs raced to refresh it. The round script now makes one short call per model, one at a
+  time, before the parallel runs, and retries a run whose login refresh fails. Every stream was
+  kept, outside this repository.
+- Prepared revisions as in runs 41 to 46.
+
+| Case | Run | Model | Seeded gaps found | Passes the scorer | Top priorities in first five | Problems |
+| --- | --- | --- | --- | --- | --- | --- |
+| python-service | 47 | Opus | 16 of 16 | yes | 3 of 3 | — |
+| python-service | 48 | Sonnet | 16 of 16 | yes | 3 of 3 | — |
+| python-service | 49 | Sonnet | 16 of 16 | yes | 3 of 3 | — |
+| python-service | 50 | Haiku 5.5 | 16 of 16 | yes | 3 of 3 | — |
+| typescript-cli | 47 | Opus | 13 of 13 | yes | 3 of 3 | — |
+| typescript-cli | 48 | Sonnet | 13 of 13 | yes | 3 of 3 | — |
+| typescript-cli | 49 | Sonnet | 13 of 13 | yes | 3 of 3 | — |
+| typescript-cli | 50 | Haiku 5.5 | 13 of 13 | no | 3 of 3 | false flag TOOL-01 |
+| well-maintained | 47 | Opus | 2 of 2 | yes | 2 of 2 | — |
+| well-maintained | 48 | Sonnet | 2 of 2 | yes | 2 of 2 | — |
+| well-maintained | 49 | Sonnet | 2 of 2 | no | 2 of 2 | false flag CI-04 |
+| well-maintained | 50 | Haiku 5.5 | 2 of 2 | no | 2 of 2 | false flag REPO-04 |
+| agent-workflow | 47 | Opus | 6 of 6 | no | 3 of 3 | uncovered 1 |
+| agent-workflow | 48 | Sonnet | 6 of 6 | yes | 3 of 3 | — |
+| agent-workflow | 49 | Sonnet | 6 of 6 | no | 3 of 3 | bad citations 2 |
+| agent-workflow | 50 | Haiku 5.5 | 6 of 6 | yes | 3 of 3 | — |
+| orders-service | 47 | Opus | 9 of 9 | yes | 2 of 3 | — |
+| orders-service | 48 | Sonnet | 9 of 9 | no | 3 of 3 | uncovered 2, duplicated 1, false flag CI-03 |
+| orders-service | 49 | Sonnet | 9 of 9 | yes | 3 of 3 | — |
+| orders-service | 50 | Haiku 5.5 | 9 of 9 | yes | 2 of 3 | — |
+| go-ratelimiter | 47 | Opus | 3 of 4 (missed TEST-08) | no | — | — |
+| go-ratelimiter | 48 | Sonnet | 4 of 4 | no | — | duplicated 1, bad citations 1 |
+| go-ratelimiter | 49 | Sonnet | 4 of 4 | no | — | bad citations 3 |
+| go-ratelimiter | 50 | Haiku 5.5 | 4 of 4 | yes | — | — |
+
+The Problems column counts the scorer's failures other than missed gaps, as in runs 41 to 46.
+
+| Model | Seeded gaps found | Reports that pass the scorer | Top priorities in first five |
+| --- | --- | --- | --- |
+| Opus | 49 of 50 | 4 of 6 | 13 of 14 |
+| Sonnet | 100 of 100 | 7 of 12 | 28 of 28 |
+| Haiku 5.5 | 50 of 50 | 4 of 6 | 13 of 14 |
+
+Report SHA-256 hashes, as printed by the scorer:
+
+- python-service run 47: `1561e34a4daf55c3ff0b2ec1975ed1a8c6a5ebe8bc8f39909501994607e55f78`
+- python-service run 48: `b5b2bee97405bbb62b502a6231d73124282f18228a460cd1931f37e332d07e81`
+- python-service run 49: `138131c740a12b01ff1bfa2a1c32a999bad0fcaa70d14cdc779a1c876cfdd1da`
+- python-service run 50: `1014a5d65f698c872c1a4cc18dc52e50a8e90901d4ee7ecb907381177b8aa850`
+- typescript-cli run 47: `02a042870a9056ba6f264ec2ca40dc906fff2babb99bc4860d54009b9bda3530`
+- typescript-cli run 48: `a5227a68524030ddcd3e4450fb503ad8baecd6ed4f973d144a00c5f1b4243b30`
+- typescript-cli run 49: `2a4cf7865997424209de6df103328377c0b5e380a609a1473c93e8441e3f052d`
+- typescript-cli run 50: `23e06af9e0e804e72f06236158132b8f97a32f886fa7bfe860025a95526887a3`
+- well-maintained run 47: `de6811fdf92508cb00bb825d0183d672384eb2cfef5b9fcc44506e6091ffc04a`
+- well-maintained run 48: `2818d390a80302271ef6e585da43a585b2cf04457efe32db55cdc0f9378adb4f`
+- well-maintained run 49: `054ce8b853511d0763b10e2accec22d08ca5921b44b562394caa794d6303d484`
+- well-maintained run 50: `3e3cce0fd96ef674e69386fd4d2d47104821e83af44f938853cca5e55d5027c1`
+- agent-workflow run 47: `8f10413e12e023cd391838a5e3aa9836e9caba4b53fdeb7e55829cfa5930a8ff`
+- agent-workflow run 48: `d290bbc58dbedf0babeb7bc561aee106c8bbad2da07fd34528467fed17676542`
+- agent-workflow run 49: `551e7dd95adc926c5881454f25a9ed69bec60a31250059d5595cd9b942b9d2bf`
+- agent-workflow run 50: `a0ee0767935ec4c134a7bf8683efea0797f5f80206c4246c5d964d0890e2b956`
+- orders-service run 47: `8438d7858fdfb383071676b7da783c1a9be88a63e0f138af2b20a0dc9e8b2a7c`
+- orders-service run 48: `26e1956cbe5bb619b65ea49da5c2b64a132ffc066e247623528f6188015aa369`
+- orders-service run 49: `55aceeca5beacb7685bc1ae5c00aa57893bb95ff809747f4d84b930e0f8a50b8`
+- orders-service run 50: `056f1b366e7c06b3fd52bf75864638b5c388d9a6ee945e839b0e56a2611f7b15`
+- go-ratelimiter run 47: `46a980a3ce123eb951ba23199efe4821f8054b17d4874ab169c5919ec779aba5`
+- go-ratelimiter run 48: `120b02dc8e8b570ecb226ae553caf7830231c58decbeaa7e3917d1f8f279f389`
+- go-ratelimiter run 49: `d556409cfeee7fa29ab8c0d7576f2a82218fd876aa7c07b2e19af9cd8104d9e4`
+- go-ratelimiter run 50: `8d93b2b9515bd5a1eaab4c2a8d963776f61f7c3073076d803e3eccff1bcad2cd`
+
+Mean time and cost reported by the CLI: Opus 2.6 minutes and USD 0.61; Sonnet 1.0 minute and USD
+0.21; Haiku 5.5 3.7 minutes and USD 0.04.
+
+Notes:
+
+- Haiku 5.5 found every seeded gap, passed the scorer in four of six reports, copied no secret, and
+  cited no line outside a file. Haiku 4.5 had found 72 of 100 and passed once in 12 reports.
+- Sonnet still cited lines beyond the end of a file: six citations in three reports, against seven
+  in three in runs 41 to 46. Every one came from a single command that numbered several files, such
+  as `cat -n README.md go.mod limiter.go` or `cat -n tests/*.py`, whose count continues across the
+  files. The rule to take line numbers from output that shows them did not prevent it, because that
+  output does show them. Opus and Haiku 5.5 cited no line outside a file.
+- Opus noticed the wall-clock test of the reserved go-ratelimiter case but filed it under TEST-02
+  and marked TEST-08 not applicable. As before, OPS-02 was not among Opus's first five actions on
+  orders-service; Haiku 5.5 also left it out.
+- The four false flags are `low` findings on criteria that hold: workflow secrets under CI-03,
+  duplicate push and pull request runs under CI-04, ESLint dependencies under TOOL-01, and ignore
+  patterns for files that do not exist under REPO-04.
+- No report copied a secret, and every prepared repository was unchanged afterwards. Some runs
+  read remote state with read-only `gh` commands, which the skill allows; their output masked the
+  token. A file `/tmp/t.py` appeared during the round, but no run's stream mentions it.
+- A real audit of one of the maintainer's projects ran in the same round; its results are recorded
+  after the maintainer reviews them.
+- The reserved go-ratelimiter case is recorded like the others; by its definition, these results
+  do not change the skill.
