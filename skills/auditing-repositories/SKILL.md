@@ -164,10 +164,12 @@ What could not be inspected or executed, and anything that needs separate verifi
 ```
 
 Order findings by [priority](#priority) (`high`, `medium`, `low`). Each finding cites concrete
-evidence: a path with line numbers, a configuration value, or a command and its result. In Coverage,
-list entries after their status, separated by commas; a long list may continue in indented bullets
-that start with IDs, without labels. An area that does not apply appears once, as its wildcard on
-the `not-applicable areas` line.
+evidence: a path with line numbers, a configuration value, or a command and its result. Take each
+line number from output that shows it, such as a numbered read or a search; when you have none,
+cite the path alone. A `high` finding also quotes the code it cites, as the example row does, with
+secret-like values masked. In Coverage, list entries after their status, separated by commas; a
+long list may continue in indented bullets that start with IDs, without labels. An area that does
+not apply appears once, as its wildcard on the `not-applicable areas` line.
 
 Self-check before answering:
 
@@ -180,6 +182,7 @@ Self-check before answering:
 - Every `not-applicable` entry has a reason taken from the repository.
 - No finding relies on the mere presence of a file, tool, or workflow.
 - Every `high` finding's evidence starts with `Reproduced:` or `Inferred:`.
+- Every `path:line` points to a line you read that holds what the finding states.
 - Every scratch directory you created is deleted and named in Context.
 - `git status --short --ignored` shows the same output as at the start.
 - The report shows secret-like values only in masked form, including values that look fake.
