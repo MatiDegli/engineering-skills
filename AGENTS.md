@@ -9,7 +9,8 @@
 - Distinguish recommendations from implemented controls and verified results.
 - Check sources when changing recommendations; record the review's scope and date.
 - On Windows, prefer WSL2 unless native behavior is required.
-- Run `python3 tools/check.py`; when changing workflows or their validator,
-  also run `bash tools/check_workflows.sh`. Report actual limitations.
+- Run `python3 tools/check.py`; when changing workflows, shell scripts, or their validator,
+  also run `bash tools/check_workflows.sh`. Run `bash tools/check_secrets.sh` before every push.
+  Report actual limitations.
 - Justify policy changes separately and follow the commit policy in CONTRIBUTING.md.
 - Publishing releases, rewriting history, and changing licenses require maintainer authorization.

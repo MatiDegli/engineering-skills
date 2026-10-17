@@ -24,8 +24,10 @@ Requires Python 3.12+ and Git, with no external Python packages:
 
 ```bash
 python3 tools/check.py
-# When changing workflows or their validator:
+# When changing workflows, shell scripts, or their validator:
 bash tools/check_workflows.sh
+# Before every push (requires network access):
+bash tools/check_secrets.sh
 # Check external links (requires network access):
 python3 -m tools.check_links
 ```
@@ -33,18 +35,25 @@ python3 -m tools.check_links
 The first command checks local links and heading anchors, JSON/TOML syntax, text hygiene, and
 secret-like filenames. It also checks skill metadata, self-contained links, criterion IDs, and the
 consistency of the evaluation cases, then runs the tests. Use inline links of the form
-`[text](target)` and headings starting with `#`. Technical accuracy and secrets inside file
-contents need separate review.
+`[text](target)` and headings starting with `#`. Technical accuracy needs separate review, and
+secrets inside file contents need the third command.
 
 The second command validates GitHub Actions workflows and their shell code with actionlint and
-ShellCheck, downloaded at pinned versions and verified with SHA-256 hashes. It requires Linux x86_64
-(WSL2 or Ubuntu), Bash, curl, tar/xz, coreutils, and network access. CI runs the first two commands
-on every push and pull request.
+ShellCheck, and the repository's shell scripts with ShellCheck, downloaded at pinned versions and
+verified with SHA-256 hashes. It requires Linux x86_64 (WSL2 or Ubuntu), Bash, curl, tar/xz,
+coreutils, and network access. CI runs the first two commands on every push and pull request.
 
-The third command reports links that respond with 404 or 410 as broken. Other errors, blocked access,
-and timeouts are reported as unverified, and the command fails in both cases. A valid response does
-not show that the content is current. The `External links` workflow runs the check monthly and on
-demand.
+The third command scans every commit of every local branch for secrets with Gitleaks, pinned and
+verified the same way, with the same requirements, and prints each finding with its value redacted.
+It runs before a push because a pushed branch is already public; a scan in CI would find a leak only
+after publication. A finding that is a deliberate fake, such as a seeded evaluation defect, goes
+into `.gitleaksignore` by fingerprint after review. Configuration files and inline `gitleaks:allow`
+comments are not accepted, because they can hide a real leak.
+
+The fourth command reports links that respond with 404 or 410 as broken. Other errors, blocked
+access, and timeouts are reported as unverified, and the command fails in both cases. A valid
+response does not show that the content is current. The `External links` workflow runs the check
+monthly and on demand.
 
 ## Integration
 
@@ -57,6 +66,7 @@ history, as a later bisection or revert would meet it:
 
 ```bash
 python3 -m tools.check_range origin/main..HEAD
+bash tools/check_secrets.sh
 git push origin HEAD:refs/heads/<branch>
 # After both checks pass on that commit:
 git push origin HEAD:main

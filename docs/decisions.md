@@ -1,5 +1,16 @@
 # Decisions
 
+## 2026-10-17 — A secret scan before every push
+
+The self-audit before v0.2.0 found that nothing scanned file contents or history for secrets:
+`tools/validate_repo.py` checks only secret-like filenames. `tools/check_secrets.sh` now scans every
+commit of every local branch with a pinned, hash-verified Gitleaks, and the integration flow runs it
+before the first push, because pushing a branch already publishes it. Its first run found only the
+fake key seeded in the `orders-service` case. Running the scan only in CI was rejected: it would
+report a leak after publication. Reviewed exceptions are fingerprints in `.gitleaksignore`; a
+configuration file and inline `gitleaks:allow` comments are refused, because an agent could use
+either to hide a real leak. CI may add the same scan later as a backstop.
+
 ## 2026-10-17 — Release v0.2.0 with one level criterion unmet
 
 In the release level comparison (runs 87 to 92), the full skill met four of the five criteria

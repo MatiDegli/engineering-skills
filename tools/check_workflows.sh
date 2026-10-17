@@ -51,7 +51,7 @@ download "https://github.com/koalaman/shellcheck/releases/download/v${shellcheck
 tar -xzOf "$workflow_tmp/actionlint.tar.gz" actionlint > "$workflow_tmp/actionlint"
 tar -xJOf "$workflow_tmp/shellcheck.tar.xz" "shellcheck-v${shellcheck_version}/shellcheck" > "$workflow_tmp/shellcheck"
 chmod 700 "$workflow_tmp/actionlint" "$workflow_tmp/shellcheck"
-timeout 60 "$workflow_tmp/shellcheck" --norc "$workflow_script"
+timeout 60 "$workflow_tmp/shellcheck" --norc "$workflow_script" tools/check_secrets.sh
 export SHELLCHECK_OPTS=--norc
 timeout 60 "$workflow_tmp/actionlint" -shellcheck="$workflow_tmp/shellcheck" -pyflakes= -- "${workflows[@]}"
 echo 'Workflow syntax, expressions and embedded shell: OK'
