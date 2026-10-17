@@ -43,6 +43,10 @@ if "json" == arguments[arguments.index("--output-format") + 1]:
 if os.environ.get("GH_TOKEN") or not os.environ.get("GH_CONFIG_DIR", "").endswith("gh-config"):
     raise SystemExit("the audit could reach a GitHub CLI login")
 state = Path(os.environ.get("FAKE_STATE", "/nonexistent")) / (model + "-" + Path.cwd().parent.name)
+if os.environ.get("FAKE_STATE"):
+    added = [arguments[i + 1] for i, a in enumerate(arguments) if a == "--add-dir"]
+    prompt = arguments[arguments.index("-p") + 1]
+    (Path(os.environ["FAKE_STATE"]) / ("args-" + Path.cwd().parent.name)).write_text(json.dumps([prompt, added]))
 if model == "claude-flaky-1-0" and not state.exists():
     state.write_text("failed once")
     print(json.dumps({{"type": "result", "result": "Failed to refresh OAuth token: another process"}}))
@@ -94,7 +98,9 @@ class RoundTests(unittest.TestCase):
         """Build a repository with two skill revisions, so tests need no history of this one."""
         repository = self.root / "repository"
         skill = repository / claude_rounds.SKILL
-        skill.mkdir(parents=True)
+        (skill / "references").mkdir(parents=True)
+        for name in ("criteria.md", "criteria-agents.md", "standard.md"):
+            (skill / "references" / name).write_text(f"# {name}\n")
         identity = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid"}
         identity |= {"GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.invalid"}
 
@@ -200,6 +206,27 @@ class RoundTests(unittest.TestCase):
         for secret in ("fake-provider-key", "parent-token", "parent-key"):
             self.assertNotIn(secret, written)
 
+    def test_levels_give_the_skill_the_catalog_or_nothing(self):
+        runs = claude_rounds.parse_runs(["1=claude-test-1-0", "2=claude-test-1-0+catalog", "3=claude-test-1-0+none"])
+        round_dir = self.root / "round"
+        with mock.patch("builtins.print"):
+            data = claude_rounds.plan(round_dir, runs, [str(self.case)], "HEAD")
+        self.rounds.append(round_dir)
+        with mock.patch("builtins.print"):
+            self.assertEqual(claude_rounds.run(round_dir, jobs=3, timeout=60, budget=100, pause=(0, 0)), 0)
+        seen = {}
+        for job in data["jobs"]:
+            prompt, added = json.loads((self.root / "state" / f"args-{Path(job['dir']).name}").read_text())
+            seen[job["level"]] = (prompt, added)
+        self.assertIn("SKILL.md", seen["full"][0])
+        self.assertIn("criteria.md", seen["catalog"][0])
+        self.assertEqual(seen["none"][1], [])
+        catalog = Path(seen["catalog"][1][0])
+        self.assertEqual(sorted(p.name for p in catalog.iterdir()), ["criteria-agents.md", "criteria.md"])
+        summary = claude_rounds.summarize(round_dir)
+        self.assertIn("| case | 3 | Test 1.0 none | by hand | by hand |", summary)
+        self.assertIn("| case | 2 | Test 1.0 catalog | 1 of 1 |", summary)
+
     def test_a_model_other_than_the_requested_one_is_flagged(self):
         round_dir = self.plan("round", ("1", "claude-mismatch-1-0"))
         with mock.patch("builtins.print"):
@@ -261,7 +288,8 @@ class RoundTests(unittest.TestCase):
     def test_model_labels_and_audit_command(self):
         self.assertEqual(claude_rounds.model_label("claude-opus-5-5"), "Opus 5.5")
         self.assertEqual(claude_rounds.model_label("glm-5.3"), "glm-5.3")
-        command = claude_rounds.claude_command("prompt", "claude-opus-5-5", Path("/skill"))
+        command = claude_rounds.claude_command("prompt", "claude-opus-5-5", [Path("/skill")])
+        self.assertIn(["--add-dir", "/skill"], [command[i : i + 2] for i in range(len(command))])
         for flags in (["--setting-sources", "user"], ["--effort", "high"], ["--strict-mcp-config"]):
             self.assertTrue(any(command[i : i + len(flags)] == flags for i in range(len(command))))
         self.assertIn('{"disableAllHooks": true}', command)

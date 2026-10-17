@@ -33,6 +33,7 @@ from pathlib import Path
 from tools.evals import (
     CASES,
     case_files,
+    check_text,
     finding_rows,
     git_at,
     git_environment,
@@ -45,17 +46,41 @@ from tools.evals import (
 from tools.validate_repo import ROOT
 
 SKILL = "skills/auditing-repositories"
+# The levels of evals/README.md: the skill, its catalog with the report format, or a bare request.
 PROMPTS = {
     "full": (
-        "Use the auditing-repositories skill at {skill}: read its SKILL.md and follow it to audit"
+        "Use the auditing-repositories skill at {path}: read its SKILL.md and follow it to audit"
         " the repository in the current directory. Work only in this repository, the skill"
         " directory, and scratch directories you create; do not read any other path. Reply with"
         " only the final report, exactly in the skill's report format."
     ),
+    "catalog": (
+        "Audit the repository in the current directory against the criteria in {path}/criteria.md"
+        " and the area files it lists. Do not modify the repository or install dependencies. Work"
+        " only in this repository, that directory, and scratch directories you create; do not read"
+        " any other path. Reply with only the final report, in this format:\n\n"
+        "## Findings\n| ID | Status | Priority | Evidence | Improvement |\n| --- | --- | --- | --- | --- |\n\n"
+        "One row per criterion that is not met, with status partial, pending-implementation, or"
+        " pending-verification, and priority high, medium, or low.\n\n"
+        "## Priority actions\nUp to five actions, most important first, each naming the IDs of the"
+        " findings it closes, with scope, an acceptance check, and timing: now, before release, or"
+        " when the need arises.\n\n"
+        "## Coverage\n- meets: IDs\n- not-applicable: ID (reason), ID (reason)\n"
+        "- not-applicable areas: AREA-* (reason)\n\n"
+        "Every ID of the core catalog and of each area that applies appears exactly once, in"
+        " Findings or in Coverage; an area that does not apply appears once on the not-applicable"
+        " areas line."
+    ),
+    "none": (
+        "Audit the repository in the current directory and list its problems, with evidence for"
+        " each, then give up to five priority actions, most important first. Do not modify the"
+        " repository or install dependencies. Work only in this repository and scratch directories"
+        " you create; do not read any other path. Reply with only the final report."
+    ),
 }
 LOGIN_FAILURE = "Failed to refresh OAuth token"
 ATTEMPTS = 3
-TEMPORARY = re.compile(r"(audit|skill)\.[A-Za-z0-9_]{8}")
+TEMPORARY = re.compile(r"(audit|skill|catalog)\.[A-Za-z0-9_]{8}")
 HOME_PATH = re.compile(r"(?<![\w.-])(?:/home/[\w.-]+|/root|/mnt/[a-z])(?:/[^\s\"'`,;)]*)?")
 PROBLEMS = (
     ("unmarked_high", "unmarked high"),
@@ -70,7 +95,9 @@ def now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def claude_command(prompt: str, model: str, skill: Path, settings: str | None = None) -> list[str]:
+def claude_command(
+    prompt: str, model: str, directories: list[Path], settings: str | None = None
+) -> list[str]:
     """Return the audit command.
 
     Only user settings load, with hooks off, so the audited repository's own agent settings,
@@ -78,7 +105,8 @@ def claude_command(prompt: str, model: str, skill: Path, settings: str | None = 
     another provider passes the settings file of `provider_launch`, which also turns hooks off.
     """
     return [
-        *("claude", "-p", prompt, "--model", model, "--effort", "high", "--add-dir", str(skill)),
+        *("claude", "-p", prompt, "--model", model, "--effort", "high"),
+        *(item for directory in directories for item in ("--add-dir", str(directory))),
         *("--allowedTools", "Bash", "Read", "Grep", "Glob"),
         *("--disallowedTools", "WebFetch", "WebSearch", "Edit", "Write", "NotebookEdit"),
         *("--setting-sources", "user", "--settings", settings or '{"disableAllHooks": true}'),
@@ -187,9 +215,31 @@ def export_skill(revision: str) -> Path:
     return skill
 
 
+def export_catalog(revision: str) -> Path:
+    """Extract only the catalog files at a revision, for the catalog-only level."""
+    archive = repository_git("archive", "--format=tar", f"{revision}:{SKILL}/references")
+    catalog = Path(tempfile.mkdtemp(prefix="catalog."))
+    with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
+        members = [m for m in tar.getmembers() if re.fullmatch(r"criteria(-[a-z]+)?\.md", m.name)]
+        tar.extractall(catalog, members=members, filter="data")
+    return catalog
+
+
+def job_level(data: dict, job: dict) -> str:
+    return job.get("level") or data.get("level") or "full"
+
+
 def job_skill(data: dict, job: dict) -> str:
     """Return the skill a job audits with; plans before per-run revisions kept one skill."""
-    return job.get("skill") or data["skill"]
+    return job.get("skill") or data.get("skill") or ""
+
+
+def job_material(data: dict, job: dict) -> Path | None:
+    """Return the directory a job's level gives the agent: the skill, the catalog, or nothing."""
+    level = job_level(data, job)
+    if level == "none":
+        return None
+    return Path(job["catalog"] if level == "catalog" else job_skill(data, job))
 
 
 def job_revision(data: dict, job: dict) -> str:
@@ -197,7 +247,9 @@ def job_revision(data: dict, job: dict) -> str:
 
 
 def skill_exports(data: dict) -> list[Path]:
-    return [Path(path).parent for path in (data.get("skills") or {"": data.get("skill")}).values()]
+    """Return the temporary directories that hold the round's skill and catalog exports."""
+    skills = [Path(path).parent for path in (data.get("skills") or {"": data.get("skill")}).values() if path]
+    return skills + [Path(path) for path in (data.get("catalogs") or {}).values()]
 
 
 def plan(round_dir: Path, runs: list[tuple], cases: list[str], revision: str) -> dict:
@@ -217,21 +269,34 @@ def plan(round_dir: Path, runs: list[tuple], cases: list[str], revision: str) ->
     specs = []
     for number, model, *rest in runs:
         wanted = rest[0] if rest and rest[0] else revision
-        specs.append((number, model, repository_git("rev-parse", "--short", wanted).decode().strip()))
+        level = rest[1] if len(rest) > 1 and rest[1] else "full"
+        if level not in PROMPTS:
+            raise SystemExit(f"unknown level {level!r}; use one of {', '.join(PROMPTS)}")
+        commit = repository_git("rev-parse", "--short", wanted).decode().strip()
+        specs.append((number, model, commit, level))
     for name in ("streams", "reports"):
         paths[name].mkdir(parents=True, exist_ok=True)
     listing = sorted(os.listdir(tempfile.gettempdir()))
     paths["tmp-before.txt"].write_text("\n".join(listing) + "\n", encoding="utf-8")
-    skills = {commit: str(export_skill(commit)) for commit in dict.fromkeys(s[2] for s in specs)}
+    wanted_skills = dict.fromkeys(s[2] for s in specs if s[3] == "full")
+    wanted_catalogs = dict.fromkeys(s[2] for s in specs if s[3] == "catalog")
+    skills = {commit: str(export_skill(commit)) for commit in wanted_skills}
+    catalogs = {commit: str(export_catalog(commit)) for commit in wanted_catalogs}
     jobs = []
     for case in cases:
-        for run, model, commit in specs:
+        for run, model, commit, level in specs:
             directory = Path(tempfile.mkdtemp(prefix="audit."))
             name = case_path(case).name
             prepare(case_path(case), directory / name)
             job = {"run": run, "model": model, "case": case, "name": name, "dir": str(directory)}
-            jobs.append(job | {"revision": commit, "skill": skills[commit]})
-    data = {"created": now(), "skill_commit": ", ".join(skills), "skills": skills, "level": "full"}
+            job |= {"revision": commit, "level": level}
+            job |= {"skill": skills[commit]} if level == "full" else {}
+            job |= {"catalog": catalogs[commit]} if level == "catalog" else {}
+            jobs.append(job)
+    revisions = ", ".join(dict.fromkeys(s[2] for s in specs))
+    levels = ", ".join(dict.fromkeys(s[3] for s in specs))
+    data = {"created": now(), "skill_commit": revisions, "skills": skills, "catalogs": catalogs}
+    data["level"] = levels
     data["jobs"] = jobs
     paths["plan.json"].write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     return data
@@ -436,13 +501,14 @@ def audit(round_dir: Path, data: dict, job: dict, launch: dict) -> str:
         return f"{label}: skipped, budget reached"
     provider = launch["providers"].get(job["model"])
     stream, stderr = paths["streams"] / f"{label}.jsonl", paths["streams"] / f"{label}.stderr.txt"
-    prompt = PROMPTS[data["level"]].format(skill=job_skill(data, job))
-    skill = Path(job_skill(data, job))
+    material = job_material(data, job)
+    prompt = PROMPTS[job_level(data, job)].format(path=material)
+    directories = [material] if material else []
     environment, settings = audit_environment(round_dir), None
     if provider:
         environment, settings = provider_launch(provider, job["model"], round_dir / "providers" / label)
         environment |= {"GH_CONFIG_DIR": audit_environment(round_dir)["GH_CONFIG_DIR"]}
-    command = claude_command(prompt, job["model"], skill, str(settings) if settings else None)
+    command = claude_command(prompt, job["model"], directories, str(settings) if settings else None)
     for attempt in range(1, ATTEMPTS + 1):
         code = run_command(command, repo, stream, stderr, launch["timeout"], environment)
         results = stream_results(stream)
@@ -533,11 +599,18 @@ def sha256(path: Path) -> str:
 
 
 def score_job(job: dict, data: dict, paths: dict[str, Path], repo: Path, totals: Counter) -> dict:
-    """Score one run's report and check its stream and prepared repository."""
+    """Score one run's report and check its stream and prepared repository.
+
+    A report of the no-skill level has no criterion IDs: only its leaks and citations are checked
+    here, and its gaps and priorities are scored by hand with the rules of evals/README.md.
+    """
     label, case = f"run{job['run']}-{job['name']}", case_path(job["case"])
     report, stream = paths["reports"] / f"{label}.md", paths["streams"] / f"{label}.jsonl"
     expected, result = score_report(report, case, repo)
     text = report.read_text(encoding="utf-8")
+    by_hand = job_level(data, job) == "none"
+    if by_hand:
+        result = {key: [] for key in result} | check_text(text, repo, expected)
     problems = [f"{name} {len(result[key])}" for key, name in PROBLEMS if result.get(key)]
     if result["false_flags"]:
         problems.append(f"false flag {', '.join(result['false_flags'])}")
@@ -548,11 +621,13 @@ def score_job(job: dict, data: dict, paths: dict[str, Path], repo: Path, totals:
         gaps += f" (missed {', '.join(result['missed'])})"
     top = re.search(r"(\d+) of (\d+) in the first five", priority_placement(text, expected) or "")
     passed = not any(values for key, values in result.items() if key != "found")
+    if by_hand:
+        gaps, top = "by hand", None
     results = stream_results(stream) if stream.exists() else []
     totals.update(
-        found=len(result["found"]),
-        seeded=len(expected["must_find"]),
-        passed=int(passed),
+        found=0 if by_hand else len(result["found"]),
+        seeded=0 if by_hand else len(expected["must_find"]),
+        passed=0 if by_hand else int(passed),
         reports=1,
         top=int(top[1]) if top else 0,
         top_of=int(top[2]) if top else 0,
@@ -571,13 +646,15 @@ def score_job(job: dict, data: dict, paths: dict[str, Path], repo: Path, totals:
         notes.append(f"{label}: the prepared repository changed: {'; '.join(changed[:5])}")
     if result["leaked"]:
         notes.append(f"{label}: copied {', '.join(result['leaked'])}")
-    allowed = [Path(job["dir"]), Path(job_skill(data, job)).parent, paths["plan.json"].parent / "providers"]
+    material = job_material(data, job)
+    allowed = [Path(job["dir"]), paths["plan.json"].parent / "providers"]
+    allowed += [material.parent if job_level(data, job) == "full" else material] if material else []
     outside = outside_paths(stream, allowed) if results else []
     if outside:
         notes.append(f"{label}: tool calls name paths outside the run: {', '.join(outside[:8])}")
     row = (
         f"| {job['name']} | {job['run']} | {arm_label(data, job)} | {gaps} "
-        f"| {'yes' if passed else 'no'} | {f'{top[1]} of {top[2]}' if top else '—'} "
+        f"| {'by hand' if by_hand else 'yes' if passed else 'no'} | {f'{top[1]} of {top[2]}' if top else '—'} "
         f"| {', '.join(problems) or '—'} |"
     )
     return {"row": row, "hash": f"- {job['name']} run {job['run']}: `{sha256(report)}`", "notes": notes}
@@ -598,9 +675,13 @@ def leftovers(paths: dict[str, Path], data: dict) -> list[str]:
 
 
 def arm_label(data: dict, job: dict) -> str:
-    """Name a job's model, and its revision when the round compares several."""
+    """Name a job's model, and its revision and level when the round compares several."""
     label = model_label(job["model"])
-    return f"{label} @ {job_revision(data, job)}" if len(data.get("skills") or {}) > 1 else label
+    if len({j.get("revision") for j in data["jobs"]}) > 1:
+        label += f" @ {job_revision(data, job)}"
+    if len({job_level(data, j) for j in data["jobs"]}) > 1:
+        label += f" {job_level(data, job)}"
+    return label
 
 
 def summarize(round_dir: Path) -> str:
@@ -674,14 +755,16 @@ def clean(round_dir: Path) -> list[str]:
     return removed
 
 
-def parse_runs(values: list[str]) -> list[tuple[str, str, str | None]]:
+def parse_runs(values: list[str]) -> list[tuple[str, str, str | None, str | None]]:
+    """Read NUMBER=MODEL[@REVISION][+LEVEL] specifications."""
     runs = []
     for value in values:
         number, _, rest = value.partition("=")
+        rest, _, level = rest.partition("+")
         model, _, revision = rest.partition("@")
         if not number.isdigit() or not model:
-            raise SystemExit(f"--run takes NUMBER=MODEL or NUMBER=MODEL@REVISION, not {value!r}")
-        runs.append((number, model, revision or None))
+            raise SystemExit(f"--run takes NUMBER=MODEL[@REVISION][+LEVEL], not {value!r}")
+        runs.append((number, model, revision or None, level or None))
     return runs
 
 

@@ -66,7 +66,9 @@ python3 -m tools.claude_rounds clean ~/eval-runs/round10
 
 `plan` exports the skill from a revision into a temporary directory, away from the reports, and
 prepares one repository per run and case; `--case` takes a case name or directory and may repeat. A
-run may name its own revision, as in `--run 66=claude-sonnet-5-5@8b2a2c6`. A round that tests a
+run may name its own revision and level, as in `--run 66=claude-sonnet-5-5@8b2a2c6` or
+`--run 67=claude-opus-5-5+catalog`: the catalog level receives only the `criteria*.md` files, the
+none level nothing, and a none-level report is marked for scoring by hand. A round that tests a
 change includes the current version as a control, with the same models and runs, in the same plan:
 `plan` lists the jobs case by case, so both arms run side by side.
 `run` starts agents and spends usage, so the maintainer runs it or allows it; `--budget-usd` stops
