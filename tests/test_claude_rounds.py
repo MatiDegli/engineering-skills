@@ -31,6 +31,8 @@ if "json" == arguments[arguments.index("--output-format") + 1]:
     else:
         print(json.dumps({{"type": "result", "is_error": False, "result": "OK", "modelUsage": {{model: {{}}}}}}))
     raise SystemExit(0)
+if os.environ.get("GH_TOKEN") or not os.environ.get("GH_CONFIG_DIR", "").endswith("gh-config"):
+    raise SystemExit("the audit could reach a GitHub CLI login")
 state = Path(os.environ["FAKE_STATE"]) / (model + "-" + Path.cwd().parent.name)
 if model == "claude-flaky-1-0" and not state.exists():
     state.write_text("failed once")
@@ -63,7 +65,11 @@ class RoundTests(unittest.TestCase):
         (self.root / "state").mkdir()
         self.environment = mock.patch.dict(
             os.environ,
-            {"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}", "FAKE_STATE": str(self.root / "state")},
+            {
+                "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+                "FAKE_STATE": str(self.root / "state"),
+                "GH_TOKEN": "fake-token",
+            },
         )
         self.environment.start()
         self.rounds = []
@@ -161,6 +167,16 @@ class RoundTests(unittest.TestCase):
         self.assertFalse(planned.exists())
         self.assertTrue(foreign.exists())
         self.rounds.remove(round_dir)
+
+    def test_audits_run_without_a_github_cli_login(self):
+        hosted = {"GH_TOKEN": "fake-token", "GITHUB_TOKEN": "fake-token", "GH_CONFIG_DIR": "/elsewhere"}
+        with mock.patch.dict(os.environ, hosted):
+            environment = claude_rounds.audit_environment(self.root)
+        self.assertNotIn("GH_TOKEN", environment)
+        self.assertNotIn("GITHUB_TOKEN", environment)
+        self.assertEqual(environment["GH_CONFIG_DIR"], str(self.root / "gh-config"))
+        self.assertEqual(list((self.root / "gh-config").iterdir()), [])
+        self.assertEqual(environment["PATH"], os.environ["PATH"])
 
     def test_model_labels_and_audit_command(self):
         self.assertEqual(claude_rounds.model_label("claude-opus-5-5"), "Opus 5.5")

@@ -223,10 +223,35 @@ def plan(round_dir: Path, runs: list[tuple], cases: list[str], revision: str) ->
     return data
 
 
-def run_command(command: list[str], cwd: Path, stdout: Path, stderr: Path, timeout: float) -> int:
+HOSTING_TOKENS = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN")
+
+
+def audit_environment(round_dir: Path) -> dict[str, str]:
+    """Return the audit's environment, with no GitHub CLI login.
+
+    A prepared repository is not the hosted one: a rewritten history has no hosted runs, and live
+    hosting state changes between rounds. With an empty `gh` configuration and no tokens, an audit
+    reports remote settings as unverified, the same way in every round.
+    """
+    config = round_dir / "gh-config"
+    config.mkdir(exist_ok=True)
+    clean = {name: value for name, value in os.environ.items() if name not in HOSTING_TOKENS}
+    return clean | {"GH_CONFIG_DIR": str(config)}
+
+
+def run_command(
+    command: list[str],
+    cwd: Path,
+    stdout: Path,
+    stderr: Path,
+    timeout: float,
+    environment: dict[str, str] | None = None,
+) -> int:
     """Run in a new session and stop the whole process group on timeout, grandchildren included."""
     with stdout.open("w", encoding="utf-8") as out, stderr.open("w", encoding="utf-8") as err:
-        process = subprocess.Popen(command, cwd=cwd, stdout=out, stderr=err, start_new_session=True)
+        process = subprocess.Popen(
+            command, cwd=cwd, env=environment, stdout=out, stderr=err, start_new_session=True
+        )
         try:
             return process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
@@ -290,7 +315,7 @@ def audit(round_dir: Path, data: dict, job: dict, timeout: float, pause: tuple[i
     prompt = PROMPTS[data["level"]].format(skill=job_skill(data, job))
     command = claude_command(prompt, job["model"], Path(job_skill(data, job)))
     for attempt in range(1, ATTEMPTS + 1):
-        code = run_command(command, repo, stream, stderr, timeout)
+        code = run_command(command, repo, stream, stderr, timeout, audit_environment(round_dir))
         results = stream_results(stream)
         if not login_failed(results) or attempt == ATTEMPTS:
             break
