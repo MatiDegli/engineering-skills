@@ -68,6 +68,14 @@ Review the level when data, users, or permissions change. At every applicable le
 4. For services: document configuration, health, logs, migrations, and rollback.
 5. For persistent data: test backup and restoration, and agree on acceptable data loss and downtime.
 6. Publish with project authorization, an identifiable version, and recorded changes.
+7. For distributed artifacts: publish build provenance that identifies the source revision and the
+   build, and a software bill of materials, in formats consumers can verify.
+8. For services in operation: set service level objectives on user-visible indicators, alert on
+   symptoms that consume the error budget rather than on every cause, keep every page actionable,
+   and give each alert a runbook with its impact and first steps.
+9. For services with users: roll out changes progressively, for example to a canary compared with
+   the current version, stop or roll back automatically on user-visible regressions, and rehearse
+   the rollback.
 
 Criteria for growth and capacity measurement are in [architecture and performance](architecture.md).
 
@@ -75,4 +83,10 @@ Sources checked on 2026-10-17 against the claims they support:
 [code owners](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners),
 [data to exclude from logs](https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html),
 [entropy in secret scanning](https://github.com/gitleaks/gitleaks),
-[data minimisation](https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/data-protection-principles/a-guide-to-the-data-protection-principles/data-minimisation/).
+[data minimisation](https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/data-protection-principles/a-guide-to-the-data-protection-principles/data-minimisation/),
+[provenance levels](https://slsa.dev/spec/v1.0/requirements),
+[software bill of materials](https://www.cisa.gov/sbom),
+[symptoms and actionable pages](https://sre.google/sre-book/monitoring-distributed-systems/),
+[alerting on objectives](https://sre.google/workbook/alerting-on-slos/),
+[playbooks](https://sre.google/workbook/on-call/),
+[canarying](https://sre.google/workbook/canarying-releases/).

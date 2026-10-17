@@ -128,8 +128,11 @@ configuration exists, and without a remote or a readable run it is pending verif
 | DEL-01 | Builds identify the validated revision and use locked dependencies | Artifacts are built | [standard](standard.md#delivery-and-operations) |
 | DEL-02 | Artifact contents are reviewed and installed outside the development tree, without secrets, private fixtures, caches, or local configuration | Artifacts are distributed | [standard](standard.md#delivery-and-operations) |
 | DEL-03 | Releases are authorized, versioned, and record their changes | Releases exist | [standard](standard.md#delivery-and-operations) |
+| DEL-04 | Distributed artifacts come with build provenance and a software bill of materials that consumers can verify | Artifacts are distributed at security level 2 or higher | [standard](standard.md#delivery-and-operations) |
 | OPS-01 | Services document configuration, health, logs, migrations, and rollback | Deployed service | [standard](standard.md#delivery-and-operations) |
 | OPS-02 | Persistent data has tested backup and restoration, and agreed acceptable loss and downtime | Persistent data | [standard](standard.md#delivery-and-operations) |
+| OPS-03 | Services set objectives on user-visible indicators, alert on symptoms that consume the error budget, and give each alert a runbook | Service in operation | [standard](standard.md#delivery-and-operations) |
+| OPS-04 | Changes reach users progressively, stop or roll back automatically on user-visible regressions, and rollback is rehearsed | Deployed service with users | [standard](standard.md#delivery-and-operations) |
 
 ## Architecture
 
