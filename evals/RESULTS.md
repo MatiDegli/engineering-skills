@@ -1127,3 +1127,127 @@ Notes:
   while the next lines ran it. One count, repeated in three findings, was a fifth of the real one.
 - The reviewer added one gap the audit missed: the gate's receipts are local and unsigned, so the
   only evidence of each merge comes from the author's machine.
+
+## 2026-10-17 — Runs 51 to 58 (integration path, distribution, absence, and counts)
+
+- Runs 51 to 54 audit the cases with skill `4230dfe`, which adds the rules of the real audit: check
+  the integration path before reporting CI or review gaps, count a product as distributed only when
+  people outside its team receive it, ground absence claims in a search, and name the command of
+  each count. It also carries `5d2a25f`, which numbers each cited file on its own.
+- Runs 55 to 58 compare the skill without and with those rules on a large private case, prepared
+  with `tools.evals` from a pinned commit of one of the maintainer's projects with five seeded
+  defects: runs 55 and 56 use `85094a0` (the skill of `5d2a25f`), runs 57 and 58 use `4230dfe`.
+  Its expected findings are five seeds and five gaps the maintainer confirmed in the real audit;
+  four criteria must not be flagged, and the seeded token must not appear.
+- Agent: Claude Code 2.1.299 through `tools/claude_rounds.py` (`85094a0`), full model IDs, user
+  settings only, hooks off, effort high. Every stream names the requested model. The cost limits of
+  `533db9b` were approved before these runs.
+
+| Case | Run | Model | Seeded gaps found | Passes the scorer | Top priorities in first five | Problems |
+| --- | --- | --- | --- | --- | --- | --- |
+| python-service | 51 | Opus 5.5 | 16 of 16 | yes | 3 of 3 | — |
+| python-service | 52 | Sonnet 5.5 | 16 of 16 | yes | 3 of 3 | — |
+| python-service | 53 | Sonnet 5.5 | 16 of 16 | yes | 3 of 3 | — |
+| python-service | 54 | Haiku 5.5 | 16 of 16 | yes | 3 of 3 | — |
+| typescript-cli | 51 | Opus 5.5 | 13 of 13 | yes | 3 of 3 | — |
+| typescript-cli | 52 | Sonnet 5.5 | 13 of 13 | yes | 3 of 3 | — |
+| typescript-cli | 53 | Sonnet 5.5 | 13 of 13 | yes | 3 of 3 | — |
+| typescript-cli | 54 | Haiku 5.5 | 13 of 13 | no | 3 of 3 | uncovered 1 |
+| well-maintained | 51 | Opus 5.5 | 2 of 2 | yes | 2 of 2 | — |
+| well-maintained | 52 | Sonnet 5.5 | 2 of 2 | yes | 2 of 2 | — |
+| well-maintained | 53 | Sonnet 5.5 | 2 of 2 | no | 2 of 2 | false flag ARCH-05, CI-04, REPO-01, TEST-05 |
+| well-maintained | 54 | Haiku 5.5 | 2 of 2 | no | 2 of 2 | false flag QUAL-01, REPO-04 |
+| agent-workflow | 51 | Opus 5.5 | 6 of 6 | yes | 3 of 3 | — |
+| agent-workflow | 52 | Sonnet 5.5 | 6 of 6 | yes | 3 of 3 | — |
+| agent-workflow | 53 | Sonnet 5.5 | 6 of 6 | yes | 3 of 3 | — |
+| agent-workflow | 54 | Haiku 5.5 | 6 of 6 | yes | 3 of 3 | — |
+| orders-service | 51 | Opus 5.5 | 9 of 9 | no | 2 of 3 | uncovered 1 |
+| orders-service | 52 | Sonnet 5.5 | 9 of 9 | no | 2 of 3 | uncovered 1 |
+| orders-service | 53 | Sonnet 5.5 | 9 of 9 | yes | 3 of 3 | — |
+| orders-service | 54 | Haiku 5.5 | 9 of 9 | yes | 2 of 3 | — |
+| go-ratelimiter | 51 | Opus 5.5 | 4 of 4 | yes | — | — |
+| go-ratelimiter | 52 | Sonnet 5.5 | 4 of 4 | yes | — | — |
+| go-ratelimiter | 53 | Sonnet 5.5 | 4 of 4 | yes | — | — |
+| go-ratelimiter | 54 | Haiku 5.5 | 4 of 4 | yes | — | — |
+
+| Model | Seeded gaps found | Reports that pass the scorer | Top priorities in first five | Bad citations | Misplaced citations | High findings | Mean minutes | Mean USD | Mean tool calls | Mean input tokens | Mean output tokens |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Opus 5.5 | 50 of 50 | 5 of 6 | 13 of 14 | 0 | 0 | 17 | 3.2 | 0.81 | 11 | 393,555 | 20,894 |
+| Sonnet 5.5 | 100 of 100 | 10 of 12 | 27 of 28 | 0 | 0 | 30 | 2.1 | 0.33 | 10 | 316,519 | 15,424 |
+| Haiku 5.5 | 50 of 50 | 4 of 6 | 13 of 14 | 0 | 1 | 19 | 5.6 | 0.12 | 16 | 605,075 | 81,578 |
+
+The same columns for runs 47 to 50, computed from their streams: Opus 2.6 minutes, USD 0.61, 9
+tool calls, 260,126 input and 14,872 output tokens; Sonnet 1.0, USD 0.21, 7, 184,782, and 8,498;
+Haiku 5.5 3.7, USD 0.04, 12, 437,960, and 49,308.
+
+| Case | Run | Model | Seeded gaps found | Passes the scorer | Top priorities in first five | Problems |
+| --- | --- | --- | --- | --- | --- | --- |
+| large-private | 55 | Opus 5.5 | 9 of 10 (missed SEC-10) | no | 1 of 1 | — |
+| large-private | 56 | Opus 5.5 | 3 of 10 (missed ARCH-05, REPO-06, SEC-02, SEC-05, SEC-10, SEC-11, TEST-08) | no | 1 of 1 | bad citations 1 |
+| large-private | 57 | Opus 5.5 | 9 of 10 (missed SEC-10) | no | 1 of 1 | false flag AGENT-03 |
+| large-private | 58 | Opus 5.5 | 9 of 10 (missed SEC-10) | no | 1 of 1 | false flag AGENT-03 |
+
+| Model | Seeded gaps found | Reports that pass the scorer | Top priorities in first five | Bad citations | Misplaced citations | High findings | Mean minutes | Mean USD | Mean tool calls | Mean input tokens | Mean output tokens |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Opus 5.5 | 12 of 20 | 0 of 2 | 2 of 2 | 1 | 0 | 3 | 7.0 | 9.24 | 252 | 18,887,904 | 112,930 |
+| Opus 5.5 | 18 of 20 | 0 of 2 | 2 of 2 | 0 | 1 | 4 | 11.9 | 10.34 | 291 | 21,210,890 | 125,736 |
+
+The first total row is runs 55 and 56; the second is runs 57 and 58.
+
+Report SHA-256 hashes, as printed by the summary:
+
+- python-service run 51: `88245d0b8ee058c3ec04b8dc036c7b98cf5be4b985193cdc341c70e5c4a8e62b`
+- python-service run 52: `b11feb2c7dbbaac3780b50741c205c5b2364d021e1ca525a74c8336d013ca0dc`
+- python-service run 53: `e7c302c41eef0ef448ce9cb14265203142520f4162f6ee9e5e2ecef9a1a00194`
+- python-service run 54: `f1f272c393897cdb9cec7468797be9999c47fb7c0c5e0be2c791dd978df1b01b`
+- typescript-cli run 51: `68f7eece7aa30be1af2dd8880e4d605464459fd782736d0f2681a3ce4d5fe02b`
+- typescript-cli run 52: `91d1104ec3a952b9b7f32632bf477ba544e91a12a4411a1483c3397742bc7908`
+- typescript-cli run 53: `554cfd90f918f5ede6b5d87b985a8939695ca83182429e2c6f177287474afca7`
+- typescript-cli run 54: `edfbf840ea664fa33850eb33bd09f2dc961ccfb6939c11d146d33f4acce0cba7`
+- well-maintained run 51: `e46da971500a45b411312ab09d9b2f89ea86be646afb9479d1f277fbf963126c`
+- well-maintained run 52: `eaffb0adaac4c2e974bc8db05cdfbdada5645800e7c3b581b27d0faad0422e9d`
+- well-maintained run 53: `dd18dafbbe815a9ab5334f6f0b9efb96648e3f50e310c819d59ab8c6d627d47a`
+- well-maintained run 54: `98cf610046b9525aecbf92dcfa15364c18744444905a5ea2c6d990185a07c559`
+- agent-workflow run 51: `2772a75a962bc44895f4ccb0767bee7bfb4e6946a6e4b71fd85cc488a5de1973`
+- agent-workflow run 52: `1e50a7db0d4f88ba3ae40c6fc7bc59c47c8992ee04460f493c8c61093f892850`
+- agent-workflow run 53: `04892fc1cc8fdd85c9aee303ecd83b07cae3e7080bb501e06d6339365b7a4883`
+- agent-workflow run 54: `66e08b89b457c75ec566351c689f875e61ee12683896e311ee6e04ecc399d8fd`
+- orders-service run 51: `60132437a4c81117d3bd1815fd87d678456519fe6a9c275d5bb17597e9be7ceb`
+- orders-service run 52: `34e321050092b0be1ab75220eea9dde7d0963135ea67620615b74097cf0e0e5d`
+- orders-service run 53: `acd5cc1b2a9ecd6e591f557d99a8262f0fab6ddc65faee92b00fb185aa0b1182`
+- orders-service run 54: `e0b2995456361d4614a4e7776306316879afb0770b3680eb3e10b5cff7597270`
+- go-ratelimiter run 51: `662083676acf8702985ea80bde1014a4fa01da2c327d5ff6ccf526ac12057d39`
+- go-ratelimiter run 52: `864fcdce7e8859d48f30554807d43833c0eba958465c50d742a9909036ff0fd6`
+- go-ratelimiter run 53: `3bd6da004161375e495cb2b7cb64c502c862a7430277eac6356e909bd5e3fced`
+- go-ratelimiter run 54: `d0ae4887736caca3b8e1699d1ed9a3384f1bb261f61c9262d2d53a384e12b19f`
+- large-private run 55: `8cdfe8044242847fc3ff2ca7d930ef2b295ffc00950feb9dcf5bc8946c711d0e`
+- large-private run 56: `d348147090a21e3b79c456222245976480b9a2aaabeff7067a194911fe5ef56f`
+- large-private run 57: `cfce54a44dd6f040412be6475cccdf39f92a01477a7f702b3d06c67f0f94257b`
+- large-private run 58: `8f17a07dec9e6e4f99ed54dfaa8dfa1f5b41e04f2af849212381f5ae2356fb2e`
+
+Notes:
+
+- On the cases, every model found every seeded gap, Sonnet passed the scorer in 10 of 12 reports
+  against 7 of 12, and no report cited a line outside a file, against six in runs 47 to 50. Mean cost
+  rose by 33% for Opus, 57% for Sonnet, and 200% for Haiku 5.5, and time by 23%, 110%, and 51%, with
+  more tool calls and 40% to 80% more output tokens. By the approved limits this is a regression.
+  The rounds cannot tell how much comes from numbering each file on its own and how much from the
+  new rules, and one run per case and model does not measure run-to-run variation.
+- On the large case, the new rules raised mean cost by 12% and time by 70%. Runs 55 and 56 used
+  background helpers and runs 57 and 58 did not, which accounts for most of the time; tool calls
+  rose by 15%. By the approved limits this is a regression on time.
+- The distribution rule worked: runs 57 and 58 rated the project level 1 and closed three
+  distribution criteria that runs 55 and 56 had flagged, one with a search for mutation tools.
+- With the integration-path rule, both runs read the merge gate. Run 58 found the gap the reviewer
+  had added, that the gate's receipts are unsigned local files, and filed it under AGENT-03, which
+  the case expects unflagged because the real audit's AGENT-03 claim was wrong; the scorer counts
+  the criterion, not the claim. Run 57 flagged AGENT-03 because a seeded token landed in a commit
+  whose message describes a byte-for-byte move.
+- The case itself had three faults. Its rewritten commits do not exist on the hosting service that
+  the project's documentation names, and the audits queried that service, so run 56 concluded that
+  the remote did not belong to the history and found three of ten gaps. Folding a seed into a
+  commit whose message does not cover it is visible to an audit that compares messages with diffs.
+  All four runs read the seeded log line of SEC-10 and did not report it; at level 1, with local
+  logs of the user's own data, that is a defensible reading, so the seed does not test SEC-10.
+- No report copied the seeded token, and every prepared repository was unchanged afterwards. One
+  Haiku run listed the global Node modules directory outside its repository.
