@@ -377,9 +377,10 @@ def outside_paths(stream: Path, allowed: list[Path]) -> list[str]:
             event = json.loads(line)
         except json.JSONDecodeError:
             continue
-        content = (event.get("message") or {}).get("content")
+        message = event.get("message")
+        content = message.get("content") if isinstance(message, dict) else None
         for item in content if isinstance(content, list) else []:
-            if item.get("type") != "tool_use":
+            if not isinstance(item, dict) or item.get("type") != "tool_use":
                 continue
             for match in HOME_PATH.findall(json.dumps(item.get("input"))):
                 path = Path(match)

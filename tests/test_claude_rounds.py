@@ -42,6 +42,7 @@ used = "claude-other-1-0" if model == "claude-mismatch-1-0" else model
 command = "cat /home/someone/notes.txt; grep -E '/home/|/Users/' x; cat /home/u/.claude/projects/-tmp-audit-x/out.txt"
 tool = {{"type": "tool_use", "name": "Bash", "input": {{"command": command}}}}
 print(json.dumps({{"type": "assistant", "message": {{"content": [tool]}}}}))
+print(json.dumps({{"type": "system", "subtype": "notice", "message": "a plain text message"}}))
 report = "## Findings\n| ID | Status | Priority | Evidence | Improvement |\n| --- | --- | --- | --- | --- |\n"
 report += "| REPO-01 | partial | low | `README.md:1` | Say more |\n"
 usage = {{"inputTokens": 10, "cacheReadInputTokens": 1000, "outputTokens": 200}}
