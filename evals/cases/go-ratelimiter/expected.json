@@ -1,0 +1,18 @@
+{
+  "description": "Reserved case: a small Go library. Its results are recorded but never used to change the skill.",
+  "reserved": true,
+  "must_find": {
+    "ARCH-04": "New starts a refill goroutine on time.Tick that nothing can stop, so every limiter leaks a goroutine and a ticker",
+    "TEST-08": "TestRefill sleeps 30 ms and asserts a refill that depends on scheduling, not on causality",
+    "QUAL-05": "limiter.go disables every linter with a file-wide //nolint:all and no reason",
+    "QUAL-02": "CI runs only the tests: no go vet, formatting check, or linter"
+  },
+  "must_not_flag": {
+    "SEC-05": "no credentials anywhere",
+    "SEC-09": "no model or LLM features",
+    "OPS-03": "a library, not a service in operation",
+    "OPS-04": "a library, not a deployed service",
+    "AGENT-04": "no agents contribute",
+    "AGENT-05": "no agents contribute"
+  }
+}

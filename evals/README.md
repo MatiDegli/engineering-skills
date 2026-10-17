@@ -7,6 +7,10 @@ findings because they hold or do not apply (`must_not_flag`). The values explain
 The cases measure three things: coverage of every criterion ID, recall of seeded gaps, and false
 positives. They do not prove that an audit finds every problem in a real repository.
 
+A case whose `expected.json` sets `"reserved": true` is run, scored, and recorded like any other, but
+its results are never used to change the skill or the criteria. It shows whether improvements made
+on the other cases carry over or only fit them.
+
 ## Running a case
 
 From the repository root, in WSL2 or Linux:
