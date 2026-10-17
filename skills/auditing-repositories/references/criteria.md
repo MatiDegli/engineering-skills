@@ -70,6 +70,7 @@ configuration exists, and without a remote or a readable run it is pending verif
 | DEP-03 | Dependencies have an owner and a periodic review; automated update proposals are configured | Dependencies exist | [quality](quality.md#dependency-maintenance) |
 | DEP-04 | Resolved dependencies are audited for vulnerabilities across relevant groups and platforms; a failed query is not an approved audit | Dependencies exist; required before distribution | [quality](quality.md#dependency-maintenance) |
 | DEP-05 | Licenses and notices of transitive dependencies and bundled binaries are checked; downloaded tools are pinned and hash-verified | Distribution or downloaded tools | [quality](quality.md#dependency-maintenance) |
+| DEP-06 | New dependency versions are adopted only after a minimum release age, with recorded exceptions for security fixes | Dependencies exist | [quality](quality.md#dependency-maintenance) |
 
 ## Tests and evidence
 

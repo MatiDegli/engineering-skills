@@ -76,6 +76,13 @@ Assign an owner and review versions monthly as a starting point; do so sooner fo
 end of support, or failures. Record whether to update, keep, or defer, with a reason and next
 date/condition. Keep instructions in a single configuration.
 
+Adopt a new or upgraded dependency version only after a minimum release age, which gives a broken
+or malicious release time to be found and withdrawn. Fourteen days is a starting point for new
+dependencies; routine updates can wait less. Exempt security fixes and record why. Package managers
+and update tools can enforce the age, transitive dependencies included. After a conflict, regenerate
+the lockfile instead of merging its text, and recheck branches that wait for a release age against
+lockfile changes on their base.
+
 Audit resolved dependencies with relevant extras/groups and delivery platforms. A Linux environment
 may omit Windows-only packages: compare the inventory and lockfile before claiming full coverage.
 Keep the tool, date, revision, inventory, and result; a failed query or pending warning is not an
@@ -93,3 +100,7 @@ References, checked on 2026-10-16 against the claims they support:
 [pytest markers](https://docs.pytest.org/en/stable/how-to/mark.html),
 [pytest strict configuration](https://docs.pytest.org/en/stable/reference/reference.html#confval-strict_config),
 [checkJs](https://www.typescriptlang.org/tsconfig/checkJs.html).
+
+Sources checked on 2026-10-17 against the claims they support:
+[release age in pnpm](https://pnpm.io/settings/dependency-resolution),
+[Dependabot cooldown](https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference).
