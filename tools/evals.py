@@ -24,7 +24,9 @@ FINDING_STATUSES = {"partial", "pending-implementation", "pending-verification"}
 COVERAGE_STATUSES = {"meets", "not-applicable"}
 CRITERION = re.compile(r"\b[A-Z]+-\d{2}\b")
 MARKS = "`*_"
-COVERAGE_LINE = re.compile(r"[-*]\s*[`*_]*(meets|not-applicable)[`*_]*\s*:[`*_]*\s*(.*)", re.I)
+COVERAGE_LINE = re.compile(
+    r"[-*]\s*[`*_]*(meets|not-applicable)(?: areas)?[`*_]*\s*:[`*_]*\s*(.*)", re.I
+)
 EVIDENCE_MARK = re.compile(r"[*_`\s]*(reproduced|inferred)\s*:", re.I)
 ENTRY = re.compile(r"\b[A-Z]+-(?:\d{2}\b|\*)")
 LEADING_IDS = re.compile(

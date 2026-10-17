@@ -91,7 +91,7 @@ class ScoringTests(unittest.TestCase):
         areas = {"AGENT": ["AGENT-01", "AGENT-02"]}
         report = (
             "## Coverage\n- meets: REPO-01, OPS-* (wildcards only close areas)\n"
-            "- not-applicable: AGENT-* (no agents)\n"
+            "- not-applicable areas: AGENT-* (no agents)\n- not-applicable:\n"
             "  - TEST-02 (no tests (none at all)), CI-09 (no merge queue)\n"
             "  - Delivery: DEL-01 (labels are not read)\n  - TOOL-* (not an area)\n"
         )
