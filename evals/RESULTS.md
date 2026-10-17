@@ -557,3 +557,81 @@ Notes:
 - Two changes to the skill follow from the blind comparisons: a pass that reads the code's behavior
   for edge cases and broken invariants, and marking a finding reproduced only when the repository's
   own code or configuration ran.
+
+## 2026-10-17 — Runs 25 to 28 (PR 2 criteria)
+
+- Skill `0b4f099`, with 87 criteria; case repositories `6c22cf9`, expectations `e329106`, scored
+  with `cc170e9`. The skill was exported from `e329106` outside this repository.
+- Agent: Claude Code 2.1.292 headless, full-skill prompt, started by the maintainer from a WSL2
+  terminal, six at a time. `modelUsage` reported `claude-opus-5-5` for runs 25 and 26 and
+  `claude-sonnet-5-5` for runs 27 and 28. Every tool call stayed in the prepared repository, the
+  skill directory, and the run's own scratch directories.
+- Prepared revisions: python-service `c67d66d`, typescript-cli `7f27a08`, well-maintained `5780341`.
+
+| Case | Run | Model | Seeded gaps found | False flags | IDs the scorer read | Findings | Meets | Not applicable | High (reproduced) | Top priorities in first five | High outside them | Other problems |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| python-service | 25 | Opus | 16 of 16 | none | 37 of 87 (bold labels) | 37 | 4 | 46 | 5 (2) | 3 of 3 | 2 | TEST-07 listed twice |
+| python-service | 26 | Opus | 16 of 16 | none | 87 of 87 | 34 | 5 | 48 | 5 (1) | 3 of 3 | 2 | — |
+| python-service | 27 | Sonnet | 16 of 16 | none | 87 of 87 | 31 | 3 | 53 | 4 (0) | 3 of 3 | 1 | — |
+| python-service | 28 | Sonnet | 16 of 16 | none | 86 of 87 (no REPO-03) | 36 | 0 | 50 | 6 (0) | 3 of 3 | 3 | copies the seeded password; cites line 14 of a 13-line file |
+| typescript-cli | 25 | Opus | 13 of 13 | none | 87 of 87 | 40 | 7 | 40 | 7 (4) | 3 of 3 | 4 | — |
+| typescript-cli | 26 | Opus | 13 of 13 | none | 87 of 87 | 40 | 9 | 38 | 5 (3) | 3 of 3 | 2 | — |
+| typescript-cli | 27 | Sonnet | 13 of 13 | none | 87 of 87 | 39 | 0 | 47 | 4 (3) | 3 of 3 | 2 | HIST-01 and REPO-02 twice, an invalid status, and a correction inside the report |
+| typescript-cli | 28 | Sonnet | 13 of 13 | none | 87 of 87 | 33 | 6 | 48 | 3 (1) | 3 of 3 | 1 | — |
+| well-maintained | 25 | Opus | 2 of 2 | none | 87 of 87 | 8 | 29 | 50 | 0 | 2 of 2 | 0 | — |
+| well-maintained | 26 | Opus | 2 of 2 | none | 87 of 87 | 5 | 27 | 55 | 0 | 2 of 2 | 0 | — |
+| well-maintained | 27 | Sonnet | 2 of 2 | none | 3 of 87 (bold labels) | 3 | 25 | 59 | 0 | 2 of 2 | 0 | left ignored bytecode in the repository |
+| well-maintained | 28 | Sonnet | 2 of 2 | DEP-01 | 5 of 87 (bold labels) | 5 | 25 | 57 | 0 | 2 of 2 | 0 | left ignored bytecode in the repository |
+
+The Findings, Meets, and Not applicable columns, and the agreement below, were counted after
+removing Markdown emphasis, so that reports with bold status labels count fully; the IDs column is
+what the scorer at `cc170e9` reads.
+
+Report SHA-256 hashes, as printed by the scorer:
+
+- python-service run 25: `54e22adde10c9783e4df6c093e7743fe2926836b76abf2e626dcd6fce5cfb295`
+- python-service run 26: `a9a11697c8f583ccb4c030597756771ffb78dc61da6747099ee46dd9375e5231`
+- python-service run 27: `349171c185e951225cd14a5d19dd764ac149d4d50aeb60cf3e9be135db16bf67`
+- python-service run 28: `e36693a635f8f6ae967623afd21a4ce040d06059ef94be628e36774b2fa9560a`
+- typescript-cli run 25: `83c5fa87b324de994f228456f65498361314caab33f146a630d6eeb3f4791650`
+- typescript-cli run 26: `3138e06d70cc216adc804521783ef6e6ecac681b6d9dd4b068982e585ce0dfdd`
+- typescript-cli run 27: `5786919d59b1d44c3643454b0a94233c6833658bf22b6f20f8fd6c7ca08aa768`
+- typescript-cli run 28: `66bdce84d983bf1fe7f95957107f3def1a0db3404b7bfa3ef82fa1a5575ca696`
+- well-maintained run 25: `48c8f3df6d1db2a05a6c9520908f6d34cdf34097de8a1cd5de843963003b6005`
+- well-maintained run 26: `5e1e08fc559b27887151635d33bd546ba0a33a524fdfee91f5d54f95b914346b`
+- well-maintained run 27: `e38bd7e32508677b7163fb34e39749276c7e7309289dd78ee8e7a66c630192f7`
+- well-maintained run 28: `c318de0359d45567cf482934d68db18ed7293d98675e7e390efb88971905b31a`
+
+Agreement, summed over the three cases, with emphasis removed:
+
+| Runs | Flagged overlap | Status agreement | Priority agreement |
+| --- | --- | --- | --- |
+| 25 and 26 (Opus with Opus) | 77 of 87 | 232 of 261 | 65 of 77 |
+| 27 and 28 (Sonnet with Sonnet) | 60 of 88 | 216 of 260 | 46 of 60 |
+| 25 and 27 (Opus with Sonnet) | 66 of 93 | 214 of 261 | 53 of 66 |
+
+Mean time and cost reported by the CLI: Opus 2.1 minutes and USD 0.61 (1.9 minutes and USD 0.54
+in runs 19 and 20, with 69 criteria); Sonnet 0.8 minutes and USD 0.22.
+
+Notes:
+
+- Every run found every seeded gap and placed the top priorities in its first five actions (24 of
+  24). No well-maintained audit flagged any of the six new criteria listed in its `must_not_flag`,
+  so the applicability gates held on the control case.
+- Three reports, one Opus and two Sonnet, wrote the Coverage status labels in bold
+  (`- **meets:**`), which the scorer does not read. Read without emphasis, they cover every ID
+  except a TEST-07 that run 25 lists twice. The scorer was not changed in this round.
+- Run 28 python-service copied the seeded password while assessing the new SEC-11: it described
+  the value as a fixture-style label and quoted it. The masking rule has to hold for values that
+  look fake, and the SEC-11 guidance has to say so.
+- Both Sonnet well-maintained runs ran the tests in place and left ignored bytecode; `verify` caught
+  it. No Opus run did this time.
+- Run 28 well-maintained flagged DEP-01 because `.python-version` pins `3.12` without a patch
+  version, against the case's expectation.
+- Sonnet did worse than in runs 9 and 10, which used 69 criteria and had no format failures or
+  leaks: here 4 of its 6 reports fail the scorer, and 3 still would with emphasis removed. Opus
+  fails in 1 of 6, from a duplicated ID. A larger catalog and a longer procedure are a likely cause;
+  the conditional loading planned for PR 3 is meant to reduce both.
+- Follow-ups: mask any secret-like value, even one that looks fake; run checks so that ignored files
+  stay as they were; decide separately whether the scorer should accept emphasis on status labels;
+  then run another round.
