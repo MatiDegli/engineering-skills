@@ -79,9 +79,10 @@ so the CLI does not use the user's Claude login, every model alias set to that m
 read by an `apiKeyHelper` from a file of mode 600; a run whose key source is not that helper is
 marked. That keeps the key out of the environment and the settings file. It does not hide the key
 from the audit, which runs as the same user with the Bash tool and no sandbox, so a shell command
-can read the file. The settings also deny `Read` and `Edit` on the key's directory, but those rules
-cover only Claude Code's file tools and the file commands it recognizes, and their paths may not
-match (see `provider_launch`). `summarize` scores every report,
+can read the file. The settings also deny `Read` on the key's directory with paths anchored at the
+filesystem root, which stops Claude Code's Read tool and the file commands it recognizes, such as
+`cat`, but not a script or a command that reads without naming the file. `summarize` scores every
+report,
 verifies every prepared repository, and writes `summary.md` with the tables that RESULTS.md records.
 `clean` removes only the directories that `plan` created. `run --stagger-seconds` (5 by default)
 spaces launches, so later audits read the prompt cache the first one wrote.

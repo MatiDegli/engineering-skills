@@ -235,6 +235,10 @@ class RoundTests(unittest.TestCase):
         settings = next(round_dir.glob("providers/run1-case/run-settings.json"))
         self.assertEqual(settings.stat().st_mode & 0o777, 0o600)
         self.assertIn("apiKeyHelper", settings.read_text())
+        # A single leading slash would anchor the rules at the settings file's directory.
+        deny = json.loads(settings.read_text())["permissions"]["deny"]
+        self.assertTrue(deny)
+        self.assertTrue(all(rule.startswith("Read(//") for rule in deny), deny)
         written = "".join(p.read_text() for p in round_dir.rglob("*") if p.is_file())
         for secret in ("fake-provider-key", "parent-token", "parent-key"):
             self.assertNotIn(secret, written)

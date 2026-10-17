@@ -431,15 +431,14 @@ def provider_launch(provider: dict, model: str, config_dir: Path) -> tuple[dict[
     `apiKeyHelper` that reads the key file: the environment holds no key, and the settings file
     holds the command, not the key.
 
-    Nothing here keeps the audit from reading the key file. The audit runs as the same user with
-    the Bash tool and no sandbox (see `claude_command`), so a shell command can read it. The deny
-    rules below cover Claude Code's Read and Edit file tools and the file commands it recognizes
-    in a Bash command; they do not cover a command that reads without naming the file, or a script
-    that opens it. The Edit rule adds nothing, because the audit disallows the editing tools. The
-    paths also begin with a single `/`, which Claude Code documents as anchored at the settings
-    file's directory, not at the filesystem root, so the rules may match nothing (not tested
-    against a live run). The audit is limited by the prompt's instruction and by the check of its
-    tool calls afterwards, which sees only paths written in full.
+    This does not hide the key from the audit, which runs as the same user with the Bash tool and
+    no sandbox (see `claude_command`). The settings deny `Read` on the key and its
+    directory, with `//` paths: Claude Code anchors a path with a single leading `/` at the
+    directory of the settings file, so `//` is what names the filesystem root. These rules stop
+    Claude Code's Read tool and the file commands it recognizes in a Bash command, such as `cat`;
+    they do not stop a command that reads without naming the file, or a script that opens it. The
+    audit is also limited by the prompt's instruction and by the check of its tool calls
+    afterwards, which sees only paths written in full.
     """
     config_dir.mkdir(parents=True, exist_ok=True)
     config_dir.chmod(0o700)
@@ -451,7 +450,7 @@ def provider_launch(provider: dict, model: str, config_dir: Path) -> tuple[dict[
     }
     environment |= {f"ANTHROPIC_DEFAULT_{alias}_MODEL": model for alias in ("OPUS", "SONNET", "HAIKU", "FABLE")}
     key = provider["key"]
-    deny = [f"Read({key})", f"Read({key.parent}/**)", f"Edit({key.parent}/**)"]
+    deny = [f"Read(/{key})", f"Read(/{key.parent}/**)"]
     settings = {
         "apiKeyHelper": f"cat {shlex.quote(str(key))}",
         "permissions": {"deny": deny},
