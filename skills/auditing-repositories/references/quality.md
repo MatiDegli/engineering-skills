@@ -34,7 +34,8 @@ decorators, and nested code within its containing unit.
 | Test function | 70 | 100 |
 
 Other starting values to review: maximum cyclomatic complexity 10, arguments 5, branches 10,
-returns 6, and statements 50. These are design signals; avoid fragmenting a responsibility or
+returns 6, and statements 50. These are design signals, as are surviving mutants that cluster in one
+unit (see [useful tests](validation.md#useful-tests)); avoid fragmenting a responsibility or
 creating giant files to satisfy a number. The number of files per directory has its own
 [review criterion](structure.md).
 

@@ -36,6 +36,22 @@ repositories; test spaces, Unicode, and another cwd when supported.
   owned resources even on timeout; parent exit does not prove this.
 - Distinguish mocks from real providers and a browser from a native desktop app. State omissions.
 - Test each control’s boundary, including rounding and severities that could let a failure pass.
+- Show each fix with a test that fails when the fix is reverted. A test can pass for the wrong reason,
+  for example with a fixture that never reaches the defect or an assertion that accepts an unrelated
+  error.
+- Treat a flaky test as a defect until its root cause is known. Reproduce the failure
+  deterministically by injecting the delay or interleaving, not by loading the host, and fix the test
+  or the product without sleeps, retries, or looser assertions. Quarantine a test only while its fix
+  is pending.
+- Assert order and causality in correctness tests, not wall-clock bounds: when one event must happen
+  first, hold the other side with a signal. Timing belongs in opt-in benchmarks.
+- A test that observes host-wide state, such as processes, ports, or files outside its own
+  directory, keys on a value unique to its run, so that a leftover from an earlier run cannot fail
+  later ones.
+- Where risk warrants it, such as security level 2 or 3 or code that moves money or data, run
+  mutation testing on changed and critical code and triage each surviving mutant: add the missing
+  assertion, accept an equivalent mutant (it may reveal redundant code), or inject the fault a path
+  needs. Survivors that cluster in one unit are a design signal, like its size.
 
 ## Recording and reusing results
 
@@ -69,3 +85,7 @@ Automate the assignment of work to agents or jobs only after completing a manual
 needs a single process that assigns work, with an accountable owner; explicitly authorized tasks;
 time/cost/retry limits; duplicate prevention; and a stop condition. Communicate relevant changes or the
 need for intervention; a list of pending tasks does not authorize running them.
+
+Sources checked on 2026-10-17 against the claims they support:
+[non-deterministic tests](https://martinfowler.com/articles/nonDeterminism.html),
+[mutation testing in code review](https://research.google/pubs/state-of-mutation-testing-at-google/).

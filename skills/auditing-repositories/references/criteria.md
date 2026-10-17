@@ -77,10 +77,13 @@ configuration exists, and without a remote or a readable run it is pending verif
 | --- | --- | --- | --- |
 | TEST-01 | Tests exercise public behavior, relevant failures, and limits, and name the invariant they protect | Always | [validation](validation.md#useful-tests) |
 | TEST-02 | Unit tests are deterministic: synthetic data, temporary resources, a controlled clock, and no network or arbitrary waits; integrations are separated | Tests exist | [validation](validation.md#useful-tests) |
-| TEST-03 | State changes are tested for duplicates, retries, and partial failures; processes are tested for cleanup on timeout | Persistence, concurrency, or subprocesses | [validation](validation.md#useful-tests) |
+| TEST-03 | State changes are tested for duplicates, retries, and partial failures; processes, including those that scripts and tooling start, are tested for cleanup of their descendants on timeout and termination | Persistence, concurrency, or subprocesses | [validation](validation.md#useful-tests) |
 | TEST-04 | Each kind of change has a matching check: contract regeneration and compatibility, real UI flows and accessibility, clean package installation | Matching change types exist | [validation](validation.md#environment-and-scope) |
 | TEST-05 | Tests and tools resolve paths from the project, without personal paths or sibling repositories | Always | [validation](validation.md#environment-and-scope) |
 | TEST-06 | Recorded results state the revision, command, environment, and outcome, and distinguish skipped, timed-out, and interrupted runs from passes | Results are recorded or claimed | [validation](validation.md#recording-and-reusing-results) |
+| TEST-07 | Each fix has a test that fails when the fix is reverted | Fixes are made | [validation](validation.md#useful-tests) |
+| TEST-08 | Flaky tests are treated as defects with a root cause; correctness tests assert order and causality rather than wall-clock bounds; tests that observe host-wide state key on a value unique to their run | Tests exist | [validation](validation.md#useful-tests) |
+| TEST-09 | Mutation testing runs on changed critical code, and each surviving mutant is triaged as a missing assertion, an equivalent mutant, or a path that needs fault injection | Security level 2 or 3, or code that moves money or data, or mutation testing in use | [validation](validation.md#useful-tests) |
 
 ## CI
 
