@@ -47,6 +47,15 @@ Review the level when data, users, or permissions change. At every applicable le
 - Keep debugging and administration disabled by default in public environments.
 - Keep credentials out of Git, examples, logs, and packages. Rotate exposed credentials: deleting them
   from the latest commit does not remove historical exposure.
+- Treat error text as data. Database and library errors can carry bound parameters, request bodies,
+  or secrets, so code at trust boundaries logs the error class and a correlation identifier rather
+  than the message, and drivers are configured to hide parameters. Passwords, tokens, connection
+  strings, keys, and sensitive personal data stay out of logs.
+- Write secrets in tests and examples as low-entropy, obviously fake sentinels, such as
+  `fake-api-token`. Scanners flag values by pattern and entropy, so realistic fakes force allowlists
+  that can also hide real leaks.
+- For personal data, inventory what is collected and why, keep only what that purpose needs, protect
+  it in storage, logs, and backups, and define how long it is kept and how it is deleted.
 - Before distribution, review secrets in content, history, and the artifact, as well as resolved
   dependencies. See [dependency maintenance](quality.md#dependency-maintenance).
 - Before publication, define the license, support, and a real reporting channel in SECURITY.md.
@@ -63,4 +72,7 @@ Review the level when data, users, or permissions change. At every applicable le
 Criteria for growth and capacity measurement are in [architecture and performance](architecture.md).
 
 Sources checked on 2026-10-17 against the claims they support:
-[code owners](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners).
+[code owners](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners),
+[data to exclude from logs](https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html),
+[entropy in secret scanning](https://github.com/gitleaks/gitleaks),
+[data minimisation](https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/data-protection-principles/a-guide-to-the-data-protection-principles/data-minimisation/).

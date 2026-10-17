@@ -114,6 +114,9 @@ configuration exists, and without a remote or a readable run it is pending verif
 | SEC-07 | The license, support, and a working reporting channel in SECURITY.md are defined | Public or distributed | [standard](standard.md#proportionate-security) |
 | SEC-08 | Level 3 adds a threat model, independent review, traceability, and rehearsed recovery | Level 3 | [standard](standard.md#proportionate-security) |
 | SEC-09 | Model features version prompts, schemas, and evaluations; validate outputs; bound tools, cost, time, and retries; and treat retrieved content as data | The product uses models or LLMs | [architecture](architecture.md#products-with-models-or-llms) |
+| SEC-10 | Error text is treated as data: logs at trust boundaries exclude bound parameters, request bodies, and secrets | The code logs errors or requests | [standard](standard.md#proportionate-security) |
+| SEC-11 | Secrets in tests and examples are low-entropy, obviously fake sentinels, so secret scanning stays strict without broad allowlists | Tests or examples contain secret-like values | [standard](standard.md#proportionate-security) |
+| SEC-12 | Personal data is inventoried with its purpose, limited to what that purpose needs, protected in storage, logs, and backups, and has retention and deletion rules | Personal data is processed | [standard](standard.md#proportionate-security) |
 
 ## Delivery and operations
 
