@@ -105,6 +105,29 @@ def stream_results(path: Path) -> list[dict]:
     return results
 
 
+def stream_usage(path: Path, results: list[dict]) -> dict[str, int]:
+    """Count tool calls in the stream and the tokens of the whole run, background helpers included.
+
+    `modelUsage` in the last result event is cumulative across the session and its helpers, while
+    each event's `usage` covers only its own turns.
+    """
+    tools = 0
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        content = (event.get("message") or {}).get("content") if event.get("type") == "assistant" else None
+        tools += sum(item.get("type") == "tool_use" for item in content or [] if isinstance(item, dict))
+    models = (results[-1].get("modelUsage") or {}).values() if results else []
+    read = ("inputTokens", "cacheReadInputTokens", "cacheCreationInputTokens")
+    return {
+        "tools": tools,
+        "tokens_in": sum(m.get(k) or 0 for m in models for k in read),
+        "tokens_out": sum(m.get("outputTokens") or 0 for m in models),
+    }
+
+
 def ran_model(results: list[dict], model: str) -> bool:
     return any(name.split("[")[0] == model for r in results for name in r.get("modelUsage") or {})
 
@@ -341,6 +364,7 @@ def score_job(job: dict, data: dict, paths: dict[str, Path], repo: Path, totals:
         high=sum(row["priority"] == "high" for row in finding_rows(text).values()),
         seconds=sum(r.get("duration_ms") or 0 for r in results) / 1000,
         cents=100 * max((r.get("total_cost_usd") or 0 for r in results), default=0),
+        **(stream_usage(stream, results) if stream.exists() else {}),
     )
     notes = []
     if not ran_model(results, job["model"]):
@@ -406,15 +430,17 @@ def summarize(round_dir: Path) -> str:
         *rows,
         "",
         "| Model | Seeded gaps found | Reports that pass the scorer | Top priorities in first five"
-        " | Bad citations | Misplaced citations | High findings | Mean minutes | Mean USD |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        " | Bad citations | Misplaced citations | High findings | Mean minutes | Mean USD"
+        " | Mean tool calls | Mean input tokens | Mean output tokens |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for model, t in totals.items():
         n = t["reports"] or 1
         lines.append(
             f"| {model} | {t['found']} of {t['seeded']} | {t['passed']} of {t['reports']} "
             f"| {t['top']} of {t['top_of']} | {t['bad']} | {t['misplaced']} | {t['high']} "
-            f"| {t['seconds'] / 60 / n:.1f} | {t['cents'] / 100 / n:.2f} |"
+            f"| {t['seconds'] / 60 / n:.1f} | {t['cents'] / 100 / n:.2f} | {t['tools'] / n:.0f} "
+            f"| {t['tokens_in'] / n:,.0f} | {t['tokens_out'] / n:,.0f} |"
         )
     lines += ["", "Report SHA-256 hashes:", "", *hashes, "", "Notes:", ""]
     lines += [f"- {note}" for note in notes] or ["- none"]

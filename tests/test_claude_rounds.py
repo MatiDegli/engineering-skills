@@ -41,8 +41,9 @@ tool = {{"type": "tool_use", "name": "Bash", "input": {{"command": "cat /home/so
 print(json.dumps({{"type": "assistant", "message": {{"content": [tool]}}}}))
 report = "## Findings\n| ID | Status | Priority | Evidence | Improvement |\n| --- | --- | --- | --- | --- |\n"
 report += "| REPO-01 | partial | low | `README.md:1` | Say more |\n"
+usage = {{"inputTokens": 10, "cacheReadInputTokens": 1000, "outputTokens": 200}}
 print(json.dumps({{"type": "result", "result": report, "duration_ms": 60000, "total_cost_usd": 0.5,
-                  "modelUsage": {{used: {{}}}}}}))
+                  "modelUsage": {{used: usage}}}}))
 '''
 
 
@@ -91,7 +92,7 @@ class RoundTests(unittest.TestCase):
         self.assertIn("| case | 1 | Test 1.0 | 1 of 1 | no |", summary)
         self.assertIn("| case | 2 | Flaky 1.0 | 1 of 1 | no |", summary)
         self.assertIn("paths outside the run: /home/someone/notes.txt", summary)
-        self.assertIn("| 1.0 | 0.50 |", summary)
+        self.assertIn("| 1.0 | 0.50 | 1 | 1,010 | 200 |", summary)
         self.assertNotIn("prepared repository changed", summary)
 
     def test_a_model_other_than_the_requested_one_is_flagged(self):
