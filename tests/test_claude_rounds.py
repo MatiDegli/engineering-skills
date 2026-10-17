@@ -2,6 +2,7 @@
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import time
@@ -10,7 +11,7 @@ from pathlib import Path
 from unittest import mock
 
 from tools import claude_rounds
-from tools.validate_repo import ROOT
+from tools.evals import git_environment
 
 FAKE_CLAUDE = r'''#!{python}
 """A stand-in for the claude CLI: it answers like the real one and starts no agent."""
@@ -73,9 +74,33 @@ class RoundTests(unittest.TestCase):
             },
         )
         self.environment.start()
+        self.repository = mock.patch.object(claude_rounds, "ROOT", self.skill_history())
+        self.repository.start()
         self.rounds = []
 
+    def skill_history(self):
+        """Build a repository with two skill revisions, so tests need no history of this one."""
+        repository = self.root / "repository"
+        skill = repository / claude_rounds.SKILL
+        skill.mkdir(parents=True)
+        identity = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid"}
+        identity |= {"GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.invalid"}
+
+        def git(*arguments):
+            subprocess.run(
+                ["git", *arguments], cwd=repository, env=git_environment(**identity),
+                capture_output=True, check=True,
+            )
+
+        git("init", "-q", "-b", "main")
+        for version in ("first", "second"):
+            (skill / "SKILL.md").write_text(f"# Skill, {version} revision\n")
+            git("add", "-A")
+            git("commit", "-q", "-m", version)
+        return repository
+
     def tearDown(self):
+        self.repository.stop()
         self.environment.stop()
         for round_dir in self.rounds:
             claude_rounds.clean(round_dir)
@@ -153,7 +178,7 @@ class RoundTests(unittest.TestCase):
 
     def test_round_directories_stay_outside_the_repository_and_clean_keeps_foreign_paths(self):
         with self.assertRaises(SystemExit):
-            claude_rounds.check_round_dir(ROOT / "evals" / "round")
+            claude_rounds.check_round_dir(claude_rounds.ROOT / "evals" / "round")
         round_dir = self.plan("round", ("1", "claude-test-1-0"))
         plan_file = round_dir / "plan.json"
         data = json.loads(plan_file.read_text())
