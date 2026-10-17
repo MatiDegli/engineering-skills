@@ -1,5 +1,16 @@
 # Decisions
 
+## 2026-10-17 — Criteria loaded by area
+
+The catalog is a core file plus one file per area that only some repositories need: agent-assisted
+development (`AGENT-*`), delivery (`DEL-*`), and operations (`OPS-*`). An audit reads an area file
+only when the area applies; otherwise it closes the area in Coverage with its wildcard. With 87
+criteria, audits grew longer and costlier, a smaller model omitted IDs, and agents read every guide
+even when most did not apply. Areas follow ID prefixes, so a wildcard is unambiguous and no ID
+changes meaning; criteria with other prefixes that apply only sometimes, such as PERF-02 or SEC-04,
+stay in the core with their own conditions. More areas, or a split of the guides, wait until
+measurements show the effect of this one. UI becomes an area when the catalog has UI criteria.
+
 ## 2026-10-17 — No executable code in the audit skill
 
 `auditing-repositories` stays Markdown only. Evaluations showed that mechanisms enforce rules
