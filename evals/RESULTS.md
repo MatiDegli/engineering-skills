@@ -1534,3 +1534,6 @@ Notes:
 - Haiku 5.5 copied the python-service seeded password in one report per arm. Sonnet had three
   citations of quoted code on another line with the candidate and one with the control; high
   findings now quote their code, which makes such citations checkable.
+- The maintainer accepted `63b733b` on 2026-10-17 as the control for later rounds with Sonnet and
+  Haiku 5.5; Opus and the large case still have to confirm it. The control is a version, rerun
+  beside each candidate, not these numbers.
