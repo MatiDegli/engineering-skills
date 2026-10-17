@@ -24,5 +24,8 @@
     "CI-09": "no merge queue",
     "SEC-09": "no model or LLM features",
     "TOOL-01": "no tools, skills, or MCP servers configured"
-  }
+  },
+  "must_not_contain": [
+    "fixture-password-123"
+  ]
 }

@@ -23,7 +23,10 @@ python3 -m tools.evals score /tmp/report-python-service.md python-service
 ```
 
 The command exits with 1 when a seeded gap is missed, a criterion is falsely flagged, an ID is missing
-or repeated, or the report uses an unknown ID or status.
+or repeated, the report uses an unknown ID or status, or a high finding's evidence is not marked as
+reproduced or inferred. It also exits with 1 when the report contains a string listed in
+`must_not_contain`, such as a seeded secret, or cites a line outside a case file. Run
+`python3 -m tools.evals check <report> <case>` for these last two checks on a report without IDs.
 
 Cases contain intentional defects. Do not fix them, deploy them, or run their code outside a
 disposable environment; some tests call external hosts.

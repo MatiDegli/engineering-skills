@@ -23,6 +23,7 @@ CRITERION = re.compile(r"\b[A-Z]+-\d{2}\b")
 COVERAGE_LINE = re.compile(r"[-*]\s*(meets|not-applicable)\s*:\s*(.*)", re.I)
 EVIDENCE_MARK = re.compile(r"[*_`\s]*(reproduced|inferred)\s*:", re.I)
 LEADING_IDS = re.compile(r"[-*]\s*`?((?:[A-Z]+-\d{2}`?\s*,\s*`?)*[A-Z]+-\d{2})")
+CITATION = re.compile(r"(?<![\w./-])((?:[\w.-]+/)*[\w.-]+):(\d+(?:[-–]\d+)?(?:,\s?\d+(?:[-–]\d+)?)*)")
 FIXED_IDENTITY = {
     "GIT_AUTHOR_NAME": "Evaluation Fixture",
     "GIT_AUTHOR_EMAIL": "fixture@example.invalid",
@@ -138,12 +139,49 @@ def score(
     }
 
 
+def leaked(text: str, expected: dict) -> list[str]:
+    """Return the forbidden strings that the report contains, masked so the output does not repeat them."""
+    return [
+        f"{value[:4]}... ({len(value)} characters)"
+        for value in expected.get("must_not_contain", [])
+        if value in text
+    ]
+
+
+def bad_citations(text: str, repo: Path) -> list[str]:
+    """Return `path:line` citations of case files whose lines fall outside the file.
+
+    A path resolves to a file by its full relative path or, failing that, by a unique suffix such
+    as `app.py`. Paths that do not resolve, like guide names or missing files, are not checked.
+    """
+    files = {
+        path.relative_to(repo).as_posix(): path
+        for path in repo.rglob("*")
+        if path.is_file() and ".git" not in path.relative_to(repo).parts
+    }
+    problems = set()
+    for path, lines in CITATION.findall(text):
+        matches = [path] if path in files else [f for f in files if f.endswith("/" + path)]
+        if len(matches) != 1:
+            continue
+        length = len(files[matches[0]].read_text(encoding="utf-8", errors="replace").splitlines())
+        numbers = [int(number) for number in re.findall(r"\d+", lines)]
+        if min(numbers) < 1 or max(numbers) > length:
+            problems.add(f"{path}:{lines} ({length} lines)")
+    return sorted(problems)
+
+
+def check_text(text: str, case: Path, expected: dict) -> dict:
+    """Checks that apply to any report, with or without criterion IDs."""
+    return {"leaked": leaked(text, expected), "bad_citations": bad_citations(text, case / "repo")}
+
+
 def score_report(report: Path, case: Path) -> tuple[dict, dict]:
     expected = json.loads((case / "expected.json").read_text(encoding="utf-8"))
     catalog = criteria_ids(CATALOG.read_text(encoding="utf-8"))
     text = report.read_text(encoding="utf-8")
     result = score(report_statuses(text), catalog, expected, finding_rows(text))
-    return expected, result
+    return expected, result | check_text(text, case, expected)
 
 
 def compare(first: str, second: str) -> dict:
@@ -191,6 +229,11 @@ def main() -> int:
     score_parser = commands.add_parser("score", help="score an audit report for a case")
     score_parser.add_argument("report", type=Path)
     score_parser.add_argument("case")
+    check_parser = commands.add_parser(
+        "check", help="check any report, even one without IDs, for leaks and bad citations"
+    )
+    check_parser.add_argument("report", type=Path)
+    check_parser.add_argument("case")
     compare_parser = commands.add_parser("compare", help="compare two reports of one case")
     compare_parser.add_argument("first", type=Path)
     compare_parser.add_argument("second", type=Path)
@@ -208,6 +251,13 @@ def main() -> int:
         prepare(case, arguments.destination)
         print(f"Prepared {arguments.case} at {arguments.destination}")
         return 0
+    if arguments.command == "check":
+        expected = json.loads((case / "expected.json").read_text(encoding="utf-8"))
+        result = check_text(arguments.report.read_text(encoding="utf-8"), case, expected)
+        print(f"report sha256: {hashlib.sha256(arguments.report.read_bytes()).hexdigest()}")
+        for key, values in result.items():
+            print(f"{key}: {', '.join(values) or 'none'}")
+        return int(any(result.values()))
     expected, result = score_report(arguments.report, case)
     text = arguments.report.read_text(encoding="utf-8")
     print(f"Case {arguments.case}: found {len(result['found'])} of {len(expected['must_find'])} seeded gaps.")

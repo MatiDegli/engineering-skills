@@ -10,8 +10,10 @@ from tools.check_skills import criteria_ids
 from tools.evals import (
     CASES,
     CATALOG,
+    bad_citations,
     compare,
     finding_rows,
+    leaked,
     prepare,
     priority_summary,
     report_statuses,
@@ -113,7 +115,38 @@ class PriorityTests(unittest.TestCase):
         self.assertEqual((result["only_first"], result["only_second"]), (["TEST-02"], ["OPS-02"]))
 
 
+class TextCheckTests(unittest.TestCase):
+    def test_leaked_values_are_reported_masked(self):
+        expected = {"must_not_contain": ["fixture-secret-1", "absent-value"]}
+        self.assertEqual(
+            leaked("password is fixture-secret-1", expected), ["fixt... (16 characters)"]
+        )
+        self.assertEqual(leaked("nothing here", {}), [])
+
+    def test_citations_outside_a_resolved_file_are_bad(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            (repo / "pkg").mkdir()
+            (repo / "pkg" / "app.py").write_text("a\nb\nc\n")
+            (repo / "README.md").write_text("# R\ntext\n")
+            text = (
+                "`app.py:3` holds, `app.py:4` does not, `README.md:1-2` holds, "
+                "`ci.yml:9` is unknown, `pkg/app.py:2, 5` overruns, at 22:35 nothing"
+            )
+            self.assertEqual(
+                bad_citations(text, repo), ["app.py:4 (3 lines)", "pkg/app.py:2, 5 (3 lines)"]
+            )
+
+
 class CaseTests(unittest.TestCase):
+    def test_forbidden_strings_appear_in_their_case(self):
+        for expected_path in sorted(CASES.glob("*/expected.json")):
+            values = json.loads(expected_path.read_text(encoding="utf-8")).get("must_not_contain", [])
+            files = [p for p in (expected_path.parent / "repo").rglob("*") if p.is_file()]
+            for value in values:
+                with self.subTest(case=expected_path.parent.name, value=value[:4]):
+                    self.assertTrue(any(value in p.read_text(encoding="utf-8") for p in files))
+
     def test_cases_use_catalog_ids_without_overlap(self):
         catalog = set(criteria_ids(CATALOG.read_text(encoding="utf-8")))
         for expected_path in sorted(CASES.glob("*/expected.json")):
