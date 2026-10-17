@@ -54,8 +54,19 @@ Configure blocking severity where appropriate and check the exit code.
 - Each exception identifies a path/symbol, rule, reason, owner, and removal condition.
 - For inherited debt, set caps that forbid growth, reduce them as the code improves, and remove obsolete
   entries. Avoid automatic baselines and configurations that nullify the control.
+- Record known technical debt in one register with an owner, its impact, and a removal condition.
+  Review the register on a schedule and link exceptions and TODOs to their entries.
 - Change regenerable contracts at their source. Compare bytes and file sets in a temporary destination
   to detect differences, missing files, and extras.
+
+## Guards and hooks
+
+A guard or hook that blocks actions, such as a commit hook or a command filter for agents, is a
+control with failure modes of its own. Test what it does when its interpreter or script is missing,
+when it times out, and when its input is unexpected, and choose deliberately whether each case lets
+the action through (fail open) or blocks it (fail closed). Record the choice: a launcher that cannot
+find its script and exits with the blocking code stops all work, while one that allows everything
+when it fails protects nothing.
 
 ## Rules for changes and agents
 

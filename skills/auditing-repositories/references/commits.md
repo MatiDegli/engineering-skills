@@ -60,7 +60,8 @@ This policy constrains [Conventional Commits](https://www.conventionalcommits.or
 Prefer linear history. Review every retained commit and the final integration result; a squash
 must also respect the limits, even when its source commits were small. For a large change,
 integrate several coherent commits instead of one giant squash. Resolve temporary
-`fixup!`/`squash!` messages before integration.
+`fixup!`/`squash!` messages before integration. In a stack, every commit passes the gates, not
+only the head: a broken intermediate revision surfaces later in bisection or a partial revert.
 
 This policy is enforced by review until the project automates it. To make it mandatory,
 connect the same validator to hooks and CI: subject, files, lines, and exceptions. CI must review

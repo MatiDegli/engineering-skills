@@ -58,8 +58,10 @@ configuration exists, and without a remote or a readable run it is pending verif
 | QUAL-05 | Each suppression or exception names a path or symbol, rule, reason, owner, and removal condition; there are no blanket ignores or automatic baselines | Suppressions exist | [quality](quality.md#scope-and-exceptions) |
 | QUAL-06 | Size and complexity limits have an agreed counting method before they block and are treated as design signals | Limits adopted or large units exist | [quality](quality.md#starting-limits) |
 | QUAL-07 | A coverage threshold measures branches and its boundary has been tested with the actual tool | Coverage gate exists | [quality](quality.md#starting-limits) |
-| QUAL-08 | Changes that weaken controls are justified separately from functional changes and reviewed | History or PRs available | [quality](quality.md#rules-for-changes-and-agents) |
+| QUAL-08 | Changes that weaken controls, including raising a cap or adding an exception, are justified separately from functional changes and reviewed | History or PRs available | [quality](quality.md#rules-for-changes-and-agents) |
 | QUAL-09 | Type escapes and lint suppressions are bounded and justified; external data is validated in adapters | Typed or linted code | [quality](quality.md#rules-for-changes-and-agents) |
+| QUAL-10 | Guards and hooks are tested in their own failure modes, such as a missing interpreter or script and a timeout, and fail open or closed by recorded choice | Guards or hooks exist | [quality](quality.md#guards-and-hooks) |
+| QUAL-11 | Known technical debt is recorded in one register with an owner, impact, and removal condition, and the register is reviewed | Debt is acknowledged, for example in TODOs, exceptions, or decisions | [quality](quality.md#scope-and-exceptions) |
 
 ## Dependencies
 
