@@ -173,8 +173,26 @@ def export_skill(revision: str) -> Path:
     return skill
 
 
-def plan(round_dir: Path, runs: list[tuple[str, str]], cases: list[str], revision: str) -> dict:
-    """Export the skill and prepare a fresh repository for every run of every case."""
+def job_skill(data: dict, job: dict) -> str:
+    """Return the skill a job audits with; plans before per-run revisions kept one skill."""
+    return job.get("skill") or data["skill"]
+
+
+def job_revision(data: dict, job: dict) -> str:
+    return job.get("revision") or data["skill_commit"]
+
+
+def skill_exports(data: dict) -> list[Path]:
+    return [Path(path).parent for path in (data.get("skills") or {"": data.get("skill")}).values()]
+
+
+def plan(round_dir: Path, runs: list[tuple], cases: list[str], revision: str) -> dict:
+    """Export each skill revision and prepare a fresh repository for every run of every case.
+
+    A run may name its own revision, so a control and a candidate share one round. Jobs are listed
+    case by case with every run of a case together, so the arms run side by side in time instead
+    of hours apart, when the service may have changed.
+    """
     check_round_dir(round_dir)
     paths = round_paths(round_dir)
     if paths["plan.json"].exists():
@@ -182,20 +200,24 @@ def plan(round_dir: Path, runs: list[tuple[str, str]], cases: list[str], revisio
     for case in cases:
         if not (case_path(case) / "expected.json").is_file():
             raise SystemExit(f"unknown case: {case}")
-    commit = repository_git("rev-parse", "--short", revision).decode().strip()
+    specs = []
+    for number, model, *rest in runs:
+        wanted = rest[0] if rest and rest[0] else revision
+        specs.append((number, model, repository_git("rev-parse", "--short", wanted).decode().strip()))
     for name in ("streams", "reports"):
         paths[name].mkdir(parents=True, exist_ok=True)
     listing = sorted(os.listdir(tempfile.gettempdir()))
     paths["tmp-before.txt"].write_text("\n".join(listing) + "\n", encoding="utf-8")
-    skill = export_skill(commit)
+    skills = {commit: str(export_skill(commit)) for commit in dict.fromkeys(s[2] for s in specs)}
     jobs = []
-    for run, model in runs:
-        for case in cases:
+    for case in cases:
+        for run, model, commit in specs:
             directory = Path(tempfile.mkdtemp(prefix="audit."))
             name = case_path(case).name
             prepare(case_path(case), directory / name)
-            jobs.append({"run": run, "model": model, "case": case, "name": name, "dir": str(directory)})
-    data = {"created": now(), "skill_commit": commit, "skill": str(skill), "level": "full"}
+            job = {"run": run, "model": model, "case": case, "name": name, "dir": str(directory)}
+            jobs.append(job | {"revision": commit, "skill": skills[commit]})
+    data = {"created": now(), "skill_commit": ", ".join(skills), "skills": skills, "level": "full"}
     data["jobs"] = jobs
     paths["plan.json"].write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     return data
@@ -265,8 +287,8 @@ def audit(round_dir: Path, data: dict, job: dict, timeout: float, pause: tuple[i
     if not repository_clean(repo):
         return f"{label}: skipped, the prepared repository is missing or changed"
     stream, stderr = paths["streams"] / f"{label}.jsonl", paths["streams"] / f"{label}.stderr.txt"
-    prompt = PROMPTS[data["level"]].format(skill=data["skill"])
-    command = claude_command(prompt, job["model"], Path(data["skill"]))
+    prompt = PROMPTS[data["level"]].format(skill=job_skill(data, job))
+    command = claude_command(prompt, job["model"], Path(job_skill(data, job)))
     for attempt in range(1, ATTEMPTS + 1):
         code = run_command(command, repo, stream, stderr, timeout)
         results = stream_results(stream)
@@ -377,11 +399,12 @@ def score_job(job: dict, data: dict, paths: dict[str, Path], repo: Path, totals:
         notes.append(f"{label}: the prepared repository changed: {'; '.join(changed[:5])}")
     if result["leaked"]:
         notes.append(f"{label}: copied {', '.join(result['leaked'])}")
-    outside = outside_paths(stream, [Path(job["dir"]), Path(data["skill"]).parent]) if results else []
+    allowed = [Path(job["dir"]), Path(job_skill(data, job)).parent]
+    outside = outside_paths(stream, allowed) if results else []
     if outside:
         notes.append(f"{label}: tool calls name paths outside the run: {', '.join(outside[:8])}")
     row = (
-        f"| {job['name']} | {job['run']} | {model_label(job['model'])} | {gaps} "
+        f"| {job['name']} | {job['run']} | {arm_label(data, job)} | {gaps} "
         f"| {'yes' if passed else 'no'} | {f'{top[1]} of {top[2]}' if top else '—'} "
         f"| {', '.join(problems) or '—'} |"
     )
@@ -391,7 +414,7 @@ def score_job(job: dict, data: dict, paths: dict[str, Path], repo: Path, totals:
 def leftovers(paths: dict[str, Path], data: dict) -> list[str]:
     """Name new entries of the temporary directory that a run's stream mentions."""
     before = set(paths["tmp-before.txt"].read_text(encoding="utf-8").split())
-    planned = {Path(job["dir"]).name for job in data["jobs"]} | {Path(data["skill"]).parent.name}
+    planned = {Path(job["dir"]).name for job in data["jobs"]} | {p.name for p in skill_exports(data)}
     streams = {p.stem: p.read_text(encoding="utf-8") for p in sorted(paths["streams"].glob("*.jsonl"))}
     notes = []
     for entry in sorted(set(os.listdir(tempfile.gettempdir())) - before - planned):
@@ -400,6 +423,12 @@ def leftovers(paths: dict[str, Path], data: dict) -> list[str]:
         if named:
             notes.append(f"left in the temporary directory: {entry}, named by {', '.join(named)}")
     return notes
+
+
+def arm_label(data: dict, job: dict) -> str:
+    """Name a job's model, and its revision when the round compares several."""
+    label = model_label(job["model"])
+    return f"{label} @ {job_revision(data, job)}" if len(data.get("skills") or {}) > 1 else label
 
 
 def summarize(round_dir: Path) -> str:
@@ -417,7 +446,7 @@ def summarize(round_dir: Path) -> str:
                 continue
             if job["case"] not in repos:
                 repos[job["case"]] = stack.enter_context(case_files(case_path(job["case"])))
-            scored = score_job(job, data, paths, repos[job["case"]], totals[model_label(job["model"])])
+            scored = score_job(job, data, paths, repos[job["case"]], totals[arm_label(data, job)])
             rows.append(scored["row"])
             hashes.append(scored["hash"])
             notes += scored["notes"]
@@ -461,7 +490,7 @@ def clean(round_dir: Path) -> list[str]:
     data = json.loads(round_paths(round_dir)["plan.json"].read_text(encoding="utf-8"))
     temporary = Path(tempfile.gettempdir()).resolve()
     removed = []
-    for path in [Path(job["dir"]) for job in data["jobs"]] + [Path(data["skill"]).parent]:
+    for path in [Path(job["dir"]) for job in data["jobs"]] + skill_exports(data):
         resolved = path.resolve()
         created = resolved.parent == temporary and TEMPORARY.fullmatch(resolved.name)
         if not created or path.is_symlink():
@@ -473,13 +502,14 @@ def clean(round_dir: Path) -> list[str]:
     return removed
 
 
-def parse_runs(values: list[str]) -> list[tuple[str, str]]:
+def parse_runs(values: list[str]) -> list[tuple[str, str, str | None]]:
     runs = []
     for value in values:
-        number, _, model = value.partition("=")
+        number, _, rest = value.partition("=")
+        model, _, revision = rest.partition("@")
         if not number.isdigit() or not model:
-            raise SystemExit(f"--run takes NUMBER=MODEL, not {value!r}")
-        runs.append((number, model))
+            raise SystemExit(f"--run takes NUMBER=MODEL or NUMBER=MODEL@REVISION, not {value!r}")
+        runs.append((number, model, revision or None))
     return runs
 
 
@@ -495,7 +525,8 @@ def main() -> int:
         action="append",
         required=True,
         metavar="NUMBER=MODEL",
-        help="a run number and a full model ID, such as 51=claude-opus-5-5; repeat for each run",
+        help="a run number, a full model ID, and optionally a skill revision, such as"
+        " 51=claude-opus-5-5 or 52=claude-opus-5-5@8b2a2c6; repeat for each run",
     )
     plan_parser.add_argument(
         "--case",
@@ -503,7 +534,9 @@ def main() -> int:
         metavar="NAME_OR_PATH",
         help="a case name or a case directory path; repeat; default: every case in evals/cases",
     )
-    plan_parser.add_argument("--revision", default="HEAD", help="revision to export the skill from")
+    plan_parser.add_argument(
+        "--revision", default="HEAD", help="skill revision for runs that do not name one"
+    )
     run_parser = commands.add_parser("run", help="run every planned audit (starts agents)")
     run_parser.add_argument("round_dir", type=Path)
     run_parser.add_argument("--jobs", type=int, default=6)

@@ -65,7 +65,10 @@ python3 -m tools.claude_rounds clean ~/eval-runs/round10
 ```
 
 `plan` exports the skill from a revision into a temporary directory, away from the reports, and
-prepares one repository per run and case; `--case` takes a case name or directory and may repeat.
+prepares one repository per run and case; `--case` takes a case name or directory and may repeat. A
+run may name its own revision, as in `--run 66=claude-sonnet-5-5@8b2a2c6`. A round that tests a
+change includes the current version as a control, with the same models and runs, in the same plan:
+`plan` lists the jobs case by case, so both arms run side by side.
 `run` starts agents and spends usage, so the maintainer runs it. `summarize` scores every report,
 verifies every prepared repository, and writes `summary.md` with the tables that RESULTS.md records.
 `clean` removes only the directories that `plan` created.
@@ -79,6 +82,7 @@ Each mechanism answers an incident in this repository's evaluations:
 | The `haiku` alias resolved to an older model than intended, and an older CLI did not know the newer model's ID | Full model IDs; the short call stops the round when the CLI does not serve a model, and a run whose stream names another model is marked |
 | An agent started inside a repository loads that repository's agent settings, hooks, skills, and agents | Runs load only user settings, with hooks off, and fix the effort level instead of inheriting it |
 | Rounds kept under `/tmp` lost their scripts and streams when WSL restarted | The round directory keeps the plan, streams, reports, and summary; `plan` warns when it is under the temporary directory |
+| The same skill cost 43% more in the afternoon than in the morning, and the rise was first blamed on a rule (runs 59 to 63) | A control arm in the same round, with jobs interleaved case by case |
 
 Each run also has a time limit and its own process group, which is stopped as a whole, and
 `summarize` lists home paths that tool calls name outside the run and new temporary entries that a

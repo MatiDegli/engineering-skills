@@ -96,6 +96,30 @@ class RoundTests(unittest.TestCase):
         self.assertIn("| 1.0 | 0.50 | 1 | 1,010 | 200 |", summary)
         self.assertNotIn("prepared repository changed", summary)
 
+    def test_a_control_and_a_candidate_share_a_round_side_by_side(self):
+        second = self.root / "second"
+        (second / "repo").mkdir(parents=True)
+        (second / "repo" / "README.md").write_text("# Second\n")
+        (second / "expected.json").write_text('{"must_find": ["REPO-01"], "must_not_flag": []}')
+        round_dir = self.root / "round"
+        runs = claude_rounds.parse_runs(["1=claude-test-1-0@HEAD~1", "2=claude-test-1-0"])
+        with mock.patch("builtins.print"):
+            data = claude_rounds.plan(round_dir, runs, [str(self.case), str(second)], "HEAD")
+        self.rounds.append(round_dir)
+        self.assertEqual([(j["name"], j["run"]) for j in data["jobs"]],
+                         [("case", "1"), ("case", "2"), ("second", "1"), ("second", "2")])
+        self.assertEqual(len(data["skills"]), 2)
+        with mock.patch("builtins.print"):
+            self.assertEqual(claude_rounds.run(round_dir, jobs=2, timeout=60, pause=(0, 0)), 0)
+        summary = claude_rounds.summarize(round_dir)
+        for revision in data["skills"]:
+            self.assertIn(f"| Test 1.0 @ {revision} | 2 of 2 |", summary)
+        exports = [Path(path).parent for path in data["skills"].values()]
+        with mock.patch("builtins.print"):
+            claude_rounds.clean(round_dir)
+        self.rounds.remove(round_dir)
+        self.assertFalse(any(path.exists() for path in exports))
+
     def test_a_model_other_than_the_requested_one_is_flagged(self):
         round_dir = self.plan("round", ("1", "claude-mismatch-1-0"))
         with mock.patch("builtins.print"):
