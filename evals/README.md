@@ -52,6 +52,38 @@ these lines compare reports and do not change the exit code.
 Cases contain intentional defects. Do not fix them, deploy them, or run their code outside a
 disposable environment; some tests call external hosts.
 
+## Headless rounds with Claude Code
+
+`tools/claude_rounds.py` runs a round of full-skill audits with Claude Code's headless mode; another
+agent needs its own runner. Keep the round directory outside this repository and outside `/tmp`:
+
+```bash
+python3 -m tools.claude_rounds plan ~/eval-runs/round10 --run 51=claude-opus-5-5 --run 52=claude-sonnet-5-5
+python3 -m tools.claude_rounds run ~/eval-runs/round10
+python3 -m tools.claude_rounds summarize ~/eval-runs/round10
+python3 -m tools.claude_rounds clean ~/eval-runs/round10
+```
+
+`plan` exports the skill from a revision into a temporary directory, away from the reports, and
+prepares one repository per run and case; `--case` takes a case name or directory and may repeat.
+`run` starts agents and spends usage, so the maintainer runs it. `summarize` scores every report,
+verifies every prepared repository, and writes `summary.md` with the tables that RESULTS.md records.
+`clean` removes only the directories that `plan` created.
+
+Each mechanism answers an incident in this repository's evaluations:
+
+| Incident | Mechanism |
+| --- | --- |
+| An audit that lost its scratch path extracted files into this repository (run 10) | Each run starts in its prepared repository, with the skill exported outside this repository |
+| Parallel runs that found an expired login raced to refresh it, and all failed before their first tool call | One short call per model, one at a time, before the parallel runs; a run whose login refresh fails is retried after a random pause |
+| The `haiku` alias resolved to an older model than intended, and an older CLI did not know the newer model's ID | Full model IDs; the short call stops the round when the CLI does not serve a model, and a run whose stream names another model is marked |
+| An agent started inside a repository loads that repository's agent settings, hooks, skills, and agents | Runs load only user settings, with hooks off, and fix the effort level instead of inheriting it |
+| Rounds kept under `/tmp` lost their scripts and streams when WSL restarted | The round directory keeps the plan, streams, reports, and summary; `plan` warns when it is under the temporary directory |
+
+Each run also has a time limit and its own process group, which is stopped as a whole, and
+`summarize` lists home paths that tool calls name outside the run and new temporary entries that a
+stream mentions.
+
 ## Cases from a pinned repository
 
 A case directory may hold `source.json` and `seed/` instead of `repo/`, to test an audit on a
