@@ -178,6 +178,12 @@ class RoundTests(unittest.TestCase):
         self.assertEqual(list((self.root / "gh-config").iterdir()), [])
         self.assertEqual(environment["PATH"], os.environ["PATH"])
 
+    def test_the_report_is_the_last_result_with_findings(self):
+        results = [{"result": "## Context\n## Findings\n| A |"}, {"result": "Helpers done; see above."}]
+        self.assertEqual(claude_rounds.report_text(results), "## Context\n## Findings\n| A |")
+        self.assertEqual(claude_rounds.report_text([{"result": "no report"}]), "no report")
+        self.assertEqual(claude_rounds.report_text([]), "")
+
     def test_model_labels_and_audit_command(self):
         self.assertEqual(claude_rounds.model_label("claude-opus-5-5"), "Opus 5.5")
         self.assertEqual(claude_rounds.model_label("glm-5.3"), "glm-5.3")

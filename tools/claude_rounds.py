@@ -54,7 +54,7 @@ PROMPTS = {
 LOGIN_FAILURE = "Failed to refresh OAuth token"
 ATTEMPTS = 3
 TEMPORARY = re.compile(r"(audit|skill)\.[A-Za-z0-9_]{8}")
-HOME_PATH = re.compile(r"(?<![\w.-])(?:/home/[^/\s\"']+|/root|/mnt/[a-z])(?:/[^\s\"'`,;)]*)?")
+HOME_PATH = re.compile(r"(?<![\w.-])(?:/home/[\w.-]+|/root|/mnt/[a-z])(?:/[^\s\"'`,;)]*)?")
 PROBLEMS = (
     ("unmarked_high", "unmarked high"),
     ("uncovered", "uncovered"),
@@ -126,6 +126,17 @@ def stream_usage(path: Path, results: list[dict]) -> dict[str, int]:
         "tokens_in": sum(m.get(k) or 0 for m in models for k in read),
         "tokens_out": sum(m.get("outputTokens") or 0 for m in models),
     }
+
+
+def report_text(results: list[dict]) -> str:
+    """Return the run's report: the last result that holds a Findings section, else the last one.
+
+    A run that used background helpers ends with several results, and its last one may only say
+    that an earlier message holds the report.
+    """
+    texts = [str(r.get("result") or "") for r in results]
+    reports = [text for text in texts if "## Findings" in text]
+    return reports[-1] if reports else (texts[-1] if texts else "")
 
 
 def ran_model(results: list[dict], model: str) -> bool:
@@ -322,7 +333,7 @@ def audit(round_dir: Path, data: dict, job: dict, timeout: float, pause: tuple[i
         stream.rename(paths["streams"] / f"{label}.login-failure-{attempt}.jsonl")
         time.sleep(random.uniform(*pause))
     if results:
-        report.write_text(str(results[-1].get("result") or ""), encoding="utf-8")
+        report.write_text(report_text(results), encoding="utf-8")
     used = sorted({name for r in results for name in r.get("modelUsage") or {}})
     flag = "" if ran_model(results, job["model"]) else " MODEL MISMATCH"
     return f"{label}: exit {code}, models {','.join(used) or 'none'}{flag}"
