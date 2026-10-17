@@ -100,9 +100,10 @@ Each mechanism answers an incident in this repository's evaluations:
 | The same skill cost 43% more in the afternoon than in the morning, and the rise was first blamed on a rule (runs 59 to 63) | A control arm in the same round, with jobs interleaved case by case |
 | Audits of a rewritten private clone queried the hosted repository with the maintainer's GitHub login, found that its history did not match, and one run reported three of ten gaps (run 56) | Runs see no GitHub CLI login or token, so remote settings are unverified the same way in every round |
 
-Each run also has a time limit and its own process group, which is stopped as a whole, and
-`summarize` lists home paths that tool calls name outside the run and new temporary entries that a
-stream mentions.
+Each run also has a time limit and its own process group, which is stopped as a whole when the limit
+passes or when the runner receives SIGTERM or SIGINT; the runner then starts no other audit, logs the
+stop, and exits with 128 plus the signal number. `summarize` lists home paths that tool calls name
+outside the run and new temporary entries that a stream mentions.
 
 ## Cases from a pinned repository
 

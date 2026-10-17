@@ -318,6 +318,53 @@ def audit_environment(round_dir: Path) -> dict[str, str]:
     return clean | {"GH_CONFIG_DIR": str(config)}
 
 
+# Seconds between SIGTERM and SIGKILL when a process group is stopped.
+GRACE = 30
+
+
+def signal_group(process: subprocess.Popen, number: int) -> None:
+    try:
+        os.killpg(process.pid, number)
+    except ProcessLookupError:
+        pass
+
+
+def stop_groups(processes: list[subprocess.Popen]) -> None:
+    """Send SIGTERM to every process group, then SIGKILL to those whose leader outlives GRACE."""
+    for process in processes:
+        signal_group(process, signal.SIGTERM)
+    deadline = time.monotonic() + GRACE
+    for process in processes:
+        try:
+            process.wait(timeout=max(0.0, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            signal_group(process, signal.SIGKILL)
+            process.wait()
+
+
+class Running:
+    """The commands that run now, so that a stop signal can end their process groups.
+
+    Once `stopped` is set, no command starts.
+    """
+
+    def __init__(self) -> None:
+        self.processes: set[subprocess.Popen] = set()
+        self.stopped, self.lock = threading.Event(), threading.Lock()
+
+    def stop(self) -> int:
+        """Refuse new commands, end the running ones, and return how many were running."""
+        self.stopped.set()
+        with self.lock:
+            live = [process for process in self.processes if process.poll() is None]
+        stop_groups(live)
+        return len(live)
+
+
+class Interrupted(Exception):
+    """Raised in the main thread by the handler of a stop signal; the argument is the signal."""
+
+
 def run_command(
     command: list[str],
     cwd: Path,
@@ -325,23 +372,30 @@ def run_command(
     stderr: Path,
     timeout: float,
     environment: dict[str, str] | None = None,
+    running: Running | None = None,
 ) -> int:
-    """Run in a new session and stop the whole process group on timeout, grandchildren included."""
+    """Run in a new session and stop the whole process group on timeout, grandchildren included.
+
+    The group is registered in `running`, so `Running.stop` ends it too; after that, nothing starts.
+    """
+    running = running or Running()
     with stdout.open("w", encoding="utf-8") as out, stderr.open("w", encoding="utf-8") as err:
-        process = subprocess.Popen(
-            command, cwd=cwd, env=environment, stdout=out, stderr=err, start_new_session=True
-        )
+        with running.lock:
+            if running.stopped.is_set():
+                return -signal.SIGTERM
+            process = subprocess.Popen(
+                command, cwd=cwd, env=environment, stdout=out, stderr=err, start_new_session=True
+            )
+            running.processes.add(process)
         try:
             return process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
-            os.killpg(process.pid, signal.SIGTERM)
-            try:
-                process.wait(timeout=30)
-            except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
-                process.wait()
+            stop_groups([process])
             err.write(f"\nstopped after {timeout:.0f} seconds\n")
             return -1
+        finally:
+            with running.lock:
+                running.processes.discard(process)
 
 
 # Host basics a run of another provider keeps; no Anthropic or Claude Code variable of the parent.
@@ -514,6 +568,8 @@ def audit(round_dir: Path, data: dict, job: dict, launch: dict) -> str:
         return f"{label}: skipped, report exists"
     if not repository_clean(repo):
         return f"{label}: skipped, the prepared repository is missing or changed"
+    if launch["running"].stopped.is_set():
+        return f"{label}: skipped, stopped"
     if not launch["spending"].allows():
         return f"{label}: skipped, budget reached"
     provider = launch["providers"].get(job["model"])
@@ -528,12 +584,14 @@ def audit(round_dir: Path, data: dict, job: dict, launch: dict) -> str:
     command = claude_command(prompt, job["model"], directories, str(settings) if settings else None)
     launch["starts"].wait()
     for attempt in range(1, ATTEMPTS + 1):
-        code = run_command(command, repo, stream, stderr, launch["timeout"], environment)
+        code = run_command(command, repo, stream, stderr, launch["timeout"], environment, launch["running"])
+        if launch["running"].stopped.is_set():
+            return f"{label}: stopped"
         results = stream_results(stream)
         if not login_failed(results) or attempt == ATTEMPTS:
             break
         stream.rename(paths["streams"] / f"{label}.login-failure-{attempt}.jsonl")
-        time.sleep(random.uniform(*launch["pause"]))
+        launch["running"].stopped.wait(random.uniform(*launch["pause"]))
     launch["spending"].add(max((r.get("total_cost_usd") or 0 for r in results), default=0))
     if results:
         report.write_text(report_text(results), encoding="utf-8")
@@ -556,7 +614,9 @@ def run(
 ) -> int:
     """Run every planned audit; return 1 when a model differs or an audit was skipped.
 
-    `providers` maps a model served by another provider to its base URL and key file.
+    `providers` maps a model served by another provider to its base URL and key file. SIGTERM or
+    SIGINT stops the process group of every running audit, starts no other, and returns 128 plus
+    the signal number; the handlers are restored afterwards.
     """
     paths = round_paths(round_dir)
     data = json.loads(paths["plan.json"].read_text(encoding="utf-8"))
@@ -567,21 +627,42 @@ def run(
     (round_dir / "cli-version.txt").write_text(version.stdout, encoding="utf-8")
     providers = providers or {}
     warm_up(round_dir, sorted({job["model"] for job in data["jobs"]}), providers)
+    running = Running()
     launch = {"timeout": timeout, "pause": pause, "providers": providers, "spending": Spending(budget)}
-    launch["starts"] = StartSpacer(stagger)
-    lines = []
-    with paths["log.txt"].open("a", encoding="utf-8") as log:
-        log.write(f"start {now()} {version.stdout.strip()}, budget USD {budget:g}\n")
-        with ThreadPoolExecutor(max_workers=jobs) as pool:
-            futures = [
-                pool.submit(audit, round_dir, data, job, launch) for job in data["jobs"]
-            ]
-            for future in as_completed(futures):
-                lines.append(future.result())
-                log.write(lines[-1] + "\n")
-                log.flush()
-                print(lines[-1], flush=True)
-        log.write(f"end {now()}\n")
+    launch |= {"starts": StartSpacer(stagger), "running": running}
+
+    def interrupt(number: int, frame) -> None:
+        if not running.stopped.is_set():
+            running.stopped.set()
+            raise Interrupted(number)
+
+    lines, interrupted = [], 0
+    previous = {number: signal.signal(number, interrupt) for number in (signal.SIGTERM, signal.SIGINT)}
+    try:
+        with paths["log.txt"].open("a", encoding="utf-8") as log:
+            log.write(f"start {now()} {version.stdout.strip()}, budget USD {budget:g}\n")
+            with ThreadPoolExecutor(max_workers=jobs) as pool:
+                try:
+                    futures = [
+                        pool.submit(audit, round_dir, data, job, launch) for job in data["jobs"]
+                    ]
+                    for future in as_completed(futures):
+                        lines.append(future.result())
+                        log.write(lines[-1] + "\n")
+                        log.flush()
+                        print(lines[-1], flush=True)
+                except Interrupted as stop:
+                    interrupted = stop.args[0]
+                    pool.shutdown(wait=False, cancel_futures=True)
+                    name, ended = signal.Signals(interrupted).name, running.stop()
+                    log.write(f"stopped {now()} by {name}: {ended} running audits ended\n")
+                    print(f"stopped by {name}: {ended} running audits ended", flush=True)
+            log.write(f"end {now()}\n")
+    finally:
+        for number, handler in previous.items():
+            signal.signal(number, handler)
+    if interrupted:
+        return 128 + interrupted
     marks = ("MODEL MISMATCH", "KEY SOURCE", "skipped, the", "skipped, budget")
     return int(any(mark in line for line in lines for mark in marks))
 

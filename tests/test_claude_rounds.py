@@ -2,6 +2,7 @@
 
 import json
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -15,7 +16,7 @@ from tools.evals import git_environment
 
 FAKE_CLAUDE = r'''#!{python}
 """A stand-in for the claude CLI: it answers like the real one and starts no agent."""
-import json, os, sys
+import json, os, signal, subprocess, sys, time
 from pathlib import Path
 
 arguments = sys.argv[1:]
@@ -47,6 +48,17 @@ if os.environ.get("FAKE_STATE"):
     added = [arguments[i + 1] for i, a in enumerate(arguments) if a == "--add-dir"]
     prompt = arguments[arguments.index("-p") + 1]
     (Path(os.environ["FAKE_STATE"]) / ("args-" + Path.cwd().parent.name)).write_text(json.dumps([prompt, added]))
+if model in ("claude-stuck-1-0", "claude-stubborn-1-0"):
+    # Start a grandchild, record both processes, signal the runner, and stay alive until stopped.
+    if model == "claude-stubborn-1-0":
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    grandchild = subprocess.Popen(["sleep", "120"])
+    pids = " ".join(str(pid) for pid in (os.getpid(), grandchild.pid))
+    (Path(os.environ["FAKE_STATE"]) / ("pids-" + model)).write_text(pids)
+    os.kill(os.getppid(), getattr(signal, os.environ.get("FAKE_SIGNAL", "SIGTERM")))
+    time.sleep(30)  # a bound so that a runner that does not stop this process cannot hang the suite
+    (Path(os.environ["FAKE_STATE"]) / "expired").write_text(model)
+    raise SystemExit(1)
 if model == "claude-flaky-1-0" and not state.exists():
     state.write_text("failed once")
     print(json.dumps({{"type": "result", "result": "Failed to refresh OAuth token: another process"}}))
@@ -63,6 +75,27 @@ usage = {{"inputTokens": 10, "cacheReadInputTokens": 1000, "outputTokens": 200}}
 print(json.dumps({{"type": "result", "result": report, "duration_ms": 60000, "total_cost_usd": 0.5,
                   "modelUsage": {{used: usage}}}}))
 '''
+
+
+def alive(pid):
+    """Whether a process runs; a zombie that nothing has reaped yet counts as gone."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    try:
+        return Path(f"/proc/{pid}/stat").read_text().rpartition(")")[2].split()[0] != "Z"
+    except OSError:
+        return True
+
+
+def gone(pid):
+    """Wait, for a bounded time, until a process that was signaled has ended."""
+    for _ in range(100):
+        if not alive(pid):
+            return True
+        time.sleep(0.1)
+    return False
 
 
 class RoundTests(unittest.TestCase):
@@ -250,6 +283,59 @@ class RoundTests(unittest.TestCase):
         with self.assertRaises(ProcessLookupError):
             os.kill(int(pid_file.read_text()), 0)
         self.assertIn("stopped after", (self.root / "err").read_text())
+
+    def stopped_round(self, model, sent):
+        """Run a round whose first audit starts a grandchild and then sends `sent` to the runner.
+
+        Stand-in handlers receive the signal if the runner has not installed its own, so a missing
+        handler fails the test instead of ending it. Return the exit code, the round directory,
+        and the processes the audit started; they are killed at the end if the runner left them.
+        """
+        round_dir = self.plan(f"round-{sent.name}", ("1", model), ("2", "claude-test-1-0"))
+        received = []
+
+        def stand_in(number, frame):
+            received.append(number)
+
+        before = {number: signal.signal(number, stand_in) for number in (signal.SIGTERM, signal.SIGINT)}
+        with mock.patch.dict(os.environ, {"FAKE_SIGNAL": sent.name}), mock.patch("builtins.print"):
+            try:
+                code = claude_rounds.run(round_dir, jobs=1, timeout=300, budget=100, pause=(0, 0))
+            finally:
+                restored = {number: signal.signal(number, before[number]) for number in before}
+        pids = [int(pid) for pid in (self.root / "state" / f"pids-{model}").read_text().split()]
+        for pid in pids:
+            self.addCleanup(lambda pid=pid: alive(pid) and os.kill(pid, signal.SIGKILL))
+        self.assertEqual(received, [])
+        self.assertEqual(restored, {number: stand_in for number in before})
+        self.assertFalse((self.root / "state" / "expired").exists(), "the audit ended on its own")
+        return code, round_dir, pids
+
+    def test_a_stop_signal_ends_every_audit_group_and_starts_no_other(self):
+        for sent in (signal.SIGTERM, signal.SIGINT):
+            with self.subTest(sent=sent.name):
+                code, round_dir, pids = self.stopped_round("claude-stuck-1-0", sent)
+                self.assertEqual(code, 128 + sent)
+                self.assertEqual(len(pids), 2)
+                self.assertEqual([gone(pid) for pid in pids], [True, True])
+                self.assertIn(f"by {sent.name}: 1 running audits ended", (round_dir / "log.txt").read_text())
+                self.assertEqual(list((round_dir / "reports").iterdir()), [])
+                self.assertEqual([p.name for p in (round_dir / "streams").iterdir() if "run2" in p.name], [])
+
+    def test_a_stop_signal_kills_an_audit_that_ignores_sigterm(self):
+        with mock.patch.object(claude_rounds, "GRACE", 1):
+            code, round_dir, pids = self.stopped_round("claude-stubborn-1-0", signal.SIGTERM)
+        self.assertEqual(code, 128 + signal.SIGTERM)
+        self.assertEqual([gone(pid) for pid in pids], [True, True])
+
+    def test_no_command_starts_after_the_runner_stopped(self):
+        running = claude_rounds.Running()
+        self.assertEqual(running.stop(), 0)
+        marker = self.root / "started"
+        command = ["sh", "-c", f"touch {marker}"]
+        code = claude_rounds.run_command(command, self.root, self.root / "out", self.root / "err", 60, running=running)
+        self.assertEqual(code, -signal.SIGTERM)
+        self.assertFalse(marker.exists())
 
     def test_round_directories_stay_outside_the_repository_and_clean_keeps_foreign_paths(self):
         with self.assertRaises(SystemExit):
