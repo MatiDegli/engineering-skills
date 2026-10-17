@@ -1,5 +1,16 @@
 # Decisions
 
+## 2026-10-17 — A versioned runner for headless rounds
+
+Headless rounds ran from scripts kept outside this repository. Their safeguards came from
+incidents: a login warm-up, a check of the model that ran, user settings only, and a durable record
+directory. When a restart cleared `/tmp`, the scripts were lost and had to be rebuilt from a session
+transcript. A safeguard that lives in an unversioned file depends on someone keeping it, so the
+runner is now `tools/claude_rounds.py`, tested with a stand-in CLI, and `evals/README.md` pairs
+each mechanism with its incident. The runner is specific to Claude Code: the skills stay
+independent of any agent, and another agent needs its own runner. Keeping the scripts local was
+rejected because their results would not be reproducible from this repository.
+
 ## 2026-10-17 — A private case for large repositories
 
 Testing how an audit samples a repository it cannot read in full needs a real repository's size and
