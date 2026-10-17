@@ -50,10 +50,13 @@ demand.
 
 `main` requires the `documentation` and `workflows` checks to pass on the exact commit, also for
 administrators, and keeps a linear history without force pushes. Pull requests are optional. To
-integrate directly, push the commits to a branch, wait for both checks to pass on that commit, and
-then fast-forward `main` to the same commit:
+integrate directly, check every new commit on its own tree, push the commits to a branch, wait for
+both checks to pass on that commit, and then fast-forward `main` to the same commit. CI checks only
+the commit it receives; `tools/check_range.py` checks each commit under it without the repository's
+history, as a later bisection or revert would meet it:
 
 ```bash
+python3 -m tools.check_range origin/main..HEAD
 git push origin HEAD:refs/heads/<branch>
 # After both checks pass on that commit:
 git push origin HEAD:main
