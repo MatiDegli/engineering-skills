@@ -6,11 +6,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.check_skills import criteria_ids
 from tools.evals import (
     CASES,
-    CATALOG,
     bad_citations,
+    catalog,
     compare,
     finding_rows,
     leaked,
@@ -87,6 +86,27 @@ class ScoringTests(unittest.TestCase):
             },
         )
         self.assertEqual(finding_rows(report)["CI-02"]["priority"], "high")
+
+    def test_area_wildcards_and_several_entries_per_bullet(self):
+        areas = {"AGENT": ["AGENT-01", "AGENT-02"]}
+        report = (
+            "## Coverage\n- meets: REPO-01, OPS-* (wildcards only close areas)\n"
+            "- not-applicable: AGENT-* (no agents)\n"
+            "  - TEST-02 (no tests (none at all)), CI-09 (no merge queue)\n"
+            "  - Delivery: DEL-01 (labels are not read)\n  - TOOL-* (not an area)\n"
+        )
+        self.assertEqual(
+            report_statuses(report, areas),
+            {
+                "REPO-01": ["meets"],
+                "OPS-*": ["meets"],
+                "AGENT-01": ["not-applicable"],
+                "AGENT-02": ["not-applicable"],
+                "TEST-02": ["not-applicable"],
+                "CI-09": ["not-applicable"],
+                "TOOL-*": ["not-applicable"],
+            },
+        )
 
     def test_complete_report_has_no_problems(self):
         expected = {"must_find": ["CI-02", "SEC-05"], "must_not_flag": ["TEST-02"]}
@@ -203,13 +223,13 @@ class CaseTests(unittest.TestCase):
                     self.assertTrue(any(value in p.read_text(encoding="utf-8") for p in files))
 
     def test_cases_use_catalog_ids_without_overlap(self):
-        catalog = set(criteria_ids(CATALOG.read_text(encoding="utf-8")))
+        ids = set(catalog()[0])
         for expected_path in sorted(CASES.glob("*/expected.json")):
             with self.subTest(case=expected_path.parent.name):
                 expected = json.loads(expected_path.read_text(encoding="utf-8"))
                 must_find, must_not = set(expected["must_find"]), set(expected["must_not_flag"])
                 self.assertTrue(must_find)
-                self.assertLessEqual(must_find | must_not, catalog)
+                self.assertLessEqual(must_find | must_not, ids)
                 self.assertFalse(must_find & must_not)
                 self.assertLessEqual(set(expected.get("top_priorities", [])), must_find)
                 self.assertGreaterEqual(expected.get("max_high", 0), 0)

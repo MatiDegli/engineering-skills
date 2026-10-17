@@ -11,20 +11,25 @@ import re
 import shutil
 import subprocess
 import tempfile
+from functools import cache
 from pathlib import Path
 
-from tools.check_skills import criteria_ids
+from tools.check_skills import catalog_files, criteria_ids
 from tools.validate_repo import ROOT
 
 CASES = ROOT / "evals" / "cases"
-CATALOG = ROOT / "skills" / "auditing-repositories" / "references" / "criteria.md"
+REFERENCES = ROOT / "skills" / "auditing-repositories" / "references"
+CATALOG = REFERENCES / "criteria.md"
 FINDING_STATUSES = {"partial", "pending-implementation", "pending-verification"}
 COVERAGE_STATUSES = {"meets", "not-applicable"}
 CRITERION = re.compile(r"\b[A-Z]+-\d{2}\b")
 MARKS = "`*_"
 COVERAGE_LINE = re.compile(r"[-*]\s*[`*_]*(meets|not-applicable)[`*_]*\s*:[`*_]*\s*(.*)", re.I)
 EVIDENCE_MARK = re.compile(r"[*_`\s]*(reproduced|inferred)\s*:", re.I)
-LEADING_IDS = re.compile(r"[-*]\s*[`*_]*((?:[A-Z]+-\d{2}[`*_]*\s*,\s*[`*_]*)*[A-Z]+-\d{2})")
+ENTRY = re.compile(r"\b[A-Z]+-(?:\d{2}\b|\*)")
+LEADING_IDS = re.compile(
+    r"[-*]\s*[`*_]*((?:[A-Z]+-(?:\d{2}|\*)[`*_]*\s*,\s*[`*_]*)*[A-Z]+-(?:\d{2}|\*))"
+)
 ACTIONS_HEADING = re.compile(r"^(#{1,6})\s*Priority actions\b", re.I | re.M)
 ACTION_ITEM = re.compile(r"(?:\d+[.)]|[-*])\s")
 CITATION = re.compile(r"(?<![\w./-])((?:[\w.-]+/)*[\w.-]+):(\d+(?:[-–]\d+)?(?:,\s?\d+(?:[-–]\d+)?)*)")
@@ -75,12 +80,37 @@ def verify(case: Path, destination: Path) -> list[str]:
     return problems + [f"changed: {line}" for line in status.splitlines()]
 
 
-def report_statuses(text: str) -> dict[str, list[str]]:
+@cache
+def catalog(references: Path = REFERENCES) -> tuple[list[str], dict[str, list[str]]]:
+    """Return every criterion ID, core first, and the IDs of each area keyed by its prefix."""
+    ids, areas = [], {}
+    for path in catalog_files(references):
+        found = criteria_ids(path.read_text(encoding="utf-8"))
+        ids += found
+        if path.name != "criteria.md" and found:
+            areas[found[0].split("-")[0]] = found
+    return ids, areas
+
+
+def without_reasons(text: str) -> str:
+    """Remove parenthesized reasons, nested ones included."""
+    previous = None
+    while previous != text:
+        previous, text = text, re.sub(r"\([^()]*\)", "", text)
+    return text
+
+
+def report_statuses(
+    text: str, areas: dict[str, list[str]] | None = None
+) -> dict[str, list[str]]:
     """Map each criterion ID to every status the report gives it.
 
     Coverage IDs may be listed inline after the status or as indented bullets below it. A bullet
-    counts the comma-separated IDs that open it; IDs inside reasons are ignored.
+    counts the comma-separated entries that open it, once reasons in parentheses are removed, so IDs
+    mentioned inside reasons are ignored. A not-applicable area wildcard such as `AGENT-*` stands for
+    every ID of that area; any other wildcard is kept as an unknown entry.
     """
+    areas = catalog()[1] if areas is None else areas
     statuses: dict[str, list[str]] = {}
     in_findings, coverage_status = False, None
     for line in text.splitlines():
@@ -96,15 +126,20 @@ def report_statuses(text: str) -> dict[str, list[str]]:
         match = COVERAGE_LINE.match(line)
         if match:
             coverage_status = match[1].lower()
-            found = CRITERION.findall(re.sub(r"\([^)]*\)", "", match[2]))
+            found = ENTRY.findall(without_reasons(match[2]))
         elif coverage_status and line[:1].isspace() and stripped[:1] in ("-", "*"):
-            leading = LEADING_IDS.match(stripped)
-            found = CRITERION.findall(leading[1]) if leading else []
+            leading = LEADING_IDS.match(without_reasons(stripped))
+            found = ENTRY.findall(leading[1]) if leading else []
         else:
             coverage_status = coverage_status if not stripped else None
             continue
-        for identifier in found:
-            statuses.setdefault(identifier, []).append(coverage_status)
+        for entry in found:
+            prefix = entry.removesuffix("-*")
+            if entry.endswith("-*") and coverage_status == "not-applicable" and prefix in areas:
+                for identifier in areas[prefix]:
+                    statuses.setdefault(identifier, []).append(coverage_status)
+            else:
+                statuses.setdefault(entry, []).append(coverage_status)
     return statuses
 
 
@@ -256,9 +291,9 @@ def check_text(text: str, case: Path, expected: dict) -> dict:
 
 def score_report(report: Path, case: Path) -> tuple[dict, dict]:
     expected = json.loads((case / "expected.json").read_text(encoding="utf-8"))
-    catalog = criteria_ids(CATALOG.read_text(encoding="utf-8"))
+    ids = catalog()[0]
     text = report.read_text(encoding="utf-8")
-    result = score(report_statuses(text), catalog, expected, finding_rows(text))
+    result = score(report_statuses(text), ids, expected, finding_rows(text))
     return expected, result | check_text(text, case, expected)
 
 

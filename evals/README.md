@@ -30,6 +30,11 @@ reproduced or inferred. It also exits with 1 when the report contains a string l
 Both commands also list citations whose quoted code sits on other lines of the cited file; that
 list is a pointer for review and does not change the exit code.
 
+The catalog is `criteria.md` plus one `criteria-<area>.md` file per area that only some repositories
+need. A report closes an area that does not apply with its wildcard, such as
+`not-applicable: AGENT-* (no agents contribute)`, and the scorer counts that entry for every ID of the
+area. A wildcard for a prefix that is not an area counts as an unknown ID.
+
 After an audit, `python3 -m tools.evals verify <case> <destination>` checks that the prepared
 repository is unchanged: the same revision as a fresh preparation, and no modified, untracked, or
 ignored files.

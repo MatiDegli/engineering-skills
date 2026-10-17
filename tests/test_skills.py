@@ -97,6 +97,26 @@ class SkillTests(unittest.TestCase):
                 path.write_text(CRITERIA + row + "\n")
                 self.assertIn(message, "\n".join(validate(self.root)))
 
+    def test_area_files_hold_one_prefix_that_no_other_file_uses(self):
+        references = self.skill / "references"
+        (self.skill / "SKILL.md").write_text(
+            SKILL.format(name="checking-things", description="Checks things. Use when asked.")
+            + "Areas: [ops](references/criteria-ops.md).\n"
+        )
+        area = "| ID | Check | Applies when | Guide |\n| --- | --- | --- | --- |\n"
+        row = "| {} | Check | Service | [guide](guide.md#guide) |\n"
+        (references / "criteria-ops.md").write_text(area + row.format("OPS-01"))
+        self.assertEqual(validate(self.root), [])
+        for content, extra, message in (
+            (row.format("OPS-01") + row.format("DEL-01"), "", "one prefix"),
+            (row.format("OPS-01"), row.format("OPS-02"), "belongs in criteria-ops.md"),
+            (row.format("OPS-01"), row.format("OPS-01"), "also appears in"),
+        ):
+            with self.subTest(message=message):
+                (references / "criteria-ops.md").write_text(area + content)
+                (references / "criteria.md").write_text(CRITERIA + extra)
+                self.assertIn(message, "\n".join(validate(self.root)))
+
     def test_cli_rejects_a_bad_skill_and_accepts_the_fix(self):
         (self.root / "tools").mkdir()
         for name in ("validate_repo.py", "check_skills.py"):

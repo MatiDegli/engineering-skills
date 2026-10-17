@@ -70,6 +70,42 @@ def criteria_errors(path: Path, root: Path) -> list[str]:
     return errors
 
 
+def catalog_files(references: Path) -> list[Path]:
+    """Return the core catalog, then one file per area that only some repositories need."""
+    core = references / "criteria.md"
+    return ([core] if core.is_file() else []) + sorted(references.glob("criteria-*.md"))
+
+
+def catalog_errors(files: list[Path], root: Path) -> list[str]:
+    """Check each catalog file, IDs repeated across files, and the prefix of each area file.
+
+    An area file holds every ID of one prefix, so that a report can close the whole area with a
+    wildcard such as `AGENT-*`; no other file may use that prefix.
+    """
+    errors, owner = [], {}
+    for path in files:
+        errors.extend(criteria_errors(path, root))
+        for cells in criteria_rows(path.read_text(encoding="utf-8")):
+            identifier = cells[0]
+            if owner.get(identifier, path) != path:
+                label = path.relative_to(root)
+                errors.append(f"{label}: {identifier} also appears in {owner[identifier].name}")
+            owner.setdefault(identifier, path)
+    area_of = {}
+    for path in files:
+        if path.name == "criteria.md":
+            continue
+        prefixes = {identifier.split("-")[0] for identifier, f in owner.items() if f == path}
+        if len(prefixes) > 1:
+            errors.append(f"{path.relative_to(root)}: an area file holds IDs of one prefix only")
+        area_of.update(dict.fromkeys(prefixes, path))
+    for identifier, path in owner.items():
+        area = area_of.get(identifier.split("-")[0])
+        if area and area != path:
+            errors.append(f"{path.relative_to(root)}: {identifier} belongs in {area.name}")
+    return errors
+
+
 def link_errors(skill: Path, root: Path) -> tuple[list[str], set[Path]]:
     """Reject links that leave the skill; return the files SKILL.md links to."""
     errors, linked = [], set()
@@ -121,8 +157,8 @@ def skill_errors(skill: Path, root: Path) -> list[str]:
     for reference in sorted(references.rglob("*")) if references.is_dir() else []:
         if reference.is_file() and reference.resolve() not in linked:
             errors.append(f"{reference.relative_to(root)}: not linked from SKILL.md")
-    if (references / "criteria.md").is_file():
-        errors.extend(criteria_errors(references / "criteria.md", root))
+    if references.is_dir():
+        errors.extend(catalog_errors(catalog_files(references), root))
     return errors
 
 
