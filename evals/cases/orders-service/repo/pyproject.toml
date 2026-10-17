@@ -1,0 +1,11 @@
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "S", "C90", "PL"]
+
+[tool.ruff.lint.per-file-ignores]
+"app/api.py" = ["S", "E501"]
+"app/checkout.py" = ["C901", "PLR0912", "PLR0915", "PLR2004", "E501"]
+"app/db.py" = ["BLE001", "S608"]
+"tests/*" = ["S", "PLR2004"]

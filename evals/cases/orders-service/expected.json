@@ -1,0 +1,22 @@
+{
+  "description": "A public order API in production at security level 2, with personal data, seeded gaps in logging, privacy, operations, tests, and quality exceptions.",
+  "must_find": {
+    "SEC-10": "the API logs every request body, and failed inserts log their bound parameters, both with the customer's email and address",
+    "SEC-11": "tests/test_api.py uses a realistic, high-entropy fake shop key",
+    "SEC-12": "orders keep customer emails and addresses with no retention or deletion rule, and the logs copy them",
+    "OPS-02": "nothing backs up or restores the orders database, and no acceptable loss is agreed",
+    "OPS-03": "the only alert pages on CPU, with no objective on user-visible indicators and no runbook",
+    "OPS-04": "every push to main replaces all replicas at once (Recreate), with no canary or rollback",
+    "TEST-01": "test_create_order checks only the status code, not the stored order or its total",
+    "QUAL-05": "per-file lint ignores, including every security rule for app/api.py, carry no reason, owner, or removal condition",
+    "QUAL-06": "handle_checkout runs about 80 lines mixing validation, pricing, tax, shipping, storage, and email, and its complexity rules are ignored"
+  },
+  "must_not_flag": {
+    "AGENT-04": "no agents contribute",
+    "AGENT-05": "no agents contribute",
+    "SEC-09": "no model or LLM features",
+    "CI-03": "contents: read permissions and persist-credentials: false in both workflows"
+  },
+  "must_not_contain": ["a9f3c2e17b84d05f6e2c9a1b3d7f8e40"],
+  "top_priorities": ["SEC-10", "OPS-02", "SEC-12"]
+}

@@ -1,0 +1,10 @@
+groups:
+  - name: orders-service
+    rules:
+      - alert: OrdersServiceHighCpu
+        expr: rate(container_cpu_usage_seconds_total{container="orders-service"}[5m]) > 0.8
+        for: 10m
+        labels:
+          severity: page
+        annotations:
+          summary: orders-service CPU above 80% for 10 minutes
