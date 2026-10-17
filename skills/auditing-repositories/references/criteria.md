@@ -40,6 +40,8 @@ configuration exists, and without a remote or a readable run it is pending verif
 | REPO-04 | Code, configuration, tests, and lockfiles are committed; environments, secrets, logs, and builds are excluded; examples use fictional values | Always | [standard](standard.md#repository) |
 | REPO-05 | Decisions with alternatives and consequences are recorded where maintainers will find them | Such decisions exist | [standard](standard.md#repository) |
 | REPO-06 | Comments explain intent and non-obvious invariants; documentation is proportionate and matches the code | Always | [standard](standard.md#repository) |
+| REPO-07 | Each incident leaves a recorded lesson with its cause and the mechanism that now prevents it, or a named follow-up | Incidents occurred, as history, issues, or postmortems show | [standard](standard.md#repository) |
+| REPO-08 | Each area has an owner, and someone other than the author approves each change, always for security, release, and policy changes | Several contributors, human or agent | [standard](standard.md#repository) |
 | STRUCT-01 | Files are organized by responsibility; the root holds only entry points, manifests, lockfiles, and configuration that must live there, with exceptions recorded | Always | [structure](structure.md#locations-and-boundaries) |
 | STRUCT-02 | Directories with more than 20 maintained source files have a recorded cohesion review | Threshold exceeded | [structure](structure.md#review) |
 | STRUCT-03 | Allowed dependencies between modules are defined, free of cycles, and enforced by import contracts where useful | Several real modules | [structure](structure.md#locations-and-boundaries) |

@@ -13,6 +13,12 @@ it rejects failures.
   Add `.env.example` only when configuration exists, using fictional values.
 - Comments explain intent and invariants that are hard to infer; keep documentation proportionate.
 - Apply [organization and cleanup](structure.md) and the [commit policy](commits.md).
+- Record each incident's lesson where maintainers will find it: the cause, and the mechanism that now
+  prevents it, or a named follow-up until one exists. A rule that depends on someone remembering it
+  is not a mechanism.
+- Give each area an owner. Someone other than the author, human or agent, approves each change, and
+  always changes to security, releases, and policy. Code-owner rules can request and require those
+  reviews.
 
 ## Quality
 
@@ -55,3 +61,6 @@ Review the level when data, users, or permissions change. At every applicable le
 6. Publish with project authorization, an identifiable version, and recorded changes.
 
 Criteria for growth and capacity measurement are in [architecture and performance](architecture.md).
+
+Sources checked on 2026-10-17 against the claims they support:
+[code owners](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners).
