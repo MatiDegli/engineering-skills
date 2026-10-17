@@ -118,6 +118,19 @@ score output, and notes. For a case outside this repository, record its scores a
 but not its reports or files. Run every case after changing the skill, the criteria, or a case, and
 compare with the previous results. Results from one agent or model do not transfer to another.
 
+Cost is part of the result: a gain in precision that costs too much is a regression. Compare each
+model's mean cost and time, which `tools/claude_rounds.py summarize` reports with tokens and tool
+calls, against the previous results on the same cases. A change regresses when, for any model:
+
+- on the cases in `cases/`, it loses a seeded gap, adds a false flag, or raises mean cost or time
+  by more than 10%;
+- on a large case, it raises mean cost or time by more than 20%, or by any amount without halving
+  the wrong or partly correct `high` and `medium` findings.
+
+The maintainer approved these limits on 2026-10-17, before the runs that first apply them. Large
+repositories make every extra step costlier, so a rule that adds work should apply only when its
+condition arises, such as when a finding is about to be reported.
+
 ## Baselines
 
 Runs with the skill show what an agent finds with it, not what the skill adds. A baseline runs the
