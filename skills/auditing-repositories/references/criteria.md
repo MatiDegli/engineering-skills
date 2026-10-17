@@ -1,8 +1,9 @@
 # Audit criteria
 
-Walk every criterion below. For each one, decide whether it applies, look for evidence, and assign a
-status. The guide column links to the section that explains the rule; read it when the criterion
-applies and the evidence is not obvious. IDs are stable: they are never renumbered or reused.
+Walk every core criterion below and decide each area in [Areas](#areas). For each criterion,
+decide whether it applies, look for evidence, and assign a status. The guide column links to the
+section that explains the rule; read it when the criterion applies and the evidence is not obvious.
+IDs are stable: they are never renumbered or reused.
 
 ## Applicability
 
@@ -29,6 +30,18 @@ indicates it, for example a pull request workflow for a shared branch, report pe
 That rule covers only conditions that depend solely on hosted settings. A criterion whose condition
 the repository shows still applies when its evidence is remote: CI-06 applies whenever CI
 configuration exists, and without a remote or a readable run it is pending verification.
+
+## Areas
+
+Some criteria only concern certain repositories, so they live in one file per area. Read an area's
+file only when the area applies, and decide each of its IDs. When it does not apply, close the whole
+area in Coverage with its wildcard and the reason, for example `AGENT-* (no agents contribute)`.
+
+| Area | IDs | Applies when | Criteria |
+| --- | --- | --- | --- |
+| Agent-assisted development | `AGENT-*` | Agents contribute: agent instructions, agent configuration, or agent-authored history | [criteria-agents](criteria-agents.md) |
+| Delivery | `DEL-*` | Artifacts are built, distributed, or released | [criteria-delivery](criteria-delivery.md) |
+| Operations | `OPS-*` | A service is deployed or the project keeps persistent data | [criteria-operations](criteria-operations.md) |
 
 ## Repository and structure
 
@@ -121,19 +134,6 @@ configuration exists, and without a remote or a readable run it is pending verif
 | SEC-11 | Secrets in tests and examples are low-entropy, obviously fake sentinels, so secret scanning stays strict without broad allowlists | Tests or examples contain secret-like values | [standard](standard.md#proportionate-security) |
 | SEC-12 | Personal data is inventoried with its purpose, limited to what that purpose needs, protected in storage, logs, and backups, and has retention and deletion rules | Personal data is processed | [standard](standard.md#proportionate-security) |
 
-## Delivery and operations
-
-| ID | Check | Applies when | Guide |
-| --- | --- | --- | --- |
-| DEL-01 | Builds identify the validated revision and use locked dependencies | Artifacts are built | [standard](standard.md#delivery-and-operations) |
-| DEL-02 | Artifact contents are reviewed and installed outside the development tree, without secrets, private fixtures, caches, or local configuration | Artifacts are distributed | [standard](standard.md#delivery-and-operations) |
-| DEL-03 | Releases are authorized, versioned, and record their changes | Releases exist | [standard](standard.md#delivery-and-operations) |
-| DEL-04 | Distributed artifacts come with build provenance and a software bill of materials that consumers can verify | Artifacts are distributed at security level 2 or higher | [standard](standard.md#delivery-and-operations) |
-| OPS-01 | Services document configuration, health, logs, migrations, and rollback | Deployed service | [standard](standard.md#delivery-and-operations) |
-| OPS-02 | Persistent data has tested backup and restoration, and agreed acceptable loss and downtime | Persistent data | [standard](standard.md#delivery-and-operations) |
-| OPS-03 | Services set objectives on user-visible indicators, alert on symptoms that consume the error budget, and give each alert a runbook | Service in operation | [standard](standard.md#delivery-and-operations) |
-| OPS-04 | Changes reach users progressively, stop or roll back automatically on user-visible regressions, and rollback is rehearsed | Deployed service with users | [standard](standard.md#delivery-and-operations) |
-
 ## Architecture
 
 | ID | Check | Applies when | Guide |
@@ -153,16 +153,11 @@ configuration exists, and without a remote or a readable run it is pending verif
 | PERF-02 | Services measure errors, p95/p99 latency, saturation, and volume, and were tested under sustained load, peaks, and recovery | Service in operation | [architecture](architecture.md#verifiable-optimization) |
 | PERF-03 | Critical paths have a performance regression check whose threshold was set after measuring run-to-run variance, outside the correctness suites | Performance-sensitive paths | [architecture](architecture.md#verifiable-optimization) |
 
-## History, agents, and tooling
+## History and tooling
 
 | ID | Check | Applies when | Guide |
 | --- | --- | --- | --- |
 | HIST-01 | Commits have one purpose, leave a valid revision, and stay reviewable in size or record a reviewed exception | History available | [commits](commits.md#limits) |
 | HIST-02 | Commit messages follow a consistent convention, enforced if the project adopted one | History available | [commits](commits.md#naming) |
 | HIST-03 | Shared history is preserved; rewrites are authorized and pushed with an explicit lease | Shared branches | [commits](commits.md#earlier-commits) |
-| AGENT-01 | Agents use the same checks as developers, respect authorization limits, and their claims are verified against executed results | Agents contribute | [quality](quality.md#rules-for-changes-and-agents) |
-| AGENT-02 | Delegated tasks have a bounded brief: base revision, binding decisions, allowed paths, reserved identifiers, verification, and report format | Agents receive delegated tasks | [agents](agents.md#briefs) |
-| AGENT-03 | Changes to security, authority, lifecycle, or gates get an independent review that reproduces its findings, and fixes are verified on the new revision rather than taken from reports | Agents implement changes | [agents](agents.md#review-and-verification) |
-| AGENT-04 | Concurrent agents work in isolation: one writer per worktree, no shared Git state such as the stash, partitioned scratch space, ports, and locks, and work closed out at merge | Several agents work at once | [agents](agents.md#isolation) |
-| AGENT-05 | Concurrent work is bounded by host capacity, shared resources go through one scheduler, and a state record shows each task's status and next owner | Several agents work at once | [agents](agents.md#capacity-and-state) |
 | TOOL-01 | Adopted tools, skills, and MCP servers answer a concrete need, are pinned, and have reviewed permissions and an owner | Such tools are configured | [tooling](tooling.md#adopt-and-maintain) |

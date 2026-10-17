@@ -41,7 +41,7 @@ Copy this checklist into your working notes and complete every step:
 - [ ] 2. Identify purpose, stack, stage, platforms, and security level
 - [ ] 3. Inventory the repository and choose a sample if it is large
 - [ ] 4. Read the code's behavior for edge cases and broken invariants
-- [ ] 5. Walk every criterion in references/criteria.md
+- [ ] 5. Walk the core criteria and each area that applies
 - [ ] 6. Verify that controls reject violations; reproduce decisive findings
 - [ ] 7. Assess performance claims against measurements only
 - [ ] 8. Write the report and run the self-check
@@ -62,9 +62,11 @@ Copy this checklist into your working notes and complete every step:
    them. Look for inputs at the limits, paths that should agree but answer differently, silent changes
    to data, errors that leave partial state, and invariants the documentation states. Report each
    defect under the closest criterion, such as TEST-01, ARCH-02, ARCH-05, or REPO-06.
-5. **Criteria.** Open [criteria.md](references/criteria.md) and decide applicability for every ID.
-   For each applicable criterion, collect evidence: a path with line numbers, a configuration value,
-   or command output. Read the linked guide section when the rule needs detail.
+5. **Criteria.** Open [criteria.md](references/criteria.md) and decide applicability for every core
+   ID and for each area in its areas table. Open an area's criteria file only when the area applies;
+   otherwise close the area in Coverage with its wildcard. For each applicable criterion, collect
+   evidence: a path with line numbers, a configuration value, or command output. Read the linked
+   guide section only when a rule needs detail; do not read the guides in full up front.
 6. **Controls.** A file, tool, or workflow is not evidence that a control works. For each control,
    check that it runs in CI on the relevant paths, that it fails on violations (look for ignored exit
    codes, `|| true`, `continue-on-error`, `--exit-zero`, warning-only severities, and skip
@@ -152,18 +154,21 @@ and timing: now, before release, or when the need arises.
 
 ## Coverage
 - meets: REPO-01, REPO-03
-- not-applicable: OPS-02 (no persistent data), SEC-08 (level 1)
+- not-applicable: SEC-08 (level 1), OPS-* (no deployed service or persistent data)
 
 ## Limitations
 What could not be inspected or executed, and anything that needs separate verification.
 ```
 
 Order findings by [priority](#priority) (`high`, `medium`, `low`). Each finding cites concrete
-evidence: a path with line numbers, a configuration value, or a command and its result.
+evidence: a path with line numbers, a configuration value, or a command and its result. In Coverage,
+list entries after their status, separated by commas; a long list may continue in indented bullets
+that start with IDs, without labels. An area that does not apply appears once, as its wildcard.
 
 Self-check before answering:
 
-- Every ID in criteria.md appears exactly once, either in Findings or in Coverage.
+- Every core ID, and every ID of each area that applies, appears exactly once, either in Findings
+  or in Coverage; each area that does not apply appears once as its wildcard.
 - Each Findings row and each Coverage entry holds one ID, written as in the format above:
   `REPO-02 (reason), AGENT-01 (reason)`, never `REPO-02 and AGENT-01`.
 - Every priority action names the IDs of the findings it closes.
@@ -176,7 +181,11 @@ Self-check before answering:
 
 ## References
 
-- [criteria.md](references/criteria.md): the catalog to walk; read it first.
+- [criteria.md](references/criteria.md): the core catalog and the areas table; read it first.
+- [criteria-agents.md](references/criteria-agents.md),
+  [criteria-delivery.md](references/criteria-delivery.md), and
+  [criteria-operations.md](references/criteria-operations.md): area criteria, read only when the area
+  applies.
 - [standard.md](references/standard.md): repository, quality, security levels, and delivery.
 - [quality.md](references/quality.md): controls, limits, exceptions, and dependency maintenance.
 - [validation.md](references/validation.md): tests, environments, and recording evidence.
