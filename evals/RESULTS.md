@@ -1686,4 +1686,5 @@ Notes:
 - The limited section listed three entries in four reports and none in two.
 - In run 81 a cleanup command passed to `sh -c` with `rm` was refused by Claude Code's safety
   check; no file was left behind.
-- The maintainer had decided to freeze the v0.2 skill after this round: `09c8e51` is that version.
+- The maintainer had decided to freeze the v0.2 skill after this round: the skill of `09c8e51` is
+  that version, applied to the main line as `7d06633`.
