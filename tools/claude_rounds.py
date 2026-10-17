@@ -103,6 +103,13 @@ def claude_command(
     Only user settings load, with hooks off, so the audited repository's own agent settings,
     hooks, skills, and agents never load; the effort is fixed rather than inherited. A run served by
     another provider passes the settings file of `provider_launch`, which also turns hooks off.
+
+    The audit is not confined. Bash is allowed without a pattern, and this command sets neither a
+    permission mode nor a sandbox (the user settings it loads could), so a shell command runs with
+    the rights of the user who started the runner: it can read every file that user can read, and
+    it can still write files. Only the web and file-editing tools are disallowed. What keeps an
+    audit in its repository is the prompt's instruction; afterwards `summarize` verifies the
+    prepared repository and lists the home paths that tool calls name in full.
     """
     return [
         *("claude", "-p", prompt, "--model", model, "--effort", "high"),
@@ -418,11 +425,21 @@ PROVIDER_SETTINGS = {
 def provider_launch(provider: dict, model: str, config_dir: Path) -> tuple[dict[str, str], Path]:
     """Return the environment and settings file of a run served by another provider.
 
-    The run gets only host basics, its own Claude Code configuration directory, so the user's
-    Claude login is never used, and the provider's base URL. Every model alias names the model, so
-    no internal call asks for another one. The key reaches the CLI only through an `apiKeyHelper`
-    that reads the key file; the settings file holds the command, not the key, and denies the
-    audit any read of the key's directory.
+    The run gets only host basics, its own Claude Code configuration directory, so the CLI does
+    not use the user's Claude login, and the provider's base URL. Every model alias names the
+    model, so no internal call asks for another one. The key reaches the CLI only through an
+    `apiKeyHelper` that reads the key file: the environment holds no key, and the settings file
+    holds the command, not the key.
+
+    Nothing here keeps the audit from reading the key file. The audit runs as the same user with
+    the Bash tool and no sandbox (see `claude_command`), so a shell command can read it. The deny
+    rules below cover Claude Code's Read and Edit file tools and the file commands it recognizes
+    in a Bash command; they do not cover a command that reads without naming the file, or a script
+    that opens it. The Edit rule adds nothing, because the audit disallows the editing tools. The
+    paths also begin with a single `/`, which Claude Code documents as anchored at the settings
+    file's directory, not at the filesystem root, so the rules may match nothing (not tested
+    against a live run). The audit is limited by the prompt's instruction and by the check of its
+    tool calls afterwards, which sees only paths written in full.
     """
     config_dir.mkdir(parents=True, exist_ok=True)
     config_dir.chmod(0o700)

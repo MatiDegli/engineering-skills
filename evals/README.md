@@ -75,9 +75,13 @@ change includes the current version as a control, with the same models and runs,
 launching audits once the finished ones reach that API-equivalent cost, which on a subscription
 measures quota rather than money. `--provider-url glm-5.3=URL --provider-key glm-5.3=KEY_FILE` runs
 a model from another provider with only host variables, its own Claude Code configuration directory
-so the user's Claude login is never used, every model alias set to that model, and the key read by
-an `apiKeyHelper` from a file of mode 600 that the audit may not read; a run whose key source is not
-that helper is marked. `summarize` scores every report,
+so the CLI does not use the user's Claude login, every model alias set to that model, and the key
+read by an `apiKeyHelper` from a file of mode 600; a run whose key source is not that helper is
+marked. That keeps the key out of the environment and the settings file. It does not hide the key
+from the audit, which runs as the same user with the Bash tool and no sandbox, so a shell command
+can read the file. The settings also deny `Read` and `Edit` on the key's directory, but those rules
+cover only Claude Code's file tools and the file commands it recognizes, and their paths may not
+match (see `provider_launch`). `summarize` scores every report,
 verifies every prepared repository, and writes `summary.md` with the tables that RESULTS.md records.
 `clean` removes only the directories that `plan` created. `run --stagger-seconds` (5 by default)
 spaces launches, so later audits read the prompt cache the first one wrote.
@@ -103,7 +107,9 @@ Each mechanism answers an incident in this repository's evaluations:
 Each run also has a time limit and its own process group, which is stopped as a whole when the limit
 passes or when the runner receives SIGTERM or SIGINT; the runner then starts no other audit, logs the
 stop, and exits with 128 plus the signal number. `summarize` lists home paths that tool calls name
-outside the run and new temporary entries that a stream mentions.
+outside the run and new temporary entries that a stream mentions. Nothing confines a run to its
+paths: it uses the Bash tool as the user, with no sandbox, so the prompt's instruction not to read
+other paths is not enforced, and the listing misses a path that a command builds instead of naming.
 
 ## Cases from a pinned repository
 
@@ -163,8 +169,9 @@ same cases, model, and harness with less of the skill:
 | Catalog only | `criteria.md` and the report's Findings, Priority actions, and Coverage format, without the procedure or the guides | `score` |
 | Full skill | The skill | `score` |
 
-Start every agent in the prepared repository, where it cannot reach this repository, the skill, or
-`expected.json` unless its level provides them, and check its tool calls afterwards.
+Start every agent in the prepared repository, whose files hold none of this repository, the skill,
+or `expected.json`, and give it the skill or the catalog only as its level requires. An agent with a
+shell can still read other paths, so tell it not to and check its tool calls afterwards.
 
 A report without the skill has no criterion IDs, so score it by hand against `expected.json` with
 these rules, fixed before reading any report:
