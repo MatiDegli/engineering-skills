@@ -1760,6 +1760,12 @@ and run 92 left Python bytecode in orders-service.
 | No more citations outside a case file | 0 | 0 | yes |
 | The maintainer's choice in a blind comparison | | | pending |
 
+
+Guidance read, measured afterwards from the streams of runs 87 and 90: each full-skill audit opened
+5,741 to 8,739 words of the skill (median 6,147), out of 11,775 in all of its files; `SKILL.md` and
+`criteria.md` alone hold 4,861. Files opened with the Read tool or named in a shell command count
+whole, so an audit that read part of a file counts it in full.
+
 Report SHA-256 hashes, as printed by the summary:
 
 - python-service run 87: `74997bbb41af39939efbf8d42059a8a0cd5cd74435534739966a3055f4afc325`
