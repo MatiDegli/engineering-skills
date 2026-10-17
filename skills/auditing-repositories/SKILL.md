@@ -85,11 +85,11 @@ Copy this checklist into your working notes and complete every step:
    result. Claims without measurements are a `PERF-01` gap. Do not infer scalability from reading
    code; state what to measure instead, following
    [architecture.md](references/architecture.md#verifiable-optimization).
-8. **Report.** Write the report in the format below, then run the self-check. When a `high` or
-   `medium` finding rests on a premise you did not verify and that could change the finding or its
-   priority, list it under Deeper checks instead of exploring further: for example, that no gate
-   outside CI checks changes before they reach the default branch. If you can ask the user, offer
-   to run those checks after the report.
+8. **Report.** Write the report in the format below, then run the self-check. When a `high`
+   finding rests on a premise you did not verify and that could change it or its priority, list it
+   under Deeper checks instead of exploring further: for example, that no gate outside CI checks
+   changes before they reach the default branch. If you can ask the user, offer to run those checks
+   after the report.
 
 ## Large repositories
 
@@ -161,9 +161,8 @@ Up to five actions, each naming the IDs of the findings it closes, with scope, a
 and timing: now, before release, or when the need arises.
 
 ## Deeper checks
-Up to five, each naming a finding's ID, the premise you did not verify, how the finding would
-change if it is false, and how to check it, with a rough cost. Write "none" when no premise could
-change a `high` or `medium` finding.
+Up to three, one line each: a `high` finding's ID, the premise you did not verify, and the check
+that would settle it. Write "none" when no premise could change a `high` finding.
 
 ## Coverage
 - meets: REPO-01, REPO-03
@@ -198,8 +197,8 @@ Self-check before answering:
 - Every `high` finding's evidence starts with `Reproduced:` or `Inferred:`.
 - Every `path:line` points to a line you read that holds what the finding states.
 - Every claim that something is missing comes from a search, and every count names its command.
-- Each Deeper checks entry names a `high` or `medium` finding whose unverified premise could
-  change it; there are at most five.
+- Each Deeper checks entry names a `high` finding whose unverified premise could change it; there
+  are at most three.
 - Every scratch directory you created is deleted and named in Context.
 - `git status --short --ignored` shows the same output as at the start.
 - The report shows secret-like values only in masked form, including values that look fake.
