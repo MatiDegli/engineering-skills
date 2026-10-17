@@ -52,10 +52,30 @@ these lines compare reports and do not change the exit code.
 Cases contain intentional defects. Do not fix them, deploy them, or run their code outside a
 disposable environment; some tests call external hosts.
 
+## Cases from a pinned repository
+
+A case directory may hold `source.json` and `seed/` instead of `repo/`, to test an audit on a
+repository too large to read in full. `prepare` then clones the pinned commit of the local
+repository that `source.json` names, writes each file under `seed/` at the same path, and removes
+each path in its `remove` list:
+
+```json
+{"repository": "~/Projects/example", "commit": "<full 40-character SHA>", "remove": ["docs/backup.md"]}
+```
+
+Each change lands in the last commit that changed its path, and a new file in the last commit that
+changed a file in its directory, so no added commit points at the seeds. The clone keeps one branch
+and no remote, reflog, or unreachable objects, and the source repository is only read.
+
+Such a case can live outside this repository: pass its directory path wherever a command takes a
+case name, as in `python3 -m tools.evals prepare ~/cases/large /tmp/audit-large`. `score` and
+`check` verify citations against a fresh preparation, which takes longer for a long history.
+
 ## Recording results
 
 Add each run to [RESULTS.md](RESULTS.md): date, revision of this repository, agent and model, case,
-score output, and notes. Run every case after changing the skill, the criteria, or a case, and
+score output, and notes. For a case outside this repository, record its scores and report hashes
+but not its reports or files. Run every case after changing the skill, the criteria, or a case, and
 compare with the previous results. Results from one agent or model do not transfer to another.
 
 ## Baselines
