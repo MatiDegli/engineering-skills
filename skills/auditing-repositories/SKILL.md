@@ -61,7 +61,9 @@ Copy this checklist into your working notes and complete every step:
 4. **Behavior.** Before walking the catalog, read the main code paths as their users would exercise
    them. Look for inputs at the limits, paths that should agree but answer differently, silent changes
    to data, errors that leave partial state, and invariants the documentation states. Report each
-   defect under the closest criterion, such as TEST-01, ARCH-02, ARCH-05, or REPO-06.
+   defect under the closest criterion, such as TEST-01, ARCH-02, ARCH-05, or REPO-06. Behavior that
+   the documentation describes and a test pins is a design choice, not a defect: report it only if it
+   contradicts other documentation or puts users at risk.
 5. **Criteria.** Open [criteria.md](references/criteria.md) and decide applicability for every core
    ID and for each area in its areas table. Open an area's criteria file only when the area applies;
    otherwise close the area in Coverage with its wildcard. For each applicable criterion, collect
