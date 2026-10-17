@@ -27,6 +27,8 @@ or repeated, the report uses an unknown ID or status, or a high finding's eviden
 reproduced or inferred. It also exits with 1 when the report contains a string listed in
 `must_not_contain`, such as a seeded secret, or cites a line outside a case file. Run
 `python3 -m tools.evals check <report> <case>` for these last two checks on a report without IDs.
+Both commands also list citations whose quoted code sits on other lines of the cited file; that
+list is a pointer for review and does not change the exit code.
 
 After an audit, `python3 -m tools.evals verify <case> <destination>` checks that the prepared
 repository is unchanged: the same revision as a fresh preparation, and no modified, untracked, or

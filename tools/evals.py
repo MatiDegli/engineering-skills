@@ -192,6 +192,62 @@ def bad_citations(text: str, repo: Path) -> list[str]:
     return sorted(problems)
 
 
+def quoted_code(text: str, start: int, end: int) -> str | None:
+    """Return the code a citation quotes, within its table cell and sentence, if any.
+
+    A citation in parentheses backs the code span right before them, as in `x = 1` (`a.py:3`). Any
+    other citation backs the first code span after it when a few words, not a list separator,
+    separate them, as in `a.py:3` sets `x = 1`, and that span carries no citation of its own. Only
+    spans of six or more characters that hold more than a name or path count as quoted code.
+    """
+    line_start, line_end = text.rfind("\n", 0, start) + 1, text.find("\n", end) % (len(text) + 1)
+    before = text[line_start:start].removesuffix("`").rstrip()
+    rest = text[end:line_end].removeprefix("`")
+    if before.endswith("(") or rest.startswith(")"):
+        preceding = re.search(r"`([^`]+)`\s*\($", before)
+        span = preceding[1] if preceding else None
+    else:
+        following = re.match(r"([^`|]{0,15})`([^`]+)`", rest)
+        gap = following[1].strip() if following else ""
+        own = following and re.match(r"\s*\(?\s*`?(?:" + CITATION.pattern + r"|:\d+)", rest[following.end() :])
+        listed = gap[:1] in ",;" or gap in ("and", "or") or not re.search(r"[A-Za-z:]", gap)
+        span = following[2] if following and not own and not listed and ":" not in gap[1:] else None
+    if span is None or len(span) < 6 or not re.search(r"[^\w./-]", span) or CITATION.fullmatch(span):
+        return None
+    return " ".join(span.replace("\\|", "|").split())
+
+
+def misplaced_citations(text: str, repo: Path) -> list[str]:
+    """Return citations whose quoted code occurs in the cited file only on other lines.
+
+    This catches citations of the wrong line, which `bad_citations` cannot. A citation without a
+    quoted neighbor that occurs in the file is not checked.
+    """
+    files = {
+        path.relative_to(repo).as_posix(): path
+        for path in repo.rglob("*")
+        if path.is_file() and ".git" not in path.relative_to(repo).parts
+    }
+    problems = set()
+    for match in CITATION.finditer(text):
+        path, lines = match.groups()
+        matches = [path] if path in files else [f for f in files if f.endswith("/" + path)]
+        if len(matches) != 1:
+            continue
+        snippet = quoted_code(text, match.start(), match.end())
+        if snippet is None:
+            continue
+        content = files[matches[0]].read_text(encoding="utf-8", errors="replace").splitlines()
+        found = [n for n, line in enumerate(content, 1) if snippet in " ".join(line.split())]
+        cited = set()
+        for part in re.split(r",\s?", lines):
+            first, _, last = part.replace("–", "-").partition("-")
+            cited.update(range(int(first), int(last or first) + 1))
+        if found and not cited & set(found):
+            problems.add(f"{path}:{lines} (quoted code is on line {found[0]})")
+    return sorted(problems)
+
+
 def check_text(text: str, case: Path, expected: dict) -> dict:
     """Checks that apply to any report, with or without criterion IDs."""
     return {"leaked": leaked(text, expected), "bad_citations": bad_citations(text, case / "repo")}
@@ -326,6 +382,8 @@ def main() -> int:
         print(f"report sha256: {hashlib.sha256(arguments.report.read_bytes()).hexdigest()}")
         for key, values in result.items():
             print(f"{key}: {', '.join(values) or 'none'}")
+        misplaced = misplaced_citations(arguments.report.read_text(encoding="utf-8"), case / "repo")
+        print(f"misplaced citations (not a failure): {', '.join(misplaced) or 'none'}")
         return int(any(result.values()))
     expected, result = score_report(arguments.report, case)
     text = arguments.report.read_text(encoding="utf-8")
@@ -335,6 +393,9 @@ def main() -> int:
     placement = priority_placement(text, expected)
     if placement:
         print(placement)
+    misplaced = misplaced_citations(text, case / "repo")
+    if misplaced:
+        print(f"misplaced citations (not a failure): {', '.join(misplaced)}")
     for key, values in result.items():
         if key != "found" and values:
             print(f"{key}: {', '.join(values)}")

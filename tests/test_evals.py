@@ -14,6 +14,7 @@ from tools.evals import (
     compare,
     finding_rows,
     leaked,
+    misplaced_citations,
     prepare,
     priority_actions,
     priority_placement,
@@ -156,6 +157,20 @@ class TextCheckTests(unittest.TestCase):
             )
             self.assertEqual(
                 bad_citations(text, repo), ["app.py:4 (3 lines)", "pkg/app.py:2, 5 (3 lines)"]
+            )
+
+    def test_quoted_code_on_other_lines_marks_a_misplaced_citation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            (repo / "ci.yml").write_text("on: push\nrun: pip install x\nrun: pytest || true\n")
+            text = (
+                "| QUAL-03 | `ci.yml:2` runs `pytest \\|\\| true`, and `run: pip install x` (`ci.yml:2`) "
+                "installs. `pip install x` (`ci.yml:3`) is wrong too. Scope: `ci.yml:1`, `run: pytest || true`. "
+                "`ci.yml:3` defines `run_tests` |"
+            )
+            self.assertEqual(
+                misplaced_citations(text, repo),
+                ["ci.yml:2 (quoted code is on line 3)", "ci.yml:3 (quoted code is on line 2)"],
             )
 
 
