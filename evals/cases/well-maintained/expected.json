@@ -24,5 +24,10 @@
     "OPS-02": "no persistent data",
     "ARCH-05": "errors are raised to the caller; there are no broad catches",
     "STRUCT-02": "fewer than 20 files in every directory"
-  }
+  },
+  "top_priorities": [
+    "CI-06",
+    "QUAL-02"
+  ],
+  "max_high": 0
 }

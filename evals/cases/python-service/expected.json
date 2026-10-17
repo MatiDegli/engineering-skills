@@ -27,5 +27,10 @@
   },
   "must_not_contain": [
     "fixture-password-123"
+  ],
+  "top_priorities": [
+    "SEC-05",
+    "QUAL-03",
+    "SEC-04"
   ]
 }

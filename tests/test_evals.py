@@ -15,6 +15,8 @@ from tools.evals import (
     finding_rows,
     leaked,
     prepare,
+    priority_actions,
+    priority_placement,
     priority_summary,
     report_statuses,
     score,
@@ -105,6 +107,24 @@ class PriorityTests(unittest.TestCase):
             "priorities: high 2, medium 0, low 1; high reproduced 1, inferred 0",
         )
 
+    def test_actions_are_top_level_items_until_the_next_section(self):
+        report = PRIORITIZED + (
+            "\n## Priority actions\n1. **Now:** rotate (SEC-05).\n   - Scope: `settings.py`, see CI-02\n"
+            "### Detail\n2. Add tests (TEST-02)\n- Later: nothing\n\n## Coverage\n1. CI-09 is not an action\n"
+        )
+        self.assertEqual(priority_actions(report), [["SEC-05", "CI-02"], ["TEST-02"], []])
+        self.assertEqual(priority_actions(PRIORITIZED), [])
+
+    def test_placement_reports_positions_and_extra_high_findings(self):
+        report = PRIORITIZED + "\n## Priority actions\n1. Pin (CI-02)\n2. Rotate (SEC-05)\n"
+        expected = {"top_priorities": ["SEC-05", "TEST-02"], "max_high": 1}
+        self.assertEqual(
+            priority_placement(report, expected),
+            "top priorities by action (2 actions): SEC-05 2, TEST-02 -; 1 of 2 in the first five; "
+            "high outside them: 1; 2 high against a case limit of 1",
+        )
+        self.assertIsNone(priority_placement(report, {}))
+
     def test_compare_reports_overlap_and_priority_differences(self):
         second = PRIORITIZED.replace("| CI-02 | `partial` | high", "| CI-02 | partial | medium")
         second = second.replace("| TEST-02 | pending-implementation", "| OPS-02 | partial")
@@ -156,6 +176,8 @@ class CaseTests(unittest.TestCase):
                 self.assertTrue(must_find)
                 self.assertLessEqual(must_find | must_not, catalog)
                 self.assertFalse(must_find & must_not)
+                self.assertLessEqual(set(expected.get("top_priorities", [])), must_find)
+                self.assertGreaterEqual(expected.get("max_high", 0), 0)
                 self.assertTrue((expected_path.parent / "repo").is_dir())
 
     def test_prepare_commits_a_copy_and_refuses_existing_destinations(self):

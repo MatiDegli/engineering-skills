@@ -22,5 +22,10 @@
     "SEC-09": "no model or LLM features",
     "CI-09": "no merge queue",
     "TOOL-01": "no tools, skills, or MCP servers configured"
-  }
+  },
+  "top_priorities": [
+    "CI-10",
+    "SEC-02",
+    "DEL-03"
+  ]
 }

@@ -23,6 +23,8 @@ CRITERION = re.compile(r"\b[A-Z]+-\d{2}\b")
 COVERAGE_LINE = re.compile(r"[-*]\s*(meets|not-applicable)\s*:\s*(.*)", re.I)
 EVIDENCE_MARK = re.compile(r"[*_`\s]*(reproduced|inferred)\s*:", re.I)
 LEADING_IDS = re.compile(r"[-*]\s*`?((?:[A-Z]+-\d{2}`?\s*,\s*`?)*[A-Z]+-\d{2})")
+ACTIONS_HEADING = re.compile(r"^(#{1,6})\s*Priority actions\b", re.I | re.M)
+ACTION_ITEM = re.compile(r"(?:\d+[.)]|[-*])\s")
 CITATION = re.compile(r"(?<![\w./-])((?:[\w.-]+/)*[\w.-]+):(\d+(?:[-–]\d+)?(?:,\s?\d+(?:[-–]\d+)?)*)")
 FIXED_IDENTITY = {
     "GIT_AUTHOR_NAME": "Evaluation Fixture",
@@ -220,6 +222,45 @@ def priority_summary(text: str) -> str:
     )
 
 
+def priority_actions(text: str) -> list[list[str]]:
+    """Return the criterion IDs named by each top-level item of the Priority actions section."""
+    heading = ACTIONS_HEADING.search(text)
+    if not heading:
+        return []
+    actions: list[list[str]] = []
+    for line in text[heading.end() :].splitlines()[1:]:
+        if re.match(rf"#{{1,{len(heading[1])}}}\s", line):
+            break
+        if ACTION_ITEM.match(line):
+            actions.append([])
+        if actions:
+            actions[-1] += [i for i in CRITERION.findall(line) if i not in actions[-1]]
+    return actions
+
+
+def priority_placement(text: str, expected: dict) -> str | None:
+    """Describe where the report's actions place the case's top priorities, and its high findings.
+
+    These are comparisons between reports, not failures: the maintainer fixes `top_priorities`, and
+    optionally `max_high`, before reading any report.
+    """
+    top = expected.get("top_priorities")
+    if not top:
+        return None
+    actions = priority_actions(text)
+    positions = [next((n for n, ids in enumerate(actions, 1) if i in ids), None) for i in top]
+    high = [i for i, row in finding_rows(text).items() if row["priority"] == "high"]
+    placed = ", ".join(f"{i} {p or '-'}" for i, p in zip(top, positions))
+    line = (
+        f"top priorities by action ({len(actions)} actions): {placed}; "
+        f"{sum(p is not None and p <= 5 for p in positions)} of {len(top)} in the first five; "
+        f"high outside them: {len(set(high) - set(top))}"
+    )
+    if len(high) > expected.get("max_high", len(high)):
+        line += f"; {len(high)} high against a case limit of {expected['max_high']}"
+    return line
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -263,6 +304,9 @@ def main() -> int:
     print(f"Case {arguments.case}: found {len(result['found'])} of {len(expected['must_find'])} seeded gaps.")
     print(f"report sha256: {hashlib.sha256(arguments.report.read_bytes()).hexdigest()}")
     print(priority_summary(text))
+    placement = priority_placement(text, expected)
+    if placement:
+        print(placement)
     for key, values in result.items():
         if key != "found" and values:
             print(f"{key}: {', '.join(values)}")
