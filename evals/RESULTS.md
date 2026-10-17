@@ -1335,3 +1335,72 @@ Notes:
 - Every report listed one to five Deeper checks, 3.3 on average. Those read name a concrete premise,
   its effect, and a check, such as asking the owner whether a password is a placeholder or reading
   branch protection once a remote exists.
+
+## 2026-10-17 — Runs 63 to 65 (a baseline measured again)
+
+- Run 63 repeats `8b2a2c6`, the skill of runs 47 to 50, once per case; runs 64 and 65 test the
+  candidate `63b733b`, which reads several files at once with per-file line numbers and keeps the
+  rules and Deeper checks of `c89e1aa`. Sonnet only, from 16:20 to 16:28 UTC; runs 48 and 49 ran
+  from 12:07. The agent is as in runs 59 to 62. A second repetition of `8b2a2c6` was planned but
+  not run.
+- Decision rule, fixed before the runs: no cited line outside a file, and mean cost at most 10% above
+  run 63.
+
+| Case | Run | Model | Seeded gaps found | Passes the scorer | Top priorities in first five | Problems |
+| --- | --- | --- | --- | --- | --- | --- |
+| python-service | 63 | Sonnet 5.5 | 16 of 16 | no | 3 of 3 | unmarked high 1 |
+| python-service | 64 | Sonnet 5.5 | 16 of 16 | yes | 3 of 3 | — |
+| python-service | 65 | Sonnet 5.5 | 16 of 16 | yes | 3 of 3 | — |
+| typescript-cli | 63 | Sonnet 5.5 | 13 of 13 | no | 3 of 3 | duplicated 9 |
+| typescript-cli | 64 | Sonnet 5.5 | 13 of 13 | yes | 3 of 3 | — |
+| typescript-cli | 65 | Sonnet 5.5 | 13 of 13 | yes | 3 of 3 | — |
+| well-maintained | 63 | Sonnet 5.5 | 2 of 2 | yes | 2 of 2 | — |
+| well-maintained | 64 | Sonnet 5.5 | 2 of 2 | yes | 2 of 2 | — |
+| well-maintained | 65 | Sonnet 5.5 | 2 of 2 | yes | 2 of 2 | — |
+| agent-workflow | 63 | Sonnet 5.5 | 6 of 6 | yes | 3 of 3 | — |
+| agent-workflow | 64 | Sonnet 5.5 | 6 of 6 | yes | 3 of 3 | — |
+| agent-workflow | 65 | Sonnet 5.5 | 6 of 6 | yes | 3 of 3 | — |
+| orders-service | 63 | Sonnet 5.5 | 9 of 9 | yes | 3 of 3 | — |
+| orders-service | 64 | Sonnet 5.5 | 9 of 9 | no | 2 of 3 | uncovered 6 |
+| orders-service | 65 | Sonnet 5.5 | 9 of 9 | yes | 2 of 3 | — |
+| go-ratelimiter | 63 | Sonnet 5.5 | 4 of 4 | yes | — | — |
+| go-ratelimiter | 64 | Sonnet 5.5 | 4 of 4 | yes | — | — |
+| go-ratelimiter | 65 | Sonnet 5.5 | 4 of 4 | no | — | uncovered 1 |
+
+| Model | Seeded gaps found | Reports that pass the scorer | Top priorities in first five | Bad citations | Misplaced citations | High findings | Mean minutes | Mean USD | Mean tool calls | Mean input tokens | Mean output tokens |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Sonnet 5.5, run 63 | 50 of 50 | 4 of 6 | 14 of 14 | 0 | 1 | 16 | 1.7 | 0.30 | 10 | 280,367 | 14,103 |
+| Sonnet 5.5, runs 64 and 65 | 100 of 100 | 10 of 12 | 26 of 28 | 0 | 0 | 28 | 1.9 | 0.34 | 9 | 285,442 | 16,323 |
+
+Report SHA-256 hashes, as printed by the summary:
+
+- python-service run 63: `fe96f0d2c43f58ed8d5c1922f57aee8b27c338f895fdc591ade0b680e424dffd`
+- python-service run 64: `615f0734a956197ca692a30e17ff69088d3236a40bbb60a20d50562625bc60d7`
+- python-service run 65: `448f3667fba85a97babbbbcaf05b99c2f77456a14cbf0966b19edb7836be8092`
+- typescript-cli run 63: `50b24d814742d42763f1e0cb70cc2d591a792a612ff3414bd418be333bbaf821`
+- typescript-cli run 64: `32c6569c863a903687d2b96e97504b6739e1850486d0af2222beb51b735a011e`
+- typescript-cli run 65: `af664e44655076546125e43786592b6de0bd39cfaadfe961dfe65b158b95d74d`
+- well-maintained run 63: `f5e31636be2d09f5e1dfc82747a7abde7a5e5387a4870ef7ee24dd04783a1634`
+- well-maintained run 64: `37725a000622e657198bbe64394ab62429e653a65ab886900da7b5ef3dce6e33`
+- well-maintained run 65: `35cb2e7baf234de5bc3953aa73b42b29301741142ddd31c89312ff2e9a6be4c7`
+- agent-workflow run 63: `69474cf1ac0ad8d5140427fab79c04157646e1afc7570177f7920b8906b326d7`
+- agent-workflow run 64: `060ded6a313d38a15dda85522c5fe6a4bdd825b0171f9681a0eb9046ae0b4b33`
+- agent-workflow run 65: `d47e64eabdbe3412f555700e0215450408f32af1cb33d8886e47f0333e62d4eb`
+- orders-service run 63: `fe9e1749ae3997a81f46fab08d9c7ba494b594eb1a57c16ce00508119ad4b124`
+- orders-service run 64: `4c8cfef5f5f55381c111953f7c8e616d068e930a6dca190598896311f1c40b2d`
+- orders-service run 65: `0538647fc6bc4ec345ca6c19bf06edcc38bd6fa61842b6927f6ab70ecada9f38`
+- go-ratelimiter run 63: `508ed19c7fdb13ec20c0825818feca65390463ca3f3b08d8a29159207943f203`
+- go-ratelimiter run 64: `09622064d5565d9c356bfb36ec54a5fea0996294af732aef1ce49f59e882dbce`
+- go-ratelimiter run 65: `31ee8ad708a124374e0d30045b51b89e0dec594550c680b5ee13c84ccb9aa492`
+
+Notes:
+
+- The same skill cost USD 0.30 in run 63 and USD 0.21 in runs 48 and 49, with 14,103 output tokens
+  against 8,498 and no cited line outside a file against six. The service changed between the
+  morning and the afternoon. The 43% rise that runs 59 to 62 attributed to numbering each file is
+  that change: `5d2a25f` cost USD 0.30 at 15:22, as `8b2a2c6` did at 16:20.
+- The candidate cited no line outside a file or on a wrong line, and cost 13% more than run 63, with
+  16% more output tokens and one tool call fewer. Against one repetition of the baseline, whose
+  runs differ by about 10%, that is at the limit rather than clearly over it.
+- Comparisons with rounds run hours apart are not reliable. A round that tests a change needs a
+  control arm run alongside it.
