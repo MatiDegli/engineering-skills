@@ -635,3 +635,75 @@ Notes:
 - Follow-ups: mask any secret-like value, even one that looks fake; run checks so that ignored files
   stay as they were; decide separately whether the scorer should accept emphasis on status labels;
   then run another round.
+
+## 2026-10-17 — Runs 29 to 32 (masking, ignored files, emphasis)
+
+- Skill `1a2df3a`, case repositories `6c22cf9`, expectations `e329106`, scored with `15b7a15`. The
+  skill was exported from `15b7a15` outside this repository.
+- Agent and prompt as in runs 25 to 28: `modelUsage` reported `claude-opus-5-5` for runs 29 and 30
+  and `claude-sonnet-5-5` for runs 31 and 32. Every tool call stayed in the allowed paths, `verify`
+  found all 12 prepared repositories unchanged, and no copy was left under `/tmp`.
+- Prepared revisions: python-service `c67d66d`, typescript-cli `7f27a08`, well-maintained `5780341`.
+
+| Case | Run | Model | Seeded gaps found | False flags | IDs the scorer read | Findings | Meets | Not applicable | High (reproduced) | Top priorities in first five | High outside them | Other problems |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| python-service | 29 | Opus | 16 of 16 | none | 87 of 87 | 35 | 4 | 48 | 5 (1) | 3 of 3 | 2 | — |
+| python-service | 30 | Opus | 16 of 16 | none | 39 of 87 (grouped bullets) | 36 | 3 | 48 | 4 (2) | 3 of 3 | 1 | — |
+| python-service | 31 | Sonnet | 16 of 16 | none | 84 of 87 (no QUAL-04, ARCH-01, ARCH-06) | 42 | 0 | 42 | 6 (0) | 3 of 3 | 3 | — |
+| python-service | 32 | Sonnet | 16 of 16 | none | 86 of 87 (no REPO-03) | 39 | 0 | 47 | 5 (0) | 3 of 3 | 2 | — |
+| typescript-cli | 29 | Opus | 13 of 13 | none | 87 of 87 | 40 | 6 | 41 | 6 (2) | 3 of 3 | 3 | — |
+| typescript-cli | 30 | Opus | 13 of 13 | none | 87 of 87 | 40 | 7 | 40 | 6 (3) | 3 of 3 | 3 | — |
+| typescript-cli | 31 | Sonnet | 13 of 13 | none | 87 of 87 | 37 | 5 | 45 | 4 (2) | 3 of 3 | 2 | — |
+| typescript-cli | 32 | Sonnet | 13 of 13 | none | 87 of 87 | 36 | 6 | 45 | 4 (1) | 3 of 3 | 1 | — |
+| well-maintained | 29 | Opus | 2 of 2 | none | 87 of 87 | 7 | 27 | 53 | 0 | 2 of 2 | 0 | — |
+| well-maintained | 30 | Opus | 2 of 2 | none | 87 of 87 | 6 | 30 | 51 | 0 | 2 of 2 | 0 | — |
+| well-maintained | 31 | Sonnet | 2 of 2 | DEP-01 | 52 of 87 (several IDs per bullet) | 5 | 22 | 60 | 0 | 2 of 2 | 0 | — |
+| well-maintained | 32 | Sonnet | 2 of 2 | none | 87 of 87 | 6 | 25 | 56 | 0 | 2 of 2 | 0 | — |
+
+The Findings, Meets, and Not applicable columns and the agreement below use a broader reading of
+indented Coverage bullets: a leading label such as "Agents and tooling:" is dropped, reasons in
+parentheses are removed, and every remaining ID counts. The IDs column is what the scorer reads.
+
+Report SHA-256 hashes, as printed by the scorer:
+
+- python-service run 29: `3c37725ed6cde3954fccbb407ed94f3b43d18e288cf23157c003bd88d0cb1e01`
+- python-service run 30: `d499ddc6021aaf3b0d499ca150e3381e9970ea790a917abcb50ce7dbb4b1a2f6`
+- python-service run 31: `666b59ec0738d93fd1343a896444d0aa402599906707fb70c08bdd1713633627`
+- python-service run 32: `67f5478ea95dffaafdd0797297e4bd0650d3d639d524690233d3f9402d054d54`
+- typescript-cli run 29: `0cc642264b78cff8edb8416f2e36f9f79476cc641ed0ec0204c6a0b4975f3599`
+- typescript-cli run 30: `d9270db618763f81f2ffe8b64b1abcab054a585283956bdf7899c18cd6a9f6d7`
+- typescript-cli run 31: `76ef583eb0288cb8f9e8ca6098ac52c71351edebc666555ee10f93927af42b87`
+- typescript-cli run 32: `35bc9a63cc139e7aaab3cc93395c05e58ac7afae86bc695d711a37843e7ebbbe`
+- well-maintained run 29: `5d88d163000019f586135a94e2314834331f48ed19d127ced818834d31d49b19`
+- well-maintained run 30: `434d270d102e9ba177031bd2009fe4db0d3d01b47aea367ba1633d71641a128e`
+- well-maintained run 31: `471a6e411af5eecc2bce7450642f221b442a402bd13bfacf231b033ab5ef2aa0`
+- well-maintained run 32: `72488414d1b0dba947e803d2c8a2064b47772e68d77a00cc8801f29014e7729d`
+
+Agreement, summed over the three cases, with the broader reading:
+
+| Runs | Flagged overlap | Status agreement | Priority agreement |
+| --- | --- | --- | --- |
+| 29 and 30 (Opus with Opus) | 78 of 86 | 242 of 261 | 71 of 78 |
+| 31 and 32 (Sonnet with Sonnet) | 72 of 93 | 218 of 257 | 60 of 72 |
+| 29 and 31 (Opus with Sonnet) | 67 of 99 | 212 of 258 | 49 of 67 |
+
+Mean time and cost reported by the CLI: Opus 2.2 minutes and USD 0.58; Sonnet 0.8 minutes and
+USD 0.20.
+
+Notes:
+
+- Both fixes worked: no report copied the seeded password (one Sonnet report did in runs 25 to
+  28), and no audit left ignored files in its repository (both Sonnet control runs did).
+- Every run again found every seeded gap and placed the top priorities in its first five actions,
+  and no control case audit flagged a new criterion listed in its `must_not_flag`.
+- Two reports used Coverage layouts the scorer does not read: run 30 groups not-applicable IDs
+  under area labels, and run 31 well-maintained puts several "ID (reason)" entries in one indented
+  bullet. Read more broadly, both cover all 87 IDs. The scorer keeps counting only the IDs that open
+  an indented bullet, so that IDs inside reasons are not counted; the Coverage format, with
+  area-level lines, is planned for PR 3.
+- Sonnet omitted IDs in both python-service reports: QUAL-04, ARCH-01, and ARCH-06 in run 31, and
+  REPO-03 in run 32, which run 28 also omitted. Opus covered every ID in substance.
+- Run 31 well-maintained flagged DEP-01 for the minor-version runtime pin, as run 28 did. Sonnet
+  reads the criterion as asking for a patch pin; the expectation and Opus do not.
+- Scorer failures by model: Opus 1 of 6 (format only), Sonnet 3 of 6 (two with missing IDs, one with
+  a false flag and an unread layout).
