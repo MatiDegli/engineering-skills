@@ -53,8 +53,8 @@ same cases, model, and harness with less of the skill:
 
 | Level | The agent receives | Scoring |
 | --- | --- | --- |
-| No skill | A request to audit the repository and list its problems with evidence | By hand |
-| Catalog only | `criteria.md` and the report's Findings and Coverage format, without the procedure or the guides | `score` |
+| No skill | A request to audit the repository, list its problems with evidence, and give up to five priority actions | By hand |
+| Catalog only | `criteria.md` and the report's Findings, Priority actions, and Coverage format, without the procedure or the guides | `score` |
 | Full skill | The skill | `score` |
 
 Start every agent in the prepared repository, where it cannot reach this repository, the skill, or
@@ -67,5 +67,16 @@ these rules, fixed before reading any report:
   location or, for a missing control, the same missing control. A broader statement that would also
   cover it, such as "CI is weak", does not count.
 - A false flag is a claim that contradicts the reason given for a `must_not_flag` entry.
+- A priority action places a top priority when it names that gap's defect by the same rule.
 - Record, for each seeded gap, the report text that matched it or "missed", so that someone else
   can review the scoring.
+
+The full skill is judged better than the catalog alone, by criteria the maintainer approved on
+2026-10-17 before the comparison, when over both runs of every case it:
+
+- places the top priorities in its first five actions at least as often;
+- contains no `must_not_contain` string;
+- marks fewer high findings outside the top priorities;
+- covers every ID at least as completely;
+- has no more citations outside a case file;
+- and is the maintainer's choice in a blind comparison of reports.
