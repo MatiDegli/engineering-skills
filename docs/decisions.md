@@ -1,5 +1,28 @@
 # Decisions
 
+## 2026-10-17 — No executable code in the audit skill
+
+`auditing-repositories` stays Markdown only. Evaluations showed that mechanisms enforce rules
+better than written instructions, and the maintainer's projects use guards and hooks for that.
+Shipping such a mechanism inside the audit skill was rejected: it would tie the skill to an
+interpreter and to each agent's hook system, against the tool independence and portable
+frontmatter decisions, and a guard that filters commands is high-trust code that every user would
+have to review. The audit instead checks that the audited repository has working mechanisms
+(QUAL-10, AGENT-02 to AGENT-05). Reference mechanisms may come with a later work skill, such as
+`coordinating-agents`, only as an opt-in part with tests, a threat model, and a documented failure
+behavior, after its own decision. Costly controls are also gated by applicability, so that small or
+low-risk repositories are not asked for them.
+
+## 2026-10-17 — Lessons from the maintainer's projects
+
+The agent-assisted development guide and the criteria added for v0.2 on incidents, ownership, fix
+and flaky tests, mutation triage, processes and waits, error text, test secrets, release age,
+guards, debt, and stacked commits come from lessons recorded in the maintainer's projects, where a
+coordinating agent delegates to many coding agents. Those projects are private, so this repository
+neither links nor quotes them; each lesson appears as a tool-independent check, explained in a
+guide with public sources checked on 2026-10-17. Operations, delivery, and personal data criteria
+come from the v0.2 plan's list of missing areas.
+
 ## 2026-10-16 — One audit skill; work skills separate
 
 Skills are split by the job the agent is asked to do. `auditing-repositories` evaluates a
