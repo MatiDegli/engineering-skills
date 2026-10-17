@@ -1537,3 +1537,84 @@ Notes:
 - The maintainer accepted `63b733b` on 2026-10-17 as the control for later rounds with Sonnet and
   Haiku 5.5; Opus and the large case still have to confirm it. The control is a version, rerun
   beside each candidate, not these numbers.
+
+## 2026-10-17 — Runs 74 to 79 (Opus against the control)
+
+- Opus 5.5 compares the control `8b2a2c6` with the candidate `63b733b`: once per arm on each case
+  (runs 74 and 75), and twice per arm on a corrected large private case (runs 76 to 79), from 19:11
+  to 19:48 UTC with `377c806`, whose audits have no GitHub CLI login.
+- The corrected case keeps the pinned commit and three seeds of runs 55 to 58, moves the realistic
+  key to the commit that added that line, replaces the SEC-10 seed with an API key written to a log
+  on a failed key check, and no longer expects AGENT-03 unflagged.
+- Run 76 used background helpers, and its last result only said that an earlier message held the
+  report; the runner saved that sentence. `86ba453` takes the last result with a Findings section,
+  and run 76's report was extracted again from its stream. No other saved stream was affected.
+- Decision rule, fixed before the runs: on the cases, as for runs 66 to 73, with one run per arm
+  only indicative for cost; on the large case, at least the control's gaps, no flag on CI-03,
+  CI-10, or DEP-01, no copied key, DEL-04, SEC-07, and TEST-09 below medium, and at most 20% more
+  cost and time.
+
+| Case | Run | Model | Seeded gaps found | Passes the scorer | Top priorities in first five | Problems |
+| --- | --- | --- | --- | --- | --- | --- |
+| python-service | 74 | Opus 5.5 @ 8b2a2c6 | 16 of 16 | yes | 3 of 3 | — |
+| python-service | 75 | Opus 5.5 @ 63b733b | 16 of 16 | yes | 3 of 3 | — |
+| typescript-cli | 74 | Opus 5.5 @ 8b2a2c6 | 13 of 13 | no | 3 of 3 | unmarked high 1 |
+| typescript-cli | 75 | Opus 5.5 @ 63b733b | 13 of 13 | yes | 3 of 3 | — |
+| well-maintained | 74 | Opus 5.5 @ 8b2a2c6 | 2 of 2 | yes | 2 of 2 | — |
+| well-maintained | 75 | Opus 5.5 @ 63b733b | 2 of 2 | yes | 2 of 2 | — |
+| agent-workflow | 74 | Opus 5.5 @ 8b2a2c6 | 6 of 6 | yes | 3 of 3 | — |
+| agent-workflow | 75 | Opus 5.5 @ 63b733b | 6 of 6 | no | 3 of 3 | uncovered 1 |
+| orders-service | 74 | Opus 5.5 @ 8b2a2c6 | 9 of 9 | yes | 2 of 3 | — |
+| orders-service | 75 | Opus 5.5 @ 63b733b | 9 of 9 | yes | 2 of 3 | — |
+| go-ratelimiter | 74 | Opus 5.5 @ 8b2a2c6 | 4 of 4 | yes | — | — |
+| go-ratelimiter | 75 | Opus 5.5 @ 63b733b | 4 of 4 | yes | — | — |
+| large-private | 76 | Opus 5.5 @ 8b2a2c6 | 7 of 10 (missed CI-11, SEC-02, SEC-11) | no | 1 of 1 | — |
+| large-private | 77 | Opus 5.5 @ 63b733b | 7 of 10 (missed CI-11, REPO-06, SEC-02) | no | 1 of 1 | uncovered 2 |
+| large-private | 78 | Opus 5.5 @ 8b2a2c6 | 8 of 10 (missed CI-11, SEC-02) | no | 1 of 1 | — |
+| large-private | 79 | Opus 5.5 @ 63b733b | 7 of 10 (missed ARCH-05, CI-11, SEC-02) | no | 1 of 1 | — |
+
+| Model | Seeded gaps found | Reports that pass the scorer | Top priorities in first five | Bad citations | Misplaced citations | High findings | Mean minutes | Mean USD | Mean tool calls | Mean input tokens | Mean output tokens |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Opus 5.5, cases, @ 8b2a2c6 | 50 of 50 | 5 of 6 | 13 of 14 | 0 | 0 | 21 | 3.7 | 0.80 | 11 | 410,591 | 20,628 |
+| Opus 5.5, cases, @ 63b733b | 50 of 50 | 5 of 6 | 13 of 14 | 0 | 0 | 16 | 4.1 | 0.94 | 12 | 498,918 | 23,856 |
+| Opus 5.5, large case, @ 8b2a2c6 | 15 of 20 | 0 of 2 | 2 of 2 | 0 | 1 | 3 | 6.8 | 8.85 | 197 | 17,179,139 | 110,992 |
+| Opus 5.5, large case, @ 63b733b | 14 of 20 | 0 of 2 | 2 of 2 | 0 | 0 | 1 | 8.1 | 7.53 | 176 | 14,119,562 | 95,204 |
+
+Report SHA-256 hashes, as printed by the summary:
+
+- python-service run 74: `f1955d1dd1acdf900e9e407acb2bfc33e02afe4b187587e1fa1831e577e1f092`
+- python-service run 75: `0670efd820fa750dfb1a94ac38ea6f48ffbe0255290b2d41bf5452afae5ac62a`
+- typescript-cli run 74: `4c1f334db0a424d70d08843a7aa4d026e9e4b73c959964b08602af9a9ae84a51`
+- typescript-cli run 75: `2a13b2aa215020c718579875527a447875f7a90353f43cd95ad1ccfa07ef70a5`
+- well-maintained run 74: `e191b71f046f7209d4ce2cbcc9e7e6abd14af8c037b3e8bf1a9df09c65cdf54a`
+- well-maintained run 75: `ec0824bad3db60d05124577d37fd2f099a6feb9571a0bca45f4b4687c01114fd`
+- agent-workflow run 74: `09c34bb7d5ac0a3ab42a4956801493fb7254e59ec39bced6242910e2dae7a7fc`
+- agent-workflow run 75: `24ba407b0ddaa9b45c6db5b9a4c2fcf9a5c00531038b585c63b49a10a274824a`
+- orders-service run 74: `942a62e71fb1b8a8ad7c816fc793c1472c79f903417d68ef0fbced3eeb98372b`
+- orders-service run 75: `5681704b572c7804cad7a88d7cabacb47cb3fd5c7c0f9a2219ce50646e55892d`
+- go-ratelimiter run 74: `415b71c3bc056df857d58b3090070908cf393238c6b3d449914975ef7f90b28c`
+- go-ratelimiter run 75: `af23609b9581034ece3b4b5dd7bc3cafbea04586b79dc3130f87262c3c9f1b21`
+- large-private run 76: `471321155f29edf628369e259e5c6eb357c96dc7413c45f40beed7719b791986`
+- large-private run 77: `23591e4c49f0a19481fa5c8f6a0384d59d542a695a2981f1e98b819e534d0c4f`
+- large-private run 78: `e86a840f63531d4997f5438bab7000fa81144bae575b71f1dcc4a4a7d27bcb0c`
+- large-private run 79: `e7d005abce01883fa1226e337f9819f1c7f2f4cb1e30b02ea78b17870028d9be`
+
+Notes:
+
+- On the cases, both arms found every seeded gap and cited no line outside a file. The candidate
+  marked fewer high findings, 16 against 21, and cost more in all six cases, 4% to 32% and 17% in
+  the mean: above the limit, and consistent across cases rather than noise.
+- On the large case, the candidate found 14 of 20 expected gaps against 15, cost 15% less, took 19%
+  longer, and used fewer tool calls. Neither arm flagged a criterion expected unflagged or copied the
+  key. Both candidate runs rated the project level 1 and left the distribution criteria below
+  medium; one control run rated it level 2. The candidate marked one high finding against three.
+- Every run missed CI-11 and the SEC-02 seed, so that seed does not separate the versions. The
+  candidate missed REPO-06 once and ARCH-05 once, which the control found; the control missed the
+  SEC-11 seed once.
+- Three runs flagged HIST-03 because the repository's commit-policy check pins exceptions to commit
+  SHAs and a tag that the rewritten history no longer has. That is a fault of the case, not of the
+  audits.
+- The candidate's Deeper checks name concrete premises, such as whether the clone matches the
+  hosted history and whether hosted runs passed, each with its check.
+- By the rule, the candidate regresses on cost on the cases with Opus and misses one more gap on the
+  large case, while costing less on the large case.
