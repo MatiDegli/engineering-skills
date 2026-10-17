@@ -1251,3 +1251,87 @@ Notes:
   logs of the user's own data, that is a defensible reading, so the seed does not test SEC-10.
 - No report copied the seeded token, and every prepared repository was unchanged afterwards. One
   Haiku run listed the global Node modules directory outside its repository.
+
+## 2026-10-17 — Runs 59 to 62 (which change raised the cost)
+
+- Two rounds with Sonnet only, twice per case, to attribute the cost rise of runs 51 to 54: runs 59
+  and 60 use `5d2a25f`, which only adds numbering each cited file on its own to the skill of runs 47
+  to 50; runs 61 and 62 use `c89e1aa`, which adds the distribution, absence, and count rules and
+  replaces the integration-path exploration with a Deeper checks section. Opus, Haiku, and the large
+  case wait for a stable candidate, as the maintainer decided.
+- Agent as in runs 51 to 58: Claude Code 2.1.299, `tools/claude_rounds.py`, user settings only,
+  hooks off, effort high. Every stream names `claude-sonnet-5-5`.
+
+| Case | Run | Model | Seeded gaps found | Passes the scorer | Top priorities in first five | Problems |
+| --- | --- | --- | --- | --- | --- | --- |
+| python-service | 59 | Sonnet 5.5 | 16 of 16 | yes | 3 of 3 | — |
+| python-service | 60 | Sonnet 5.5 | 16 of 16 | yes | 3 of 3 | — |
+| python-service | 61 | Sonnet 5.5 | 16 of 16 | yes | 3 of 3 | — |
+| python-service | 62 | Sonnet 5.5 | 16 of 16 | yes | 3 of 3 | — |
+| typescript-cli | 59 | Sonnet 5.5 | 13 of 13 | yes | 3 of 3 | — |
+| typescript-cli | 60 | Sonnet 5.5 | 13 of 13 | yes | 3 of 3 | — |
+| typescript-cli | 61 | Sonnet 5.5 | 13 of 13 | no | 3 of 3 | uncovered 1 |
+| typescript-cli | 62 | Sonnet 5.5 | 13 of 13 | no | 3 of 3 | duplicated 1 |
+| well-maintained | 59 | Sonnet 5.5 | 2 of 2 | yes | 2 of 2 | — |
+| well-maintained | 60 | Sonnet 5.5 | 2 of 2 | yes | 2 of 2 | — |
+| well-maintained | 61 | Sonnet 5.5 | 2 of 2 | yes | 2 of 2 | — |
+| well-maintained | 62 | Sonnet 5.5 | 2 of 2 | yes | 2 of 2 | — |
+| agent-workflow | 59 | Sonnet 5.5 | 6 of 6 | yes | 3 of 3 | — |
+| agent-workflow | 60 | Sonnet 5.5 | 6 of 6 | yes | 3 of 3 | — |
+| agent-workflow | 61 | Sonnet 5.5 | 6 of 6 | yes | 3 of 3 | — |
+| agent-workflow | 62 | Sonnet 5.5 | 6 of 6 | yes | 3 of 3 | — |
+| orders-service | 59 | Sonnet 5.5 | 9 of 9 | no | 3 of 3 | duplicated 2 |
+| orders-service | 60 | Sonnet 5.5 | 9 of 9 | yes | 3 of 3 | — |
+| orders-service | 61 | Sonnet 5.5 | 9 of 9 | yes | 2 of 3 | — |
+| orders-service | 62 | Sonnet 5.5 | 9 of 9 | no | 3 of 3 | duplicated 1 |
+| go-ratelimiter | 59 | Sonnet 5.5 | 4 of 4 | yes | — | — |
+| go-ratelimiter | 60 | Sonnet 5.5 | 4 of 4 | yes | — | — |
+| go-ratelimiter | 61 | Sonnet 5.5 | 4 of 4 | yes | — | — |
+| go-ratelimiter | 62 | Sonnet 5.5 | 4 of 4 | yes | — | — |
+
+| Model | Seeded gaps found | Reports that pass the scorer | Top priorities in first five | Bad citations | Misplaced citations | High findings | Mean minutes | Mean USD | Mean tool calls | Mean input tokens | Mean output tokens |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Sonnet 5.5, runs 59 and 60 | 100 of 100 | 11 of 12 | 28 of 28 | 0 | 2 | 33 | 1.8 | 0.30 | 9 | 276,345 | 14,242 |
+| Sonnet 5.5, runs 61 and 62 | 100 of 100 | 9 of 12 | 27 of 28 | 0 | 0 | 30 | 1.9 | 0.33 | 10 | 280,824 | 15,330 |
+
+Report SHA-256 hashes, as printed by the summary:
+
+- python-service run 59: `793b323bbff52a459cb8b038ec9fb0d33a4dd2dce962f25b5ebb79c319b4ba48`
+- python-service run 60: `2421d40a8153fdd31a460586f67ac551f33f7dd8d05d59196d9f883f2c6d1a19`
+- python-service run 61: `00556720ccbb72c2a3640d5e894319ee3d71565b72cd6092d217065d42ac4b73`
+- python-service run 62: `c014bd115a970f28fbbd4485c0bf12012e61dcf0e27f0dfac4332ab5d0603161`
+- typescript-cli run 59: `8dbdeae8b737a5da45b9a4a600e843b7f66b60d714ebce30b77caf72900e04d1`
+- typescript-cli run 60: `cca2ab054360af3812acd8a292909405597af4914b7a44bf1d16cf879d41c1a5`
+- typescript-cli run 61: `c22b31d98e1428e87c0210bb2a308c9c32db195fc02b53fa5ee4833261587a7d`
+- typescript-cli run 62: `7816e6bbe5355ef22eeea902de031142246fca1e9ae484b4f946b787387049a4`
+- well-maintained run 59: `89cd7609c48c31dce82d37b74fb588ce64ccc6aece90509bd14393e01f3de72d`
+- well-maintained run 60: `687537e658c8e8ec4f762fd324c94ae6f09e526c84d9febe35cffa2591934212`
+- well-maintained run 61: `0feec82f476960c2fd0af93c5b84cb7ad5e952e755b02097d44e4e7c0500a2c2`
+- well-maintained run 62: `70394d11cc5b6481703998a13ab0857a7cb79b0ba29dc2259cc026d316d686a0`
+- agent-workflow run 59: `df6e23c430f98f78186fffa973daed7b160a6df19debec752d957cfb4fcc7d29`
+- agent-workflow run 60: `c7f43619e7f337b9a6eca37e3f69b0a4c0e666083b973eb3d0da9333aedaeac7`
+- agent-workflow run 61: `7e13cf961942b5ccadef12c668b39ae5e5ad098f81e272edf3eaf6acd48127df`
+- agent-workflow run 62: `e48e097ed2f63b22a17afaa092f37baf2c387f8a6c7c7f471ac227be7311791a`
+- orders-service run 59: `7df12aa1a4c6e8fa236365a2b248465f1836d15d968bbb877300169ebf346c38`
+- orders-service run 60: `df6d91274245450d776d04eef1d2505b91c4d0c2fd5a69d524262add0fb4f330`
+- orders-service run 61: `dbf322c9d9cae508470b69c5225637ec269a0622dd6a1d71e3dae83f291bd05f`
+- orders-service run 62: `cdd67249d60d489d1362f4642feb71425a3381d7dd0faa8b31700c68a7994bed`
+- go-ratelimiter run 59: `cc7cfae7c5f31b8791026ba15773fafabdc9bae00fc71cb31c55252d244db30f`
+- go-ratelimiter run 60: `4ebfb4fcabfd5d81274262704c87084694ee7fa75f4509c00bcad8202bc61fcb`
+- go-ratelimiter run 61: `43db0d97e92b13d70f12e4e1189b2b3b72e1c83ed78ab7808ee14f8b89ab9c25`
+- go-ratelimiter run 62: `accabe4ad6b750a39384fbff749597afa2e2e5d02ea43311c5c7e2c11ea60a96`
+
+Notes:
+
+- Against runs 48 and 49, the same model with `8b2a2c6`: mean cost USD 0.21, 0.30, and 0.33; tool
+  calls 7, 9, and 10; output tokens 8,498, 14,242, and 15,330; minutes 1.0, 1.8, and 1.9. Between the
+  two runs of one case, cost differs by 7% to 10% on average.
+- Numbering each file on its own accounts for most of the rise: 43% more cost, with 42% more shell
+  calls as files are read one at a time. It also removed every citation outside a file: none in 24
+  reports, against six in 12 for runs 48 and 49. The other rules add 10% more, about the
+  run-to-run difference, at the approved limit for the cases.
+- These rounds did not repeat `8b2a2c6`, so a change in the service between runs 48 and 59 would
+  look like a cost of the skill.
+- Every report listed one to five Deeper checks, 3.3 on average. Those read name a concrete premise,
+  its effect, and a check, such as asking the owner whether a password is a placeholder or reading
+  branch protection once a remote exists.
