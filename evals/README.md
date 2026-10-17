@@ -71,9 +71,11 @@ change includes the current version as a control, with the same models and runs,
 `plan` lists the jobs case by case, so both arms run side by side.
 `run` starts agents and spends usage, so the maintainer runs it or allows it; `--budget-usd` stops
 launching audits once the finished ones reach that API-equivalent cost, which on a subscription
-measures quota rather than money. `--model-settings glm-5.3=SETTINGS` runs a model from another
-provider through a Claude Code settings file that routes it, passing the alias that file maps to
-the model; the CLI reads the file, so its token never passes through the runner. `summarize` scores every report,
+measures quota rather than money. `--provider-url glm-5.3=URL --provider-key glm-5.3=KEY_FILE` runs
+a model from another provider with only host variables, its own Claude Code configuration directory
+so the user's Claude login is never used, every model alias set to that model, and the key read by
+an `apiKeyHelper` from a file of mode 600 that the audit may not read; a run whose key source is not
+that helper is marked. `summarize` scores every report,
 verifies every prepared repository, and writes `summary.md` with the tables that RESULTS.md records.
 `clean` removes only the directories that `plan` created.
 

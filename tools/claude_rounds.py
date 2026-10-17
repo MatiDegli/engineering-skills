@@ -16,6 +16,7 @@ import json
 import os
 import random
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -73,8 +74,8 @@ def claude_command(prompt: str, model: str, skill: Path, settings: str | None = 
     """Return the audit command.
 
     Only user settings load, with hooks off, so the audited repository's own agent settings,
-    hooks, skills, and agents never load; the effort is fixed rather than inherited. A provider's
-    settings file, which `provider_settings` checks has no hooks, replaces the hooks switch.
+    hooks, skills, and agents never load; the effort is fixed rather than inherited. A run served by
+    another provider passes the settings file of `provider_launch`, which also turns hooks off.
     """
     return [
         *("claude", "-p", prompt, "--model", model, "--effort", "high", "--add-dir", str(skill)),
@@ -278,29 +279,86 @@ def run_command(
             return -1
 
 
-def provider_settings(path: Path) -> dict:
-    """Check a Claude Code settings file that routes a provider, and return how to use it.
+# Host basics a run of another provider keeps; no Anthropic or Claude Code variable of the parent.
+HOST_VARIABLES = (
+    *("HOME", "USER", "LOGNAME", "PATH", "LANG", "LC_ALL", "TMPDIR", "TERM"),
+    *("XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME"),
+    *("UV_CACHE_DIR", "PNPM_HOME", "CARGO_HOME", "RUSTUP_HOME", "NVM_DIR"),
+    *("SSL_CERT_FILE", "NODE_EXTRA_CA_CERTS"),
+)
+PROVIDER_SETTINGS = {
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "CLAUDE_CODE_NO_MODEL_FALLBACK": "1",
+    "DISABLE_AUTOUPDATER": "1",
+    "API_TIMEOUT_MS": "3000000",
+    # A one-million-token window makes Claude Code ask for `model[1m]`, which providers refuse.
+    "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "200000",
+}
 
-    The CLI reads the file itself, so its token never passes through the runner; the runner reads
-    only the model aliases. A file with hooks is refused, since it replaces the hooks switch.
+
+def provider_launch(provider: dict, model: str, config_dir: Path) -> tuple[dict[str, str], Path]:
+    """Return the environment and settings file of a run served by another provider.
+
+    The run gets only host basics, its own Claude Code configuration directory, so the user's
+    Claude login is never used, and the provider's base URL. Every model alias names the model, so
+    no internal call asks for another one. The key reaches the CLI only through an `apiKeyHelper`
+    that reads the key file; the settings file holds the command, not the key, and denies the
+    audit any read of the key's directory.
     """
-    settings = json.loads(path.read_text(encoding="utf-8"))
-    if settings.get("hooks"):
-        raise SystemExit(f"Provider settings must not define hooks: {path}")
-    env = settings.get("env") or {}
-    aliases = {name: str(value) for name, value in env.items() if name.startswith("ANTHROPIC_DEFAULT_")}
-    return {"path": str(path.resolve()), "aliases": aliases}
+    config_dir.mkdir(parents=True, exist_ok=True)
+    config_dir.chmod(0o700)
+    environment = {name: os.environ[name] for name in HOST_VARIABLES if name in os.environ}
+    environment |= PROVIDER_SETTINGS | {
+        "CLAUDE_CONFIG_DIR": str(config_dir),
+        "ANTHROPIC_BASE_URL": provider["url"],
+        "CLAUDE_CODE_SUBAGENT_MODEL": model,
+    }
+    environment |= {f"ANTHROPIC_DEFAULT_{alias}_MODEL": model for alias in ("OPUS", "SONNET", "HAIKU", "FABLE")}
+    key = provider["key"]
+    deny = [f"Read({key})", f"Read({key.parent}/**)", f"Edit({key.parent}/**)"]
+    settings = {
+        "apiKeyHelper": f"cat {shlex.quote(str(key))}",
+        "permissions": {"deny": deny},
+        "disableAllHooks": True,
+    }
+    path = config_dir / "run-settings.json"
+    path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+    path.chmod(0o600)
+    return environment, path
 
 
-def cli_model(model: str, provider: dict | None) -> str:
-    """Return what to pass to `--model`, after checking that a provider's settings route the model.
+def parse_providers(urls: list[str], keys: list[str]) -> dict[str, dict]:
+    """Pair each provider model's base URL with its key file."""
+    def pairs(values: list[str], flag: str) -> dict[str, str]:
+        found = {}
+        for value in values:
+            model, _, rest = value.partition("=")
+            if not model or not rest:
+                raise SystemExit(f"{flag} takes MODEL=VALUE, not {value!r}")
+            found[model] = rest
+        return found
 
-    The model's own ID is passed: an alias would resolve to the settings' value, whose context
-    suffix, such as `[1m]` in `glm-5.3[1m]`, Claude Code 2.1.299 sends to the provider unchanged.
-    """
-    if provider and not any(v.split("[")[0] == model for v in provider["aliases"].values()):
-        raise SystemExit(f"The provider settings route no alias to {model}")
-    return model
+    url, key = pairs(urls, "--provider-url"), pairs(keys, "--provider-key")
+    if set(url) != set(key):
+        raise SystemExit("Each provider model needs both --provider-url and --provider-key")
+    providers = {}
+    for model in url:
+        path = Path(key[model]).expanduser().resolve()
+        if not path.is_file() or path.stat().st_mode & 0o077:
+            raise SystemExit(f"The key file must exist and be readable only by you (mode 600): {path}")
+        providers[model] = {"url": url[model], "key": path}
+    return providers
+
+
+def init_key_source(stream: Path) -> str | None:
+    for line in stream.read_text(encoding="utf-8").splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("type") == "system" and event.get("subtype") == "init":
+            return event.get("apiKeySource")
+    return None
 
 
 class Spending:
@@ -332,13 +390,17 @@ def warm_up(round_dir: Path, models: list[str], providers: dict[str, dict]) -> N
     for model in models:
         output = round_dir / f"warmup-{model}.json"
         provider = providers.get(model)
-        command = ["claude", "-p", "Reply with the single word OK.", "--model", cli_model(model, provider)]
+        command = ["claude", "-p", "Reply with the single word OK.", "--model", model]
         command += ["--setting-sources", "user", "--strict-mcp-config", "--no-session-persistence"]
-        command += ["--settings", provider["path"]] if provider else []
+        environment = None
+        if provider:
+            environment, settings = provider_launch(provider, model, round_dir / "providers" / f"warmup-{model}")
+            command += ["--settings", str(settings)]
         with output.open("w", encoding="utf-8") as out:
             subprocess.run(
                 [*command, "--output-format", "json"],
                 cwd=tempfile.gettempdir(),
+                env=environment,
                 stdout=out,
                 stderr=subprocess.DEVNULL,
                 timeout=300,
@@ -376,10 +438,12 @@ def audit(round_dir: Path, data: dict, job: dict, launch: dict) -> str:
     stream, stderr = paths["streams"] / f"{label}.jsonl", paths["streams"] / f"{label}.stderr.txt"
     prompt = PROMPTS[data["level"]].format(skill=job_skill(data, job))
     skill = Path(job_skill(data, job))
-    settings = provider["path"] if provider else None
-    command = claude_command(prompt, cli_model(job["model"], provider), skill, settings)
+    environment, settings = audit_environment(round_dir), None
+    if provider:
+        environment, settings = provider_launch(provider, job["model"], round_dir / "providers" / label)
+        environment |= {"GH_CONFIG_DIR": audit_environment(round_dir)["GH_CONFIG_DIR"]}
+    command = claude_command(prompt, job["model"], skill, str(settings) if settings else None)
     for attempt in range(1, ATTEMPTS + 1):
-        environment = audit_environment(round_dir)
         code = run_command(command, repo, stream, stderr, launch["timeout"], environment)
         results = stream_results(stream)
         if not login_failed(results) or attempt == ATTEMPTS:
@@ -391,6 +455,9 @@ def audit(round_dir: Path, data: dict, job: dict, launch: dict) -> str:
         report.write_text(report_text(results), encoding="utf-8")
     used = sorted({name for r in results for name in r.get("modelUsage") or {}})
     flag = "" if ran_model(results, job["model"]) else " MODEL MISMATCH"
+    source = init_key_source(stream) if provider else None
+    if provider and source != "apiKeyHelper":
+        flag += f" KEY SOURCE {source}"
     return f"{label}: exit {code}, models {','.join(used) or 'none'}{flag}"
 
 
@@ -404,7 +471,7 @@ def run(
 ) -> int:
     """Run every planned audit; return 1 when a model differs or an audit was skipped.
 
-    `providers` maps a model to the checked settings file that routes it to its provider.
+    `providers` maps a model served by another provider to its base URL and key file.
     """
     paths = round_paths(round_dir)
     data = json.loads(paths["plan.json"].read_text(encoding="utf-8"))
@@ -429,7 +496,8 @@ def run(
                 log.flush()
                 print(lines[-1], flush=True)
         log.write(f"end {now()}\n")
-    return int(any(mark in line for line in lines for mark in ("MODEL MISMATCH", "skipped, the", "skipped, budget")))
+    marks = ("MODEL MISMATCH", "KEY SOURCE", "skipped, the", "skipped, budget")
+    return int(any(mark in line for line in lines for mark in marks))
 
 
 def outside_paths(stream: Path, allowed: list[Path]) -> list[str]:
@@ -503,7 +571,7 @@ def score_job(job: dict, data: dict, paths: dict[str, Path], repo: Path, totals:
         notes.append(f"{label}: the prepared repository changed: {'; '.join(changed[:5])}")
     if result["leaked"]:
         notes.append(f"{label}: copied {', '.join(result['leaked'])}")
-    allowed = [Path(job["dir"]), Path(job_skill(data, job)).parent]
+    allowed = [Path(job["dir"]), Path(job_skill(data, job)).parent, paths["plan.json"].parent / "providers"]
     outside = outside_paths(stream, allowed) if results else []
     if outside:
         notes.append(f"{label}: tool calls name paths outside the run: {', '.join(outside[:8])}")
@@ -652,11 +720,18 @@ def main() -> int:
         help="stop launching audits once finished ones reach this API-equivalent cost",
     )
     run_parser.add_argument(
-        "--model-settings",
+        "--provider-url",
         action="append",
         default=[],
-        metavar="MODEL=SETTINGS",
-        help="run MODEL through a Claude Code settings file that routes its provider, such as glm-5.3",
+        metavar="MODEL=URL",
+        help="serve MODEL, such as glm-5.3, from this Anthropic-compatible base URL",
+    )
+    run_parser.add_argument(
+        "--provider-key",
+        action="append",
+        default=[],
+        metavar="MODEL=KEY_FILE",
+        help="read MODEL's API key from this file (mode 600) through an apiKeyHelper",
     )
     for name, text in (
         ("summarize", "score the reports and check what the runs left behind"),
@@ -670,12 +745,7 @@ def main() -> int:
         print(f"planned {len(data['jobs'])} runs of skill {data['skill_commit']}")
         return 0
     if arguments.command == "run":
-        providers = {}
-        for value in arguments.model_settings:
-            model, _, path = value.partition("=")
-            if not model or not path:
-                parser.error(f"--model-settings takes MODEL=SETTINGS, not {value!r}")
-            providers[model] = provider_settings(Path(path).expanduser())
+        providers = parse_providers(arguments.provider_url, arguments.provider_key)
         timeout = arguments.timeout_minutes * 60
         return run(arguments.round_dir, arguments.jobs, timeout, arguments.budget_usd, providers=providers)
     if arguments.command == "summarize":

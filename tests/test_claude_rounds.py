@@ -26,10 +26,14 @@ if arguments == ["--version"]:
     print("0.0.0 (Claude Code)")
     raise SystemExit(0)
 model = arguments[arguments.index("--model") + 1]
-settings = arguments[arguments.index("--settings") + 1] if "--settings" in arguments else "{{}}"
-env = json.load(open(settings)).get("env", {{}}) if os.path.isfile(settings) else {{}}
-if env.get("ANTHROPIC_BASE_URL") and model in ("sonnet", "opus", "haiku"):
-    model = env["ANTHROPIC_DEFAULT_" + model.upper() + "_MODEL"]
+source = "none"
+if os.environ.get("ANTHROPIC_BASE_URL"):
+    settings = json.load(open(arguments[arguments.index("--settings") + 1]))
+    inherited = [name for name in ("ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY") if name in os.environ]
+    aliases = {{os.environ.get("ANTHROPIC_DEFAULT_" + a + "_MODEL") for a in ("OPUS", "SONNET", "HAIKU", "FABLE")}}
+    if inherited or not os.environ.get("CLAUDE_CONFIG_DIR") or aliases != {{model}} or "apiKeyHelper" not in settings:
+        raise SystemExit("the provider launch is not isolated")
+    source = "apiKeyHelper"
 if "json" == arguments[arguments.index("--output-format") + 1]:
     if model == "claude-unknown-1-0":
         print(json.dumps({{"type": "result", "is_error": True, "result": "unknown model"}}))
@@ -38,7 +42,7 @@ if "json" == arguments[arguments.index("--output-format") + 1]:
     raise SystemExit(0)
 if os.environ.get("GH_TOKEN") or not os.environ.get("GH_CONFIG_DIR", "").endswith("gh-config"):
     raise SystemExit("the audit could reach a GitHub CLI login")
-state = Path(os.environ["FAKE_STATE"]) / (model + "-" + Path.cwd().parent.name)
+state = Path(os.environ.get("FAKE_STATE", "/nonexistent")) / (model + "-" + Path.cwd().parent.name)
 if model == "claude-flaky-1-0" and not state.exists():
     state.write_text("failed once")
     print(json.dumps({{"type": "result", "result": "Failed to refresh OAuth token: another process"}}))
@@ -46,6 +50,7 @@ if model == "claude-flaky-1-0" and not state.exists():
 used = "claude-other-1-0" if model == "claude-mismatch-1-0" else model
 command = "cat /home/someone/notes.txt; grep -E '/home/|/Users/' x; cat /home/u/.claude/projects/-tmp-audit-x/out.txt"
 tool = {{"type": "tool_use", "name": "Bash", "input": {{"command": command}}}}
+print(json.dumps({{"type": "system", "subtype": "init", "apiKeySource": source}}))
 print(json.dumps({{"type": "assistant", "message": {{"content": [tool]}}}}))
 print(json.dumps({{"type": "system", "subtype": "notice", "message": "a plain text message"}}))
 report = "## Findings\n| ID | Status | Priority | Evidence | Improvement |\n| --- | --- | --- | --- | --- |\n"
@@ -78,6 +83,9 @@ class RoundTests(unittest.TestCase):
             },
         )
         self.environment.start()
+        # The tests run inside other agents' sessions; their provider variables must not leak in.
+        for name in [n for n in os.environ if n.startswith(("ANTHROPIC_", "CLAUDE_"))]:
+            del os.environ[name]
         self.repository = mock.patch.object(claude_rounds, "ROOT", self.skill_history())
         self.repository.start()
         self.rounds = []
@@ -164,26 +172,33 @@ class RoundTests(unittest.TestCase):
         self.assertEqual(log.count(": exit 0"), 1)
         self.assertIn("skipped, budget reached", log)
 
-    def test_a_provider_model_runs_through_its_settings_file(self):
-        settings = self.root / "provider-settings.json"
-        env = {"ANTHROPIC_BASE_URL": "https://provider.example", "ANTHROPIC_AUTH_TOKEN": "fake-token",
-               "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-5.3[1m]"}
-        settings.write_text(json.dumps({"env": env}))
-        routed = {"glm-5.3": claude_rounds.provider_settings(settings)}
-        self.assertEqual(claude_rounds.cli_model("glm-5.3", routed["glm-5.3"]), "glm-5.3")
+    def test_a_provider_model_runs_isolated_with_its_key_through_a_helper(self):
+        key = self.root / "provider" / "key"
+        key.parent.mkdir()
+        key.write_text("fake-provider-key\n")
+        key.chmod(0o644)
+        flags = (["glm-5.3=https://provider.example"], [f"glm-5.3={key}"])
         with self.assertRaises(SystemExit):
-            claude_rounds.cli_model("other-1", routed["glm-5.3"])
-        hooked = self.root / "hooked.json"
-        hooked.write_text(json.dumps({"env": env, "hooks": {"PreToolUse": []}}))
+            claude_rounds.parse_providers(*flags)
+        key.chmod(0o600)
         with self.assertRaises(SystemExit):
-            claude_rounds.provider_settings(hooked)
+            claude_rounds.parse_providers(flags[0], [])
+        providers = claude_rounds.parse_providers(*flags)
         round_dir = self.plan("round", ("1", "glm-5.3"))
-        with mock.patch("builtins.print"):
+        parent = {"ANTHROPIC_AUTH_TOKEN": "parent-token", "ANTHROPIC_API_KEY": "parent-key"}
+        with mock.patch.dict(os.environ, parent), mock.patch("builtins.print"):
             self.assertEqual(
-                claude_rounds.run(round_dir, jobs=1, timeout=60, budget=100, pause=(0, 0), providers=routed), 0
+                claude_rounds.run(round_dir, jobs=1, timeout=60, budget=100, pause=(0, 0), providers=providers), 0
             )
-        self.assertIn("models glm-5.3\n", (round_dir / "log.txt").read_text())
-        self.assertNotIn("fake-token", "".join(p.read_text() for p in round_dir.rglob("*") if p.is_file()))
+        log = (round_dir / "log.txt").read_text()
+        self.assertIn("models glm-5.3\n", log)
+        self.assertNotIn("KEY SOURCE", log)
+        settings = next(round_dir.glob("providers/run1-case/run-settings.json"))
+        self.assertEqual(settings.stat().st_mode & 0o777, 0o600)
+        self.assertIn("apiKeyHelper", settings.read_text())
+        written = "".join(p.read_text() for p in round_dir.rglob("*") if p.is_file())
+        for secret in ("fake-provider-key", "parent-token", "parent-key"):
+            self.assertNotIn(secret, written)
 
     def test_a_model_other_than_the_requested_one_is_flagged(self):
         round_dir = self.plan("round", ("1", "claude-mismatch-1-0"))
