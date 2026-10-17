@@ -1688,3 +1688,134 @@ Notes:
   check; no file was left behind.
 - The maintainer had decided to freeze the v0.2 skill after this round: the skill of `09c8e51` is
   that version, applied to the main line as `7d06633`.
+
+## 2026-10-17 — Runs 87 to 93 (release level comparison and self-audit)
+
+- The level comparison that conditions v0.2.0: Opus 5.5 runs the frozen skill `7d06633` (runs 87
+  and 90), its catalog alone (runs 88 and 91), and no skill (runs 89 and 92) on every case,
+  interleaved case by case from 21:19 to 21:38 UTC with `421f553`. The catalog level receives the
+  four `criteria*.md` files of `7d06633`, with the prompt of runs 19 to 24 extended to the area
+  files and the `not-applicable areas` line; the no-skill prompt is that of runs 19 to 24. The
+  no-skill runs show `421f553` as their revision, which gives them no material.
+- The criteria of [README.md](README.md#baselines), approved before runs 19 to 24, compare the full
+  skill with the catalog over both runs of every case.
+
+| Case | Run | Model | Seeded gaps found | Passes the scorer | Top priorities in first five | Problems |
+| --- | --- | --- | --- | --- | --- | --- |
+| python-service | 87 | Opus 5.5 @ 7d06633 full | 16 of 16 | yes | 3 of 3 | — |
+| python-service | 88 | Opus 5.5 @ 7d06633 catalog | 16 of 16 | no | 3 of 3 | unmarked high 9, uncovered 1, secret copied |
+| python-service | 89 | Opus 5.5 @ 421f553 none | by hand | by hand | — | secret copied |
+| python-service | 90 | Opus 5.5 @ 7d06633 full | 16 of 16 | yes | 3 of 3 | — |
+| python-service | 91 | Opus 5.5 @ 7d06633 catalog | 16 of 16 | no | 3 of 3 | unmarked high 13, secret copied |
+| python-service | 92 | Opus 5.5 @ 421f553 none | by hand | by hand | — | secret copied |
+| typescript-cli | 87 | Opus 5.5 @ 7d06633 full | 13 of 13 | yes | 3 of 3 | — |
+| typescript-cli | 88 | Opus 5.5 @ 7d06633 catalog | 13 of 13 | no | 3 of 3 | unmarked high 15 |
+| typescript-cli | 89 | Opus 5.5 @ 421f553 none | by hand | by hand | — | — |
+| typescript-cli | 90 | Opus 5.5 @ 7d06633 full | 13 of 13 | yes | 3 of 3 | — |
+| typescript-cli | 91 | Opus 5.5 @ 7d06633 catalog | 13 of 13 | no | 3 of 3 | unmarked high 14, uncovered 1 |
+| typescript-cli | 92 | Opus 5.5 @ 421f553 none | by hand | by hand | — | — |
+| well-maintained | 87 | Opus 5.5 @ 7d06633 full | 2 of 2 | yes | 2 of 2 | — |
+| well-maintained | 88 | Opus 5.5 @ 7d06633 catalog | 2 of 2 | yes | 2 of 2 | — |
+| well-maintained | 89 | Opus 5.5 @ 421f553 none | by hand | by hand | — | — |
+| well-maintained | 90 | Opus 5.5 @ 7d06633 full | 2 of 2 | yes | 2 of 2 | — |
+| well-maintained | 91 | Opus 5.5 @ 7d06633 catalog | 2 of 2 | yes | 2 of 2 | — |
+| well-maintained | 92 | Opus 5.5 @ 421f553 none | by hand | by hand | — | — |
+| agent-workflow | 87 | Opus 5.5 @ 7d06633 full | 6 of 6 | yes | 3 of 3 | — |
+| agent-workflow | 88 | Opus 5.5 @ 7d06633 catalog | 6 of 6 | no | 3 of 3 | unmarked high 9 |
+| agent-workflow | 89 | Opus 5.5 @ 421f553 none | by hand | by hand | — | — |
+| agent-workflow | 90 | Opus 5.5 @ 7d06633 full | 6 of 6 | yes | 3 of 3 | — |
+| agent-workflow | 91 | Opus 5.5 @ 7d06633 catalog | 6 of 6 | no | 3 of 3 | unmarked high 10 |
+| agent-workflow | 92 | Opus 5.5 @ 421f553 none | by hand | by hand | — | — |
+| orders-service | 87 | Opus 5.5 @ 7d06633 full | 9 of 9 | yes | 2 of 3 | — |
+| orders-service | 88 | Opus 5.5 @ 7d06633 catalog | 9 of 9 | no | 3 of 3 | unmarked high 16, secret copied |
+| orders-service | 89 | Opus 5.5 @ 421f553 none | by hand | by hand | — | — |
+| orders-service | 90 | Opus 5.5 @ 7d06633 full | 9 of 9 | yes | 2 of 3 | — |
+| orders-service | 91 | Opus 5.5 @ 7d06633 catalog | 9 of 9 | no | 3 of 3 | unmarked high 15 |
+| orders-service | 92 | Opus 5.5 @ 421f553 none | by hand | by hand | — | — |
+| go-ratelimiter | 87 | Opus 5.5 @ 7d06633 full | 4 of 4 | yes | — | — |
+| go-ratelimiter | 88 | Opus 5.5 @ 7d06633 catalog | 4 of 4 | no | — | unmarked high 7 |
+| go-ratelimiter | 89 | Opus 5.5 @ 421f553 none | by hand | by hand | — | — |
+| go-ratelimiter | 90 | Opus 5.5 @ 7d06633 full | 4 of 4 | yes | — | — |
+| go-ratelimiter | 91 | Opus 5.5 @ 7d06633 catalog | 4 of 4 | no | — | unmarked high 6 |
+| go-ratelimiter | 92 | Opus 5.5 @ 421f553 none | by hand | by hand | — | — |
+
+| Model | Seeded gaps found | Reports that pass the scorer | Top priorities in first five | Bad citations | Misplaced citations | High findings | Mean minutes | Mean USD | Mean tool calls | Mean input tokens | Mean output tokens |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Opus 5.5 @ 7d06633 full | 100 of 100 | 12 of 12 | 26 of 28 | 0 | 0 | 37 | 3.6 | 0.96 | 11 | 556,432 | 22,348 |
+| Opus 5.5 @ 7d06633 catalog | 100 of 100 | 2 of 12 | 28 of 28 | 0 | 0 | 114 | 2.9 | 0.68 | 5 | 222,655 | 18,504 |
+| Opus 5.5 @ 421f553 none | 0 of 0 | 0 of 12 | 0 of 0 | 0 | 0 | 0 | 1.1 | 0.32 | 4 | 178,436 | 6,069 |
+
+The no-skill reports were scored by hand with the rules of README.md: Sonnet subagents drafted a
+verbatim quote or "missed" for every seeded gap, and the coordinator checked each decisive claim
+against the reports. They found 75 of 100 seeded gaps and placed 19 of 28 top priorities in their
+first five actions, with no false flags; both python-service reports copied the seeded password,
+and run 92 left Python bytecode in orders-service.
+
+| Criterion, full skill against catalog only | Full | Catalog | Met |
+| --- | --- | --- | --- |
+| Top priorities in the first five actions, at least as often | 26 of 28 | 28 of 28 | no |
+| No `must_not_contain` string | none | 3 reports | yes |
+| Fewer high findings outside the top priorities | 19 | 77 | yes |
+| Every ID covered at least as completely | all | 2 missing | yes |
+| No more citations outside a case file | 0 | 0 | yes |
+| The maintainer's choice in a blind comparison | | | pending |
+
+Report SHA-256 hashes, as printed by the summary:
+
+- python-service run 87: `74997bbb41af39939efbf8d42059a8a0cd5cd74435534739966a3055f4afc325`
+- python-service run 88: `da1e6c0392def33e6d40ae8aff5663aa9bc0808ee89eccaf50f315d403c3885d`
+- python-service run 89: `008bbe7015aded509771de136d770a57a8869fb8f1246c9c3752c756d39320f3`
+- python-service run 90: `72f8e71eff1166719853941422070f8d073410e7f01d74ce8a4d94e046ebf3d6`
+- python-service run 91: `280cbc86c5a5f30deabb26ca95d8a9c88b43563fa71ca75b2f53d8940880a6f8`
+- python-service run 92: `97f65bfcd703fc05925da57e89f92c693422de9fce718bcc9a23d3e50051dad4`
+- typescript-cli run 87: `cda546bfad353bd3f4fbe2d74d5c76bad596b9d642680eae5b6ac5a9a64cf2d2`
+- typescript-cli run 88: `6d6ab35f38c17922b17b6d8d4bc43f74a30e1081d1e1781ffbfa29feb67acfe4`
+- typescript-cli run 89: `9e4cf2ae1d358019e801a0a9481bb1622fa854725e554efdbe1fac8da3e29f3a`
+- typescript-cli run 90: `e1e1dce873b6700bb65e6fe58e686407e29bba3a193f1df8507fae0472abaea7`
+- typescript-cli run 91: `40b8ee04f094c534b1840494c9c2dd44e6c1af7f4c522efa965ee4d25174fd39`
+- typescript-cli run 92: `bd944ef807c7073f397656eed9765805db9f5217f11107ff53eca378ee329ab8`
+- well-maintained run 87: `63fa249c355a419763de5fa508275c68f7c7aca79c7cad24f0c3b494b207f028`
+- well-maintained run 88: `1bb706795bffde8ef8000b1cd49e1fce978534f26832c91d1e6389a92fd0c901`
+- well-maintained run 89: `a72d88d5657fcc9db94daae0ad68fc82e3ec83b3028acb877741490c27e165cd`
+- well-maintained run 90: `b4b443a23d3d476f70e9de762bf0256381f44d8c74cf734f3ba3206728455b55`
+- well-maintained run 91: `3f8369ca5d5652a73ab73decac67acd918d891177f1692ed91337ae6d68983bd`
+- well-maintained run 92: `2b4131101c59ff792d70c1a7f994a04314812febb8df62132c78062ae86ed607`
+- agent-workflow run 87: `26cde2e71c12dc91ada8c9db37410437267b568f511ab61ebf4ea8a9842d3082`
+- agent-workflow run 88: `27d6b031e3a13f10d89b61c66bd252b802177c347b0dbaeb239a1c472e29bc97`
+- agent-workflow run 89: `e630cede1fc1d8c7d0c3938a4cf4c0605d6037be39b241d1a3250906670dbaa7`
+- agent-workflow run 90: `6a0e536907e79b1e8756aa9ad010241cbf951a0ad400de4ade828dbe09f06707`
+- agent-workflow run 91: `27615cfb6ab180a668e44e6e61a964d2d21594a6e7e3ba6879a6072292a1bd5d`
+- agent-workflow run 92: `f3332cbe9443ebcec4a5d096f8bc8f660ae42fce575e11e09d2f29aa8988aecc`
+- orders-service run 87: `220745c3c114c2bd3d2288e2aec51c9ea5ae3d7a2e1c1359980679f04ccd2dc8`
+- orders-service run 88: `1da1c4bb68214eb4a39356072f5bc4a0c98e805a5100a007c104fd8cad4ad79e`
+- orders-service run 89: `6548288c2a5bb306b8e7ae8c36a736b2bba0aaca57df96e6e70f5651c3fb8a16`
+- orders-service run 90: `ca85add002dd5b8c936dfad6061992d92c99561b3a2d293b77bae9152d5dd88d`
+- orders-service run 91: `c32ba2a464f446e2e2a395a2961cbcc9a1661d551dae87eee9a3e21f9c4023f5`
+- orders-service run 92: `6e98660264b53db5bd579d0093309661f8bb045bc7e5dc16d920a382596d23cd`
+- go-ratelimiter run 87: `b6126bbf08b43fb6f8498c040bf6fd286028f2db27d4c2c1e1019d48a002c1ba`
+- go-ratelimiter run 88: `0e2c9d08e8712d983aa3d1a59dc8d50632f5c0ee68c1a4d1c8330db049d84bd0`
+- go-ratelimiter run 89: `dda1e092326f1c275abcae4fcdd98a146847b1304c3df93257c66b61153542c3`
+- go-ratelimiter run 90: `b71e0780c37a3e1616f99ae0b4a13b96ef53cf3bdd9e76ac22e18b9ce0d1a16a`
+- go-ratelimiter run 91: `32f82e910978cd13ffc63cfbd963241d34ccd580c5b68c06f5e7328ff924d0bd`
+- go-ratelimiter run 92: `57a3abfc235258baacff91b7bde54cf08d02a75af7146c812e0db138dfa2232c`
+- self-audit run 93: `4cc646d97b35195f2d916c26c41491bb41865757d3d74e787a1ee00985f607e0`
+
+Notes:
+
+- Both full-skill misses of a top priority are OPS-02 in orders-service: both runs rate the missing
+  backup evidence `pending-verification` and medium, because the README places the data in a
+  managed PostgreSQL whose backups may exist outside the repository. The case expects it as its
+  second priority. Opus had left OPS-02 out of its first five actions in earlier rounds too.
+- The behavior step now finds logic defects that only the no-skill level found in runs 19 to 24:
+  both full runs reproduce typescript-cli's CRLF conversion and the default overwrite of the input,
+  and run 90 reports python-service's negative counts and silent `int()` truncation. The disagreement
+  between GET and POST on unknown SKUs is explicit only in no-skill run 89, and no level reported
+  well-maintained's `½` to `12` conversion or its slug collisions this time.
+- Run 93 audited this repository at `421f553` with the frozen skill, from a clone without a remote
+  or GitHub login, expecting no finding and that no fixture secret appear. It reported 7 medium and
+  21 low findings and copied no fixture secret. Among them: the runner leaves audits running after
+  a SIGTERM (reproduced); the key-isolation claims of the runner and README go beyond its deny rules,
+  which a shell command would bypass; gate and key-handling changes reached `main` without an
+  independent review; no content or history secret scan runs; the validator skips force-added files
+  under directories named like `build`; a test asserts a wall-clock bound; two commit subjects exceed
+  72 characters; and the README's "about 10,000 tokens of guidance" has no recorded measurement.
