@@ -151,10 +151,10 @@ def stream_usage(path: Path, results: list[dict]) -> dict[str, int]:
         content = (event.get("message") or {}).get("content") if event.get("type") == "assistant" else None
         tools += sum(item.get("type") == "tool_use" for item in content or [] if isinstance(item, dict))
     models = (results[-1].get("modelUsage") or {}).values() if results else []
-    read = ("inputTokens", "cacheReadInputTokens", "cacheCreationInputTokens")
     return {
         "tools": tools,
-        "tokens_in": sum(m.get(k) or 0 for m in models for k in read),
+        "tokens_written": sum(m.get("cacheCreationInputTokens") or 0 for m in models),
+        "tokens_read": sum(m.get("cacheReadInputTokens") or 0 for m in models),
         "tokens_out": sum(m.get("outputTokens") or 0 for m in models),
     }
 
@@ -426,6 +426,23 @@ def init_key_source(stream: Path) -> str | None:
     return None
 
 
+class StartSpacer:
+    """Space audit launches, so the first one writes the cache of the prompt prefix they share and
+    the next ones read it instead of each writing its own copy."""
+
+    def __init__(self, interval: float, clock=time.monotonic, sleep=time.sleep) -> None:
+        self.interval, self.clock, self.sleep = interval, clock, sleep
+        self.next, self.lock = 0.0, threading.Lock()
+
+    def wait(self) -> None:
+        with self.lock:
+            now = self.clock()
+            start = max(now, self.next)
+            self.next = start + self.interval
+        if start > now:
+            self.sleep(start - now)
+
+
 class Spending:
     """Stop launching audits once the finished ones have used the round's budget.
 
@@ -509,6 +526,7 @@ def audit(round_dir: Path, data: dict, job: dict, launch: dict) -> str:
         environment, settings = provider_launch(provider, job["model"], round_dir / "providers" / label)
         environment |= {"GH_CONFIG_DIR": audit_environment(round_dir)["GH_CONFIG_DIR"]}
     command = claude_command(prompt, job["model"], directories, str(settings) if settings else None)
+    launch["starts"].wait()
     for attempt in range(1, ATTEMPTS + 1):
         code = run_command(command, repo, stream, stderr, launch["timeout"], environment)
         results = stream_results(stream)
@@ -534,6 +552,7 @@ def run(
     budget: float,
     pause: tuple[int, int] = (20, 60),
     providers: dict[str, dict] | None = None,
+    stagger: float = 0.0,
 ) -> int:
     """Run every planned audit; return 1 when a model differs or an audit was skipped.
 
@@ -549,6 +568,7 @@ def run(
     providers = providers or {}
     warm_up(round_dir, sorted({job["model"] for job in data["jobs"]}), providers)
     launch = {"timeout": timeout, "pause": pause, "providers": providers, "spending": Spending(budget)}
+    launch["starts"] = StartSpacer(stagger)
     lines = []
     with paths["log.txt"].open("a", encoding="utf-8") as log:
         log.write(f"start {now()} {version.stdout.strip()}, budget USD {budget:g}\n")
@@ -716,8 +736,8 @@ def summarize(round_dir: Path) -> str:
         "",
         "| Model | Seeded gaps found | Reports that pass the scorer | Top priorities in first five"
         " | Bad citations | Misplaced citations | High findings | Mean minutes | Mean USD"
-        " | Mean tool calls | Mean input tokens | Mean output tokens |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        " | Mean tool calls | Mean cache writes | Mean cache reads | Mean output tokens |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for model, t in totals.items():
         n = t["reports"] or 1
@@ -725,7 +745,7 @@ def summarize(round_dir: Path) -> str:
             f"| {model} | {t['found']} of {t['seeded']} | {t['passed']} of {t['reports']} "
             f"| {t['top']} of {t['top_of']} | {t['bad']} | {t['misplaced']} | {t['high']} "
             f"| {t['seconds'] / 60 / n:.1f} | {t['cents'] / 100 / n:.2f} | {t['tools'] / n:.0f} "
-            f"| {t['tokens_in'] / n:,.0f} | {t['tokens_out'] / n:,.0f} |"
+            f"| {t['tokens_written'] / n:,.0f} | {t['tokens_read'] / n:,.0f} | {t['tokens_out'] / n:,.0f} |"
         )
     lines += ["", "Report SHA-256 hashes:", "", *hashes, "", "Notes:", ""]
     lines += [f"- {note}" for note in notes] or ["- none"]
@@ -797,6 +817,12 @@ def main() -> int:
     run_parser.add_argument("--jobs", type=int, default=6)
     run_parser.add_argument("--timeout-minutes", type=float, default=90)
     run_parser.add_argument(
+        "--stagger-seconds",
+        type=float,
+        default=5,
+        help="space audit launches so later ones read the prompt cache the first one wrote",
+    )
+    run_parser.add_argument(
         "--budget-usd",
         type=float,
         required=True,
@@ -830,7 +856,14 @@ def main() -> int:
     if arguments.command == "run":
         providers = parse_providers(arguments.provider_url, arguments.provider_key)
         timeout = arguments.timeout_minutes * 60
-        return run(arguments.round_dir, arguments.jobs, timeout, arguments.budget_usd, providers=providers)
+        return run(
+            arguments.round_dir,
+            arguments.jobs,
+            timeout,
+            arguments.budget_usd,
+            providers=providers,
+            stagger=arguments.stagger_seconds,
+        )
     if arguments.command == "summarize":
         print(summarize(arguments.round_dir), end="")
         return 0

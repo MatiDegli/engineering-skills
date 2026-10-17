@@ -143,7 +143,7 @@ class RoundTests(unittest.TestCase):
         self.assertIn("| case | 1 | Test 1.0 | 1 of 1 | no |", summary)
         self.assertIn("| case | 2 | Flaky 1.0 | 1 of 1 | no |", summary)
         self.assertIn("paths outside the run: /home/someone/notes.txt\n", summary)
-        self.assertIn("| 1.0 | 0.50 | 1 | 1,010 | 200 |", summary)
+        self.assertIn("| 1.0 | 0.50 | 1 | 0 | 1,000 | 200 |", summary)
         self.assertNotIn("prepared repository changed", summary)
 
     def test_a_control_and_a_candidate_share_a_round_side_by_side(self):
@@ -284,6 +284,20 @@ class RoundTests(unittest.TestCase):
         self.assertEqual(claude_rounds.report_text(results), "## Context\n## Findings\n| A |")
         self.assertEqual(claude_rounds.report_text([{"result": "no report"}]), "no report")
         self.assertEqual(claude_rounds.report_text([]), "")
+
+    def test_launches_are_spaced_by_the_interval(self):
+        now, slept = [100.0], []
+
+        def sleep(seconds):
+            slept.append(seconds)
+            now[0] += seconds
+
+        spacer = claude_rounds.StartSpacer(5, clock=lambda: now[0], sleep=sleep)
+        for _ in range(3):
+            spacer.wait()
+        now[0] += 20
+        spacer.wait()
+        self.assertEqual(slept, [5, 5])
 
     def test_model_labels_and_audit_command(self):
         self.assertEqual(claude_rounds.model_label("claude-opus-5-5"), "Opus 5.5")

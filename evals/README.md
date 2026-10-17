@@ -79,7 +79,14 @@ so the user's Claude login is never used, every model alias set to that model, a
 an `apiKeyHelper` from a file of mode 600 that the audit may not read; a run whose key source is not
 that helper is marked. `summarize` scores every report,
 verifies every prepared repository, and writes `summary.md` with the tables that RESULTS.md records.
-`clean` removes only the directories that `plan` created.
+`clean` removes only the directories that `plan` created. `run --stagger-seconds` (5 by default)
+spaces launches, so later audits read the prompt cache the first one wrote.
+
+Most of a round's cost is cached context written and reread, not generated text.
+`python3 -m tools.claude_ledger rounds <runs-dir>` shows each model's share of weighted tokens by
+kind (cache writes, cache reads, output), and `transcripts ~/.claude/projects/<project>` does the
+same for the sessions and subagents that coordinate the work. Measure with it before and after a
+change meant to save cost.
 
 Each mechanism answers an incident in this repository's evaluations:
 
