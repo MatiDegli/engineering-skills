@@ -859,3 +859,128 @@ Notes:
 - Every run found every seeded gap and placed the top priorities in its first five actions, and no
   control case audit flagged a criterion listed in its `must_not_flag`.
 - Opus agreed with itself on 77 of 79 flagged IDs, the highest overlap recorded.
+
+## 2026-10-17 — Runs 41 to 46 (PR 4 cases, three models)
+
+- Skill `38bb20f`, unchanged since runs 37 to 40; cases `389d098`, with the new agent-workflow,
+  orders-service, and reserved go-ratelimiter cases; scored with `18a8209`. The skill was exported
+  from `389d098` outside this repository.
+- Agent and prompt as in runs 37 to 40, with three models: `modelUsage` reported `claude-opus-5-5`
+  for runs 41 and 42, `claude-sonnet-5-5` for runs 43 and 44, and `claude-haiku-4-5-20251001` for
+  runs 45 and 46. The `haiku` alias resolved to Haiku 4.5, not to the current Haiku. Every tool call
+  stayed in the allowed paths, and every stream was kept.
+- Prepared revisions: python-service `c67d66d`, typescript-cli `7f27a08`, well-maintained `5780341`,
+  agent-workflow `c25b5a5`, orders-service `b6034f9`, go-ratelimiter `43224ac`.
+
+| Case | Run | Model | Seeded gaps found | Passes the scorer | Top priorities in first five | Problems |
+| --- | --- | --- | --- | --- | --- | --- |
+| python-service | 41 | Opus | 16 of 16 | no | 3 of 3 | unmarked high 1 |
+| python-service | 42 | Opus | 16 of 16 | yes | 3 of 3 | — |
+| python-service | 43 | Sonnet | 16 of 16 | no | 3 of 3 | uncovered 1 |
+| python-service | 44 | Sonnet | 16 of 16 | no | 3 of 3 | duplicated 1 |
+| python-service | 45 | Haiku 4.5 | 13 of 16 (missed CI-04, SEC-03, TEST-01) | no | 2 of 3 | secret copied, unmarked high 3, uncovered 16, duplicated 23 |
+| python-service | 46 | Haiku 4.5 | 13 of 16 (missed CI-03, QUAL-02, SEC-03) | no | 3 of 3 | secret copied, unmarked high 3, uncovered 9 |
+| typescript-cli | 41 | Opus | 13 of 13 | yes | 3 of 3 | — |
+| typescript-cli | 42 | Opus | 13 of 13 | yes | 3 of 3 | — |
+| typescript-cli | 43 | Sonnet | 13 of 13 | no | 3 of 3 | uncovered 1 |
+| typescript-cli | 44 | Sonnet | 13 of 13 | yes | 3 of 3 | — |
+| typescript-cli | 45 | Haiku 4.5 | 10 of 13 (missed DEL-01, DEL-03, QUAL-05) | no | 2 of 3 | unmarked high 7, uncovered 22 |
+| typescript-cli | 46 | Haiku 4.5 | 8 of 13 (missed CI-03, CI-04, QUAL-05, QUAL-09, SEC-02) | no | 2 of 3 | unmarked high 4, uncovered 37, duplicated 1 |
+| well-maintained | 41 | Opus | 2 of 2 | yes | 2 of 2 | — |
+| well-maintained | 42 | Opus | 2 of 2 | yes | 2 of 2 | — |
+| well-maintained | 43 | Sonnet | 2 of 2 | yes | 2 of 2 | — |
+| well-maintained | 44 | Sonnet | 2 of 2 | yes | 2 of 2 | — |
+| well-maintained | 45 | Haiku 4.5 | 2 of 2 | yes | 2 of 2 | — |
+| well-maintained | 46 | Haiku 4.5 | 2 of 2 | no | 1 of 2 | uncovered 4, duplicated 1 |
+| agent-workflow | 41 | Opus | 6 of 6 | no | 3 of 3 | uncovered 1 |
+| agent-workflow | 42 | Opus | 6 of 6 | yes | 3 of 3 | — |
+| agent-workflow | 43 | Sonnet | 6 of 6 | no | 3 of 3 | duplicated 1 |
+| agent-workflow | 44 | Sonnet | 6 of 6 | no | 3 of 3 | bad citations 2 |
+| agent-workflow | 45 | Haiku 4.5 | 4 of 6 (missed AGENT-03, TEST-08) | no | 3 of 3 | unmarked high 1, uncovered 6 |
+| agent-workflow | 46 | Haiku 4.5 | 2 of 6 (missed AGENT-02, AGENT-03, AGENT-04, TEST-08) | no | 2 of 3 | unmarked high 1, uncovered 32, duplicated 8 |
+| orders-service | 41 | Opus | 9 of 9 | yes | 2 of 3 | — |
+| orders-service | 42 | Opus | 9 of 9 | yes | 2 of 3 | — |
+| orders-service | 43 | Sonnet | 9 of 9 | yes | 3 of 3 | — |
+| orders-service | 44 | Sonnet | 9 of 9 | yes | 3 of 3 | — |
+| orders-service | 45 | Haiku 4.5 | 9 of 9 | no | 1 of 3 | secret copied, unmarked high 13, uncovered 5, duplicated 34 |
+| orders-service | 46 | Haiku 4.5 | 4 of 9 (missed OPS-02, OPS-04, QUAL-06, SEC-11, SEC-12) | no | 1 of 3 | unmarked high 2, uncovered 31, duplicated 7 |
+| go-ratelimiter | 41 | Opus | 4 of 4 | yes | — | — |
+| go-ratelimiter | 42 | Opus | 4 of 4 | yes | — | — |
+| go-ratelimiter | 43 | Sonnet | 4 of 4 | no | — | bad citations 4 |
+| go-ratelimiter | 44 | Sonnet | 4 of 4 | no | — | bad citations 1, uncovered 1 |
+| go-ratelimiter | 45 | Haiku 4.5 | 3 of 4 (missed TEST-08) | no | — | unmarked high 3, uncovered 7, duplicated 1 |
+| go-ratelimiter | 46 | Haiku 4.5 | 2 of 4 (missed QUAL-02, TEST-08) | no | — | uncovered 27, duplicated 1 |
+
+The Problems column counts the scorer's failures other than missed gaps: IDs it could not read
+(uncovered), IDs listed twice, high findings without a reproduced or inferred mark, copied secrets,
+and citations outside a file.
+
+| Model | Seeded gaps found | Reports that pass the scorer | Top priorities in first five |
+| --- | --- | --- | --- |
+| Opus | 100 of 100 | 10 of 12 | 26 of 28 |
+| Sonnet | 100 of 100 | 5 of 12 | 28 of 28 |
+| Haiku 4.5 | 72 of 100 | 1 of 12 | 19 of 28 |
+
+Report SHA-256 hashes, as printed by the scorer:
+
+- python-service run 41: `5fa0d3e25d79b4ce35768d7993d232769e8a2244a8c12c9f97ababd15899a423`
+- python-service run 42: `ec951bc503078dafe61e950c0eb053c30e19d95794ee020e744644afa20da0d7`
+- python-service run 43: `798448a10531f2d907991e69f39e34d72f42a5d0c2b49223defef25ea4b03105`
+- python-service run 44: `6add0431ee590eada0cf66c4bd7afad02c6fcf76b2c40257815c27fbe9b6b50b`
+- python-service run 45: `e2e105b8f839b54e1086092654f26eb0e6d9e11e9291a0dea88846848899f450`
+- python-service run 46: `b2b033c673960fdd12673e149c4e6e67f944dfae4d9b3455c70a6f6d0eee8f69`
+- typescript-cli run 41: `49c80831e303c1786f4e9ee61d712663f0247879287363a015ef34adf3b56fd6`
+- typescript-cli run 42: `53084a033ae0d7831ff395a69981e985229622dbc98c5286bc5a86208c5b1392`
+- typescript-cli run 43: `7699be30a88e91d005ad0640d76b038c7030cbef534e99c98cddbbe8f2cf2c19`
+- typescript-cli run 44: `f51e5606926902e8a7ef83294fa751c138295e972dee92b830901be6867fa660`
+- typescript-cli run 45: `9284295d0c9b77f74c8f515dfb1e16272619caa8688c08f07abe0eb4921f839e`
+- typescript-cli run 46: `785f5b5402ffe48c539af1eb83a383ea7977d72cee1ee0da9d33a9c113379e02`
+- well-maintained run 41: `b0a3af0711c81c48e9a827cd0ef39c5f49b18de3027cf2c3ff8d0d42a3adc848`
+- well-maintained run 42: `79a46359e633a961382fbf4aa6c2a15f86df0f97ab4cbff92281a5115b3fedce`
+- well-maintained run 43: `3f92d4c8065e6bcc1a04c5a16749f4729410a3aa2bb1f8de53a796e0665584fe`
+- well-maintained run 44: `59b97bbdf477c8ab43fdb0652e7231d1b597991f34409ab70cda6dc1aafe3ed2`
+- well-maintained run 45: `1259649ec092c84c4f8560ea06e9e37e440cc2ca69efc314377f0b72664a78db`
+- well-maintained run 46: `6796ac6e4bd030af938a00d2ddbb6a1d5b896cbd58bad1e5c405dd6dd7fbd729`
+- agent-workflow run 41: `565935acecf20eda6a750edd8123e6a924badede3b6f462bdff213bcc48dc996`
+- agent-workflow run 42: `a73e2c1013f7da558cb0ea0b211b7d90c8c19b12cfa6271058253e4510d25b6a`
+- agent-workflow run 43: `77f47f1c68c4967a96d0e892e1020e95ed916b61428b3dd09011a12badc5e860`
+- agent-workflow run 44: `082d532789febd2a9e99c7b35009684ff1b13ac8c5ac2b4b0aa11dbd0c77dd5a`
+- agent-workflow run 45: `f3ff909f09d1daed033d610d550ad6b3b1b18c9ec39aa0530dd8d8433e64d0fb`
+- agent-workflow run 46: `c477d19718c0fa1af0bf60d867753df5aba0058e988daa2b4efbb04697210ad9`
+- orders-service run 41: `5934dd35cb35bf5be90e98ab86cda12c66eec6b0e353cf78df17d251b96eb17b`
+- orders-service run 42: `1db2a7084e944fe5f49925c4bb388c947c9743e1f42a1287240d61ab170aa980`
+- orders-service run 43: `ad886e6dfbacad290dd2252a9d8ce10d92b6309f4e1cf904c0df64646cf96afd`
+- orders-service run 44: `dff07bbfcc74eabeb5436275371c33c8d62279967573ba58b4f75328b9e68ab9`
+- orders-service run 45: `6ae9f1e952fb3684e52f89c44813958b1f26c1688c255dd4bcc4dc34efd83ded`
+- orders-service run 46: `c571d2a0f6cc027d45e5347ea03614cee5186d879cec70e3717ae4284869bbf1`
+- go-ratelimiter run 41: `daa15728611566e2bc176bb5bd544ed42c12da9661b2b15a083a527de726c9a9`
+- go-ratelimiter run 42: `3e6793198bef21023ed28c2bb277f780ad89868cb740cc88ab667d4ecb279b0b`
+- go-ratelimiter run 43: `c82035a0cd8e506befae9aabba0990d7fa815cf03c40e8f373818a272c839dae`
+- go-ratelimiter run 44: `5144e6eca36fb84e8fd2b179d4fdead125727d3177e3420d531ef267a8d8ff4b`
+- go-ratelimiter run 45: `37fa4c4cc915e2d6c44aef38d1c7c5f0ea4bd3d2bb1e6f505e9aa5490e8c94e5`
+- go-ratelimiter run 46: `50a46447e3a33db58937952e6360abc04ebb395e6e08b5765f5face4d6b6608a`
+
+Mean time and cost reported by the CLI: Opus 2.4 minutes and USD 0.60; Sonnet 1.2 minutes and USD
+0.23; Haiku 4.5 2.2 minutes and USD 0.23, with three to five times as many tool calls as Opus.
+
+Notes:
+
+- Opus and Sonnet found every seeded gap in all six cases, including the three new ones and the
+  reserved Go case. No report flagged a criterion listed in `must_not_flag`.
+- Neither Opus run placed OPS-02, the missing database backups, in its first five actions on
+  orders-service; both Sonnet runs did. Opus ranked other operational and security work first.
+- Sonnet cited lines beyond the end of a file in three reports of the new cases, for example
+  `limiter.go:61` in a 40-line file and `README.md:39` in a 26-line one. The fabricated lines
+  appeared in the Go case and in agent-workflow; Opus had none.
+- Sonnet again omitted REPO-03 once and DEL-04 once, as in earlier rounds.
+- Haiku 4.5 found 72 of 100 seeded gaps and passed the scorer once in 12 reports. Of its 28 missed
+  gaps, 7 do not appear in the report at all, about 4 were found but listed under a status line
+  instead of the Findings table, and the rest were judged wrongly: marked not applicable, met, or
+  even listed as strengths, such as the agent brief template. Its problem is judgment more than
+  format.
+- Haiku 4.5 copied the seeded secret in three reports, including the high-entropy fake key of
+  orders-service; left Python bytecode in four prepared repositories, two of them untracked rather
+  than ignored; and one run wrote its notes to a fixed-name file, `/tmp/audit_scratch.txt`, removed
+  afterwards. The skill's safety rules held for Opus and Sonnet.
+- The reserved go-ratelimiter case is recorded like the others; by its definition, these results
+  do not change the skill.
