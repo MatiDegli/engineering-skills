@@ -35,7 +35,8 @@ configuration exists, and without a remote or a readable run it is pending verif
 
 Some criteria only concern certain repositories, so they live in one file per area. Read an area's
 file only when the area applies, and decide each of its IDs. When it does not apply, close the whole
-area in Coverage with its wildcard and the reason, for example `AGENT-* (no agents contribute)`.
+area in Coverage with its wildcard and the reason on the `not-applicable areas` line, for example
+`- not-applicable areas: AGENT-* (no agents contribute)`.
 
 | Area | IDs | Applies when | Criteria |
 | --- | --- | --- | --- |

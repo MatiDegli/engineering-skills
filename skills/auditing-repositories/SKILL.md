@@ -154,7 +154,8 @@ and timing: now, before release, or when the need arises.
 
 ## Coverage
 - meets: REPO-01, REPO-03
-- not-applicable: SEC-08 (level 1), OPS-* (no deployed service or persistent data)
+- not-applicable: SEC-08 (level 1), CI-09 (no merge queue)
+- not-applicable areas: OPS-* (no deployed service or persistent data)
 
 ## Limitations
 What could not be inspected or executed, and anything that needs separate verification.
@@ -163,12 +164,14 @@ What could not be inspected or executed, and anything that needs separate verifi
 Order findings by [priority](#priority) (`high`, `medium`, `low`). Each finding cites concrete
 evidence: a path with line numbers, a configuration value, or a command and its result. In Coverage,
 list entries after their status, separated by commas; a long list may continue in indented bullets
-that start with IDs, without labels. An area that does not apply appears once, as its wildcard.
+that start with IDs, without labels. An area that does not apply appears once, as its wildcard on
+the `not-applicable areas` line.
 
 Self-check before answering:
 
 - Every core ID, and every ID of each area that applies, appears exactly once, either in Findings
-  or in Coverage; each area that does not apply appears once as its wildcard.
+  or in Coverage; each area that does not apply appears once as its wildcard on the
+  `not-applicable areas` line.
 - Each Findings row and each Coverage entry holds one ID, written as in the format above:
   `REPO-02 (reason), AGENT-01 (reason)`, never `REPO-02 and AGENT-01`.
 - Every priority action names the IDs of the findings it closes.
