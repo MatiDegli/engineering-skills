@@ -1,5 +1,15 @@
 # Decisions
 
+## 2026-10-17 — Intermediate commits that need repository history
+
+The commit policy asks every commit in a stack to pass the checks on its own. Twenty-three commits
+from `2de7861` to `2d5e3e5`, integrated together, pass `python3 tools/check.py` in a checkout with
+history but not in a tree without it: the runner tests exported the skill from this repository's
+`HEAD` and `HEAD~1`. `0981320` gives those tests their own repository, so the integrated head passes
+on any tree. Rewriting the stack would have changed the hashes that RESULTS.md cites as the measured
+skill versions, so the maintainer chose to keep them; the skill content of every commit is
+unaffected. Checks of a commit's tree must not depend on this repository's history.
+
 ## 2026-10-17 — A versioned runner for headless rounds
 
 Headless rounds ran from scripts kept outside this repository. Their safeguards came from
