@@ -21,6 +21,7 @@ import signal
 import subprocess
 import tarfile
 import tempfile
+import threading
 import time
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -276,7 +277,45 @@ def run_command(
             return -1
 
 
-def warm_up(round_dir: Path, models: list[str]) -> None:
+def provider_env(path: Path) -> dict[str, str]:
+    """Read the `env` section of a Claude Code settings file, such as one that routes a provider.
+
+    The values, a token among them, stay in memory and reach only the CLI's environment.
+    """
+    settings = json.loads(path.read_text(encoding="utf-8"))
+    return {str(name): str(value) for name, value in (settings.get("env") or {}).items()}
+
+
+def cli_model(model: str, env: dict[str, str]) -> str:
+    """Return what to pass to `--model`: the model itself, or the alias its provider maps to it."""
+    if not env:
+        return model
+    for alias in ("sonnet", "opus", "haiku"):
+        if env.get(f"ANTHROPIC_DEFAULT_{alias.upper()}_MODEL", "").split("[")[0] == model:
+            return alias
+    raise SystemExit(f"No alias in the provider settings maps to {model}")
+
+
+class Spending:
+    """Stop launching audits once the finished ones have used the round's budget.
+
+    The CLI reports an API-equivalent cost; on a subscription it measures quota, not money.
+    Audits already running finish, so a round can end somewhat above its budget.
+    """
+
+    def __init__(self, limit: float) -> None:
+        self.limit, self.spent, self.lock = limit, 0.0, threading.Lock()
+
+    def allows(self) -> bool:
+        with self.lock:
+            return self.spent < self.limit
+
+    def add(self, cost: float) -> None:
+        with self.lock:
+            self.spent += cost
+
+
+def warm_up(round_dir: Path, models: list[str], model_env: dict[str, dict[str, str]]) -> None:
     """Make one short call per model, one at a time, before any parallel run.
 
     Parallel runs that find an expired login race to refresh it, and most fail before their first
@@ -285,12 +324,14 @@ def warm_up(round_dir: Path, models: list[str]) -> None:
     """
     for model in models:
         output = round_dir / f"warmup-{model}.json"
-        command = ["claude", "-p", "Reply with the single word OK.", "--model", model]
+        env = model_env.get(model, {})
+        command = ["claude", "-p", "Reply with the single word OK.", "--model", cli_model(model, env)]
         command += ["--setting-sources", "user", "--strict-mcp-config", "--no-session-persistence"]
         with output.open("w", encoding="utf-8") as out:
             subprocess.run(
                 [*command, "--output-format", "json"],
                 cwd=tempfile.gettempdir(),
+                env={**os.environ, **env},
                 stdout=out,
                 stderr=subprocess.STDOUT,
                 timeout=300,
@@ -312,7 +353,7 @@ def repository_clean(repo: Path) -> bool:
     return not status
 
 
-def audit(round_dir: Path, data: dict, job: dict, timeout: float, pause: tuple[int, int]) -> str:
+def audit(round_dir: Path, data: dict, job: dict, launch: dict) -> str:
     """Run one audit, retrying a launch whose login refresh failed, and save its report."""
     paths = round_paths(round_dir)
     label = f"run{job['run']}-{job['name']}"
@@ -322,16 +363,21 @@ def audit(round_dir: Path, data: dict, job: dict, timeout: float, pause: tuple[i
         return f"{label}: skipped, report exists"
     if not repository_clean(repo):
         return f"{label}: skipped, the prepared repository is missing or changed"
+    if not launch["spending"].allows():
+        return f"{label}: skipped, budget reached"
+    env = launch["model_env"].get(job["model"], {})
     stream, stderr = paths["streams"] / f"{label}.jsonl", paths["streams"] / f"{label}.stderr.txt"
     prompt = PROMPTS[data["level"]].format(skill=job_skill(data, job))
-    command = claude_command(prompt, job["model"], Path(job_skill(data, job)))
+    command = claude_command(prompt, cli_model(job["model"], env), Path(job_skill(data, job)))
     for attempt in range(1, ATTEMPTS + 1):
-        code = run_command(command, repo, stream, stderr, timeout, audit_environment(round_dir))
+        environment = audit_environment(round_dir) | env
+        code = run_command(command, repo, stream, stderr, launch["timeout"], environment)
         results = stream_results(stream)
         if not login_failed(results) or attempt == ATTEMPTS:
             break
         stream.rename(paths["streams"] / f"{label}.login-failure-{attempt}.jsonl")
-        time.sleep(random.uniform(*pause))
+        time.sleep(random.uniform(*launch["pause"]))
+    launch["spending"].add(max((r.get("total_cost_usd") or 0 for r in results), default=0))
     if results:
         report.write_text(report_text(results), encoding="utf-8")
     used = sorted({name for r in results for name in r.get("modelUsage") or {}})
@@ -339,8 +385,18 @@ def audit(round_dir: Path, data: dict, job: dict, timeout: float, pause: tuple[i
     return f"{label}: exit {code}, models {','.join(used) or 'none'}{flag}"
 
 
-def run(round_dir: Path, jobs: int, timeout: float, pause: tuple[int, int] = (20, 60)) -> int:
-    """Run every planned audit; return 1 when a model differs or a repository was not clean."""
+def run(
+    round_dir: Path,
+    jobs: int,
+    timeout: float,
+    budget: float,
+    pause: tuple[int, int] = (20, 60),
+    model_env: dict[str, dict[str, str]] | None = None,
+) -> int:
+    """Run every planned audit; return 1 when a model differs or an audit was skipped.
+
+    `model_env` maps a model to the environment that routes it to its provider.
+    """
     paths = round_paths(round_dir)
     data = json.loads(paths["plan.json"].read_text(encoding="utf-8"))
     status = subprocess.run(["claude", "auth", "status"], capture_output=True, text=True, timeout=60)
@@ -348,13 +404,15 @@ def run(round_dir: Path, jobs: int, timeout: float, pause: tuple[int, int] = (20
         raise SystemExit("claude is not logged in here: run 'claude auth login' first")
     version = subprocess.run(["claude", "--version"], capture_output=True, text=True, timeout=60)
     (round_dir / "cli-version.txt").write_text(version.stdout, encoding="utf-8")
-    warm_up(round_dir, sorted({job["model"] for job in data["jobs"]}))
+    model_env = model_env or {}
+    warm_up(round_dir, sorted({job["model"] for job in data["jobs"]}), model_env)
+    launch = {"timeout": timeout, "pause": pause, "model_env": model_env, "spending": Spending(budget)}
     lines = []
     with paths["log.txt"].open("a", encoding="utf-8") as log:
-        log.write(f"start {now()} {version.stdout.strip()}\n")
+        log.write(f"start {now()} {version.stdout.strip()}, budget USD {budget:g}\n")
         with ThreadPoolExecutor(max_workers=jobs) as pool:
             futures = [
-                pool.submit(audit, round_dir, data, job, timeout, pause) for job in data["jobs"]
+                pool.submit(audit, round_dir, data, job, launch) for job in data["jobs"]
             ]
             for future in as_completed(futures):
                 lines.append(future.result())
@@ -362,7 +420,7 @@ def run(round_dir: Path, jobs: int, timeout: float, pause: tuple[int, int] = (20
                 log.flush()
                 print(lines[-1], flush=True)
         log.write(f"end {now()}\n")
-    return int(any("MODEL MISMATCH" in line or "skipped, the" in line for line in lines))
+    return int(any(mark in line for line in lines for mark in ("MODEL MISMATCH", "skipped, the", "skipped, budget")))
 
 
 def outside_paths(stream: Path, allowed: list[Path]) -> list[str]:
@@ -417,7 +475,7 @@ def score_job(job: dict, data: dict, paths: dict[str, Path], repo: Path, totals:
     totals.update(
         found=len(result["found"]),
         seeded=len(expected["must_find"]),
-        passed=passed,
+        passed=int(passed),
         reports=1,
         top=int(top[1]) if top else 0,
         top_of=int(top[2]) if top else 0,
@@ -578,6 +636,19 @@ def main() -> int:
     run_parser.add_argument("round_dir", type=Path)
     run_parser.add_argument("--jobs", type=int, default=6)
     run_parser.add_argument("--timeout-minutes", type=float, default=90)
+    run_parser.add_argument(
+        "--budget-usd",
+        type=float,
+        required=True,
+        help="stop launching audits once finished ones reach this API-equivalent cost",
+    )
+    run_parser.add_argument(
+        "--model-env",
+        action="append",
+        default=[],
+        metavar="MODEL=SETTINGS",
+        help="route MODEL through the env section of a Claude Code settings file, such as glm-5.3",
+    )
     for name, text in (
         ("summarize", "score the reports and check what the runs left behind"),
         ("clean", "remove the prepared repositories and the skill export"),
@@ -590,7 +661,14 @@ def main() -> int:
         print(f"planned {len(data['jobs'])} runs of skill {data['skill_commit']}")
         return 0
     if arguments.command == "run":
-        return run(arguments.round_dir, arguments.jobs, arguments.timeout_minutes * 60)
+        model_env = {}
+        for value in arguments.model_env:
+            model, _, path = value.partition("=")
+            if not model or not path:
+                parser.error(f"--model-env takes MODEL=SETTINGS, not {value!r}")
+            model_env[model] = provider_env(Path(path).expanduser())
+        timeout = arguments.timeout_minutes * 60
+        return run(arguments.round_dir, arguments.jobs, timeout, arguments.budget_usd, model_env=model_env)
     if arguments.command == "summarize":
         print(summarize(arguments.round_dir), end="")
         return 0

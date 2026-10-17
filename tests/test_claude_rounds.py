@@ -26,6 +26,8 @@ if arguments == ["--version"]:
     print("0.0.0 (Claude Code)")
     raise SystemExit(0)
 model = arguments[arguments.index("--model") + 1]
+if os.environ.get("ANTHROPIC_BASE_URL") and model in ("sonnet", "opus", "haiku"):
+    model = os.environ["ANTHROPIC_DEFAULT_" + model.upper() + "_MODEL"]
 if "json" == arguments[arguments.index("--output-format") + 1]:
     if model == "claude-unknown-1-0":
         print(json.dumps({{"type": "result", "is_error": True, "result": "unknown model"}}))
@@ -116,7 +118,7 @@ class RoundTests(unittest.TestCase):
     def test_a_round_retries_a_failed_login_and_summarizes_every_run(self):
         round_dir = self.plan("round", ("1", "claude-test-1-0"), ("2", "claude-flaky-1-0"))
         with mock.patch("builtins.print"):
-            self.assertEqual(claude_rounds.run(round_dir, jobs=2, timeout=60, pause=(0, 0)), 0)
+            self.assertEqual(claude_rounds.run(round_dir, jobs=2, timeout=60, budget=100, pause=(0, 0)), 0)
         streams = round_dir / "streams"
         self.assertTrue((streams / "run2-case.login-failure-1.jsonl").exists())
         self.assertEqual(sorted(p.name for p in (round_dir / "reports").iterdir()), ["run1-case.md", "run2-case.md"])
@@ -142,7 +144,7 @@ class RoundTests(unittest.TestCase):
                          [("case", "1"), ("case", "2"), ("second", "1"), ("second", "2")])
         self.assertEqual(len(data["skills"]), 2)
         with mock.patch("builtins.print"):
-            self.assertEqual(claude_rounds.run(round_dir, jobs=2, timeout=60, pause=(0, 0)), 0)
+            self.assertEqual(claude_rounds.run(round_dir, jobs=2, timeout=60, budget=100, pause=(0, 0)), 0)
         summary = claude_rounds.summarize(round_dir)
         for revision in data["skills"]:
             self.assertIn(f"| Test 1.0 @ {revision} | 2 of 2 |", summary)
@@ -152,16 +154,41 @@ class RoundTests(unittest.TestCase):
         self.rounds.remove(round_dir)
         self.assertFalse(any(path.exists() for path in exports))
 
+    def test_a_round_stops_launching_audits_at_its_budget(self):
+        round_dir = self.plan("round", ("1", "claude-test-1-0"), ("2", "claude-test-1-0"))
+        with mock.patch("builtins.print"):
+            self.assertEqual(claude_rounds.run(round_dir, jobs=1, timeout=60, budget=0.3, pause=(0, 0)), 1)
+        log = (round_dir / "log.txt").read_text()
+        self.assertEqual(log.count(": exit 0"), 1)
+        self.assertIn("skipped, budget reached", log)
+
+    def test_a_provider_model_runs_through_its_alias_and_settings(self):
+        settings = self.root / "provider-settings.json"
+        env = {"ANTHROPIC_BASE_URL": "https://provider.example", "ANTHROPIC_AUTH_TOKEN": "fake-token",
+               "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-5.3[1m]"}
+        settings.write_text(json.dumps({"env": env}))
+        routed = {"glm-5.3": claude_rounds.provider_env(settings)}
+        self.assertEqual(claude_rounds.cli_model("glm-5.3", routed["glm-5.3"]), "sonnet")
+        with self.assertRaises(SystemExit):
+            claude_rounds.cli_model("other-1", routed["glm-5.3"])
+        round_dir = self.plan("round", ("1", "glm-5.3"))
+        with mock.patch("builtins.print"):
+            self.assertEqual(
+                claude_rounds.run(round_dir, jobs=1, timeout=60, budget=100, pause=(0, 0), model_env=routed), 0
+            )
+        self.assertIn("models glm-5.3[1m]", (round_dir / "log.txt").read_text())
+        self.assertNotIn("fake-token", "".join(p.read_text() for p in round_dir.rglob("*") if p.is_file()))
+
     def test_a_model_other_than_the_requested_one_is_flagged(self):
         round_dir = self.plan("round", ("1", "claude-mismatch-1-0"))
         with mock.patch("builtins.print"):
-            self.assertEqual(claude_rounds.run(round_dir, jobs=1, timeout=60, pause=(0, 0)), 1)
+            self.assertEqual(claude_rounds.run(round_dir, jobs=1, timeout=60, budget=100, pause=(0, 0)), 1)
         self.assertIn("MODEL MISMATCH", (round_dir / "log.txt").read_text())
 
     def test_a_failed_warm_up_stops_the_round_before_any_audit(self):
         round_dir = self.plan("round", ("1", "claude-test-1-0"), ("2", "claude-unknown-1-0"))
         with mock.patch("builtins.print"), self.assertRaises(SystemExit):
-            claude_rounds.run(round_dir, jobs=2, timeout=60, pause=(0, 0))
+            claude_rounds.run(round_dir, jobs=2, timeout=60, budget=100, pause=(0, 0))
         self.assertEqual(list((round_dir / "streams").iterdir()), [])
 
     def test_a_timeout_stops_the_whole_process_group(self):
