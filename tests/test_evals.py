@@ -310,7 +310,13 @@ def source_repository(root):
     run_git(repository, "checkout", "-q", "main")
     commit_files(repository, "change readme", {"README.md": "# Source v2\n", "b/back.txt": "B\n"}, "2026-01-05T00:00:00Z")
     run_git(repository, "merge", "-q", "--no-ff", "-m", "merge side", "side", date="2026-01-06T00:00:00Z")
+    (repository / "c").mkdir()
+    (repository / "c" / "link").symlink_to("three.txt")
     commit_files(repository, "add c", {"c/three.txt": "three\n"}, "2026-01-07T00:00:00Z")
+    run_git(repository, "tag", "v1", "HEAD~2")
+    run_git(repository, "checkout", "-q", "-b", "draft")
+    commit_files(repository, "draft", {"a/one.txt": "one draft\n"}, "2026-01-08T00:00:00Z")
+    run_git(repository, "checkout", "-q", "main")
     return repository
 
 
@@ -371,6 +377,7 @@ class SourceCaseTests(unittest.TestCase):
         newest = max(p.stat().st_mtime_ns for p in others)
         self.assertLessEqual(max(p.stat().st_mtime_ns for p in seeded), newest)
         self.assertFalse((destination / ".git" / "refs" / "original").exists())
+        self.assertTrue((destination / ".git" / "description").exists())
 
         self.assertEqual(git("for-each-ref", "--format=%(refname)"), "refs/heads/main\n")
         self.assertEqual(git("remote"), "")
@@ -419,6 +426,88 @@ class SourceCaseTests(unittest.TestCase):
         (self.case / "seed" / "a" / "link.txt").symlink_to(self.root / "outside.txt")
         with self.assertRaises(SystemExit):
             prepare(self.case, self.root / "audit-link")
+
+    def test_seeds_that_would_hide_nothing_or_break_the_tree_are_refused(self):
+        variants = {
+            "parent-file": lambda: (self.case / "seed" / "README.md").mkdir(),
+            "symlink-replaced": lambda: (self.case / "seed" / "c").mkdir(),
+            "same-content": lambda: None,
+            "undeclared-executable": lambda: None,
+        }
+        for name, setup in variants.items():
+            with self.subTest(name=name):
+                self.tearDown()
+                self.setUp()
+                setup()
+                if name == "parent-file":
+                    (self.case / "seed" / "README.md" / "inner.txt").write_text("x\n")
+                if name == "symlink-replaced":
+                    (self.case / "seed" / "c" / "link").write_text("regular\n")
+                if name == "same-content":
+                    (self.case / "seed" / "c").mkdir()
+                    (self.case / "seed" / "c" / "three.txt").write_text("three\n")
+                    with self.assertRaisesRegex(SystemExit, "equals its content"):
+                        prepare(self.case, self.root / "audit")
+                if name == "undeclared-executable":
+                    self.write_source(remove=["b/two.txt"], executable=["c/missing.txt"])
+                with self.assertRaises(SystemExit):
+                    prepare(self.case, self.root / "audit")
+                self.assertFalse((self.root / "audit").exists())
+
+    def test_renames_and_emptied_fix_commits_are_refused(self):
+        commit_files(self.source, "add old", {"d/old.py": "safe\n"}, "2026-01-09T00:00:00Z")
+        run_git(self.source, "mv", "d/old.py", "d/new.py")
+        run_git(self.source, "commit", "-q", "-m", "rename old", date="2026-01-10T00:00:00Z")
+        self.write_source(remove=["b/two.txt"])
+        (self.case / "seed" / "d").mkdir()
+        (self.case / "seed" / "d" / "new.py").write_text("unsafe\n")
+        with self.assertRaisesRegex(SystemExit, "d/old.py"):
+            prepare(self.case, self.root / "renamed")
+        (self.case / "seed" / "d" / "new.py").unlink()
+        commit_files(self.source, "add view", {"e/view.py": "vulnerable\n"}, "2026-01-11T00:00:00Z")
+        commit_files(self.source, "fix view", {"e/view.py": "fixed\n"}, "2026-01-12T00:00:00Z")
+        self.write_source(remove=["b/two.txt"])
+        (self.case / "seed" / "e").mkdir()
+        (self.case / "seed" / "e" / "view.py").write_text("vulnerable\n")
+        with self.assertRaisesRegex(SystemExit, "fix view"):
+            prepare(self.case, self.root / "emptied")
+        self.assertFalse((self.root / "emptied").exists())
+
+    def test_relative_and_shallow_sources(self):
+        self.write_source(remove=["b/two.txt"], repository="../source")
+        directory = os.getcwd()
+        try:
+            os.chdir("/")
+            prepare(self.case, self.root / "relative")
+        finally:
+            os.chdir(directory)
+        shallow = self.root / "shallow"
+        run_git(self.root, "clone", "-q", "--depth", "1", f"file://{self.source}", str(shallow))
+        head = run_git(shallow, "rev-parse", "HEAD").strip()
+        (self.case / "source.json").write_text(json.dumps({"repository": str(shallow), "commit": head}))
+        with self.assertRaisesRegex(SystemExit, "shallow"):
+            prepare(self.case, self.root / "from-shallow")
+
+    def test_an_existing_destination_is_never_removed(self):
+        destination = self.root / "taken"
+        destination.mkdir()
+        (destination / "work.txt").write_text("someone else's\n")
+        with self.assertRaises(SystemExit):
+            evals.prepare_from_source(self.case, destination)
+        self.assertEqual((destination / "work.txt").read_text(), "someone else's\n")
+        late, real_mkdir = self.root / "late", os.mkdir
+
+        def taken_meanwhile(path, *arguments, **options):
+            if Path(path) != late:
+                return real_mkdir(path, *arguments, **options)
+            real_mkdir(path)
+            (late / "work.txt").write_text("another preparation's\n")
+            raise FileExistsError(path)
+
+        with mock.patch.object(evals.os, "mkdir", taken_meanwhile):
+            with self.assertRaises(FileExistsError):
+                evals.prepare_from_source(self.case, late)
+        self.assertEqual((late / "work.txt").read_text(), "another preparation's\n")
 
     def test_failures_leave_no_destination_and_never_write_inside_the_source(self):
         before = self.source_state()
@@ -478,9 +567,10 @@ class SourceCaseTests(unittest.TestCase):
         (hooks / "post-checkout").write_text(f"#!/bin/sh\ntouch {self.root / 'hook-ran'}\n")
         (hooks / "post-checkout").chmod(0o755)
         home = self.root / "home"
-        home.mkdir()
+        (home / "git").mkdir(parents=True)
         settings = f"[core]\n\thooksPath = {hooks}\n[i18n]\n\tcommitEncoding = ISO-8859-1\n"
         (home / ".gitconfig").write_text(settings)
+        (home / "git" / "attributes").write_text("* text eol=crlf\n*.txt ident\n")
         exported = {
             "GIT_INDEX_FILE": str(outer / ".git" / "index"),
             "GIT_OBJECT_DIRECTORY": str(outer / ".git" / "objects"),
@@ -493,6 +583,7 @@ class SourceCaseTests(unittest.TestCase):
             prepare(self.case, self.root / "audit")
         self.assertEqual(before, files())
         self.assertFalse((self.root / "hook-ran").exists())
+        self.assertEqual((self.root / "audit" / "README.md").read_bytes(), b"# Source v2\n")
         heads = [run_git(self.root / name, "rev-parse", "HEAD") for name in ("reference", "audit")]
         self.assertEqual(heads[0], heads[1])
 

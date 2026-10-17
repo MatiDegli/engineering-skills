@@ -97,8 +97,10 @@ files are not executable unless `executable` lists them:
 ```
 
 A replaced or removed path changes in every commit that holds its content at the pinned commit, so
-no backport or revert keeps the original; a copy of that content at another path does keep it. A
-new file lands in the last commit that changed a file in its directory. No commit is added, the
+no backport or revert keeps the original. Preparation fails when that content stays reachable at
+another path, as after a rename, when a seed would leave a commit empty, or when a seed changes
+nothing; seed the other path too, or pick another file. A new file lands in the last commit that
+changed a file in its directory. No commit is added, the
 history is rewritten in a temporary clone so that every file in the prepared tree has the same age,
 and the result keeps one branch and no remote, reflog, or unreachable objects. Git runs without the
 caller's Git variables, hooks, and user or system settings, so a hook's exported index or a global

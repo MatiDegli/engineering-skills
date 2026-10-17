@@ -37,6 +37,12 @@ LEADING_IDS = re.compile(
 ACTIONS_HEADING = re.compile(r"^(#{1,6})\s*Priority actions\b", re.I | re.M)
 ACTION_ITEM = re.compile(r"(?:\d+[.)]|[-*])\s")
 CITATION = re.compile(r"(?<![\w./-])((?:[\w.-]+/)*[\w.-]+):(\d+(?:[-–]\d+)?(?:,\s?\d+(?:[-–]\d+)?)*)")
+# Settings that Git reads from the user's files even when no configuration file is loaded.
+SETTINGS_OFF = (
+    *("-c", "core.hooksPath=/dev/null"),
+    *("-c", "core.attributesFile=/dev/null"),
+    *("-c", "core.excludesFile=/dev/null"),
+)
 SEED_PATH = re.compile(r"[^\t\n\\*?\[\]]+")
 FIXED_IDENTITY = {
     "GIT_AUTHOR_NAME": "Evaluation Fixture",
@@ -70,7 +76,7 @@ def git_at(
     """Run Git on exactly this Git directory, never on one found by searching parent directories."""
     variables = {"GIT_DIR": str(git_dir), **({"GIT_WORK_TREE": str(work_tree)} if work_tree else {})}
     return subprocess.run(
-        ["git", "-c", "core.hooksPath=/dev/null", *arguments],
+        ["git", *SETTINGS_OFF, *arguments],
         cwd=work_tree or git_dir,
         env=git_environment(**variables, **(environment or {})),
         input=stdin,
@@ -108,10 +114,10 @@ def prepare(case: Path, destination: Path) -> None:
 
 
 def clone(origin: Path, target: Path, *options: str) -> None:
-    """Clone without templates, hooks, or the caller's Git settings, so no hook or filter runs."""
+    """Clone without hooks or the caller's Git settings, so no hook or filter runs."""
     subprocess.run(
-        ["git", "-c", "core.hooksPath=/dev/null", "clone", "-q", "--no-local", "--template="]
-        + ["-o", "origin", *options, "--", str(origin), str(target)],
+        ["git", *SETTINGS_OFF, "clone", "-q", "--no-local", "-o", "origin"]
+        + [*options, "--", str(origin), str(target)],
         cwd=tempfile.gettempdir(),
         env=git_environment(),
         capture_output=True,
@@ -189,6 +195,8 @@ def seed_operations(case: Path, source: dict, git) -> tuple[dict[str, list[str]]
         else:
             mode = "100755" if path in executable else current[0] if current else "100644"
             blob = git("hash-object", "-w", "--no-filters", "--", str(files[path])).strip()
+            if current and (mode, blob) == (current[0], current[2]):
+                raise SystemExit(f"The seed for {path} equals its content at the pinned commit")
             entry, wanted = f"{mode} {blob}\t{path}\n", (mode, blob)
         for commit, held_object in zip(targets, held):
             if held_object == current[2] if current else held_object.endswith(" missing"):
@@ -200,19 +208,35 @@ def seed_operations(case: Path, source: dict, git) -> tuple[dict[str, list[str]]
 
 
 def check_seeds(git, checks: dict) -> None:
-    """Fail unless HEAD holds every seed and no commit keeps a replaced path's pinned content."""
-    commits = git("rev-list", "HEAD").split()
+    """Fail unless HEAD holds every seed and no commit keeps a replaced path's pinned content.
+
+    The pinned content must be unreachable at any path, so a rename or a copy cannot keep it; the
+    case author then seeds the other path too or picks another file.
+    """
+    reachable = {}
+    for line in git("rev-list", "--objects", "HEAD").splitlines():
+        name, _, path = line.partition(" ")
+        reachable.setdefault(name, path)
     for path, (wanted, pinned) in checks.items():
         listed = git("ls-tree", "HEAD", "--", path)
         held = tuple(listed.split("\t", 1)[0].split()[0::2]) if listed else None
         if held != wanted:
             raise SystemExit(f"HEAD does not hold the seed for {path}: {held} instead of {wanted}")
-        if pinned:
-            blobs = git(
-                "cat-file", "--batch-check=%(objectname)", stdin="".join(f"{c}:{path}\n" for c in commits)
-            ).splitlines()
-            if pinned in blobs:
-                raise SystemExit(f"A commit still holds the content seeded away at {path}")
+        if pinned in reachable:
+            raise SystemExit(
+                f"The content seeded away at {path} is still reachable at {reachable[pinned]}"
+            )
+
+
+def commit_shapes(git) -> list[tuple[str, bool]]:
+    """Return each commit's subject and whether it changes its first parent's tree, newest first."""
+    rows = []
+    for line in git("log", "--topo-order", "--format=%H %T %P%x09%s", "HEAD").splitlines():
+        head, _, subject = line.partition("\t")
+        commit, tree, *parents = head.split()
+        rows.append((commit, tree, parents[:1], subject))
+    trees = {commit: tree for commit, tree, _, _ in rows}
+    return [(subject, not first or trees[first[0]] != tree) for _, tree, first, subject in rows]
 
 
 def prepare_from_source(case: Path, destination: Path) -> None:
@@ -221,12 +245,13 @@ def prepare_from_source(case: Path, destination: Path) -> None:
     `source.json` names the `repository` (relative paths start at the case directory), the full
     `commit` SHA, the paths to `remove`, and any new seed files that are `executable`; `seed/`
     holds files to add or replace, at their paths in the repository. `seed_operations` explains
-    where each change lands. The history is rewritten in a temporary bare clone, which the
+    where each change lands, and `check_seeds` what must hold after it; a seed that would empty a
+    commit is refused too. The history is rewritten in a temporary bare clone, which the
     destination then clones, so the work tree is written once and every file has the same age, and
     no rewrite leftovers reach the destination. The source is only read. The destination keeps one
     branch and no remote, reflog, or unreachable objects, so nothing in it leads back to the
     original files. Commit metadata is kept; signatures and encoding headers are dropped from every
-    commit alike. Any failure removes the destination.
+    commit alike. The destination is created exclusively, and any later failure removes it.
     """
     source = json.loads((case / "source.json").read_text(encoding="utf-8"))
     origin = Path(source["repository"]).expanduser()
@@ -238,10 +263,12 @@ def prepare_from_source(case: Path, destination: Path) -> None:
         raise SystemExit(f"The destination must be outside the source repository: {destination}")
     if target.exists():
         raise SystemExit(f"Destination already exists: {destination}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    created = False
     try:
         with tempfile.TemporaryDirectory() as scratch:
             work = Path(scratch) / "work.git"
-            clone(origin, work, "--bare")
+            clone(origin, work, "--bare", "--template=")
             git = partial(git_at, work)
             if (work / "shallow").exists():
                 raise SystemExit("The source repository is shallow; its history is incomplete")
@@ -251,6 +278,7 @@ def prepare_from_source(case: Path, destination: Path) -> None:
                 if ref != "refs/heads/main":
                     git("update-ref", "-d", ref)
             operations, checks = seed_operations(case, source, git)
+            shapes = commit_shapes(git)
             if operations:
                 entries = Path(scratch) / "entries"
                 entries.mkdir()
@@ -268,6 +296,11 @@ def prepare_from_source(case: Path, destination: Path) -> None:
                     environment={"FILTER_BRANCH_SQUELCH_WARNING": "1", "SEED_ENTRIES": str(entries)},
                 )
             check_seeds(git, checks)
+            for (subject, changed), (_, still) in zip(shapes, commit_shapes(git)):
+                if changed and not still:
+                    raise SystemExit(f"Seeding empties the commit {subject!r}, which would point at it")
+            os.mkdir(target)
+            created = True
             clone(work, target)
         git = partial(git_at, target / ".git", work_tree=target)
         git("remote", "remove", "origin")
@@ -279,7 +312,8 @@ def prepare_from_source(case: Path, destination: Path) -> None:
         if git("status", "--porcelain", "--ignored", "--untracked-files=all").strip():
             raise SystemExit(f"The prepared repository is not clean: {destination}")
     except BaseException:
-        shutil.rmtree(target, ignore_errors=True)
+        if created:
+            shutil.rmtree(target, ignore_errors=True)
         raise
 
 
