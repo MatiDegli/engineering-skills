@@ -23,7 +23,13 @@
     "OPS-01": "a library, not a deployed service",
     "OPS-02": "no persistent data",
     "ARCH-05": "errors are raised to the caller; there are no broad catches",
-    "STRUCT-02": "fewer than 20 files in every directory"
+    "STRUCT-02": "fewer than 20 files in every directory",
+    "TEST-09": "security level 1, no code that moves money or data, and no mutation testing in use",
+    "OPS-03": "a library, not a service in operation",
+    "OPS-04": "a library, not a deployed service",
+    "DEL-04": "nothing is built or distributed",
+    "AGENT-04": "no agents contribute",
+    "AGENT-05": "no agents contribute"
   },
   "top_priorities": [
     "CI-06",
