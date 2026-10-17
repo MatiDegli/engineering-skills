@@ -48,6 +48,39 @@ FIXED_IDENTITY = {
 }
 
 
+def git_environment(**variables: str) -> dict[str, str]:
+    """Return the caller's environment without Git's variables and configuration, plus `variables`.
+
+    Hooks export variables such as GIT_INDEX_FILE, and a caller may export GIT_OBJECT_DIRECTORY;
+    inherited, they point a command at another repository's index or objects. User and system
+    configuration can add hooks, filters, signing, or commit encodings that change the result.
+    """
+    clean = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
+    isolated = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1", "GIT_ATTR_NOSYSTEM": "1"}
+    return {**clean, **isolated, "GIT_TERMINAL_PROMPT": "0", **variables}
+
+
+def git_at(
+    git_dir: Path,
+    *arguments: str,
+    work_tree: Path | None = None,
+    stdin: str | None = None,
+    environment: dict | None = None,
+) -> str:
+    """Run Git on exactly this Git directory, never on one found by searching parent directories."""
+    variables = {"GIT_DIR": str(git_dir), **({"GIT_WORK_TREE": str(work_tree)} if work_tree else {})}
+    return subprocess.run(
+        ["git", "-c", "core.hooksPath=/dev/null", *arguments],
+        cwd=work_tree or git_dir,
+        env=git_environment(**variables, **(environment or {})),
+        input=stdin,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=900,
+    ).stdout
+
+
 def prepare(case: Path, destination: Path) -> None:
     """Copy a case repository and commit it so the audit has a revision to record.
 
@@ -61,168 +94,200 @@ def prepare(case: Path, destination: Path) -> None:
         prepare_from_source(case, destination)
         return
     shutil.copytree(case / "repo", destination)
-    environment = {**os.environ, **FIXED_IDENTITY}
-    for command in (
+    subprocess.run(
         ["git", "init", "-q", "-b", "main"],
-        ["git", "config", "core.fileMode", "false"],
-        ["git", "add", "-A"],
-        ["git", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "Initial commit"],
-    ):
-        subprocess.run(command, cwd=destination, env=environment, check=True, timeout=30)
+        cwd=destination,
+        env=git_environment(),
+        check=True,
+        timeout=30,
+    )
+    git = partial(git_at, destination / ".git", work_tree=destination, environment=FIXED_IDENTITY)
+    git("config", "core.fileMode", "false")
+    git("add", "-A")
+    git("commit", "-q", "-m", "Initial commit")
 
 
-def git_in(
-    repository: Path, *arguments: str, stdin: str | None = None, environment: dict | None = None
-) -> str:
-    """Run Git on this repository only, never on one found by searching parent directories."""
-    variables = {
-        **os.environ,
-        **(environment or {}),
-        "GIT_DIR": str(repository / ".git"),
-        "GIT_WORK_TREE": str(repository),
-    }
-    return subprocess.run(
-        ["git", *arguments],
-        cwd=repository,
-        env=variables,
-        input=stdin,
+def clone(origin: Path, target: Path, *options: str) -> None:
+    """Clone without templates, hooks, or the caller's Git settings, so no hook or filter runs."""
+    subprocess.run(
+        ["git", "-c", "core.hooksPath=/dev/null", "clone", "-q", "--no-local", "--template="]
+        + ["-o", "origin", *options, "--", str(origin), str(target)],
+        cwd=tempfile.gettempdir(),
+        env=git_environment(),
         capture_output=True,
         text=True,
         check=True,
         timeout=900,
-    ).stdout
-
-
-def seed_operations(case: Path, source: dict, git) -> dict[str, list[str]]:
-    """Map each commit of the clone to the index entries that plant the case's seeded changes.
-
-    A replaced or removed path changes in the last commit that changed it, and in every later
-    commit that still holds the content it has at the pinned commit. A new file appears in the
-    last commit that changed a file directly in its nearest existing directory, and in every later
-    commit. History gains no commit, so neither recent commits nor the log lead to the seeds.
-    """
-    seed = case / "seed"
-    files = (
-        {p.relative_to(seed).as_posix(): p for p in sorted(seed.rglob("*")) if p.is_file()}
-        if seed.is_dir()
-        else {}
     )
+
+
+def seed_files(case: Path) -> dict[str, Path]:
+    """Return the files under the case's `seed/` by repository path; symbolic links are refused."""
+    seed, files = case / "seed", {}
+    for directory, names, file_names in os.walk(seed):
+        for name in names + file_names:
+            path = Path(directory) / name
+            if path.is_symlink():
+                raise SystemExit(f"Seed entries must not be symbolic links: {path}")
+            if name in file_names:
+                files[path.relative_to(seed).as_posix()] = path
+    return dict(sorted(files.items()))
+
+
+def seed_operations(case: Path, source: dict, git) -> tuple[dict[str, list[str]], dict]:
+    """Map each commit to the index entries that plant the seeds; also return what to check after.
+
+    A replaced or removed path changes in every commit that holds the content it has at the pinned
+    commit, so neither its history, a backport, nor a revert keeps that content; a copy of the same
+    content at another path is not changed. A new file appears in the last commit that changed a
+    file directly in its nearest existing directory, and in every later commit. New files are not
+    executable unless `source.json` lists them under `executable`.
+    """
+    files = seed_files(case)
     removed = list(dict.fromkeys(source.get("remove", [])))
+    executable = set(source.get("executable", []))
+    commits = git("rev-list", "HEAD").split()
     operations: dict[str, list[str]] = {}
+    checks: dict[str, tuple[tuple[str, str] | None, str | None]] = {}
     for path in [*files, *removed]:
         parts = path.split("/")
         if (
             not SEED_PATH.fullmatch(path)
-            or "" in parts
-            or ".." in parts
-            or parts[0] == ".git"
+            or path.startswith(":")
+            or any(part in ("", ".", "..") or part.lower() == ".git" for part in parts)
             or (path in files and path in removed)
         ):
             raise SystemExit(f"Unsupported seed path: {path!r}")
+        for depth in range(1, len(parts)):
+            if git("ls-tree", "HEAD", "--", "/".join(parts[:depth])).split()[1:2] == ["blob"]:
+                raise SystemExit(f"A parent of the seed path is a file: {path}")
         listed = git("ls-tree", "HEAD", "--", path)
         current = listed.split("\t", 1)[0].split() if listed else []
-        if current and current[1] != "blob":
-            raise SystemExit(f"Seed path is not a file at the pinned commit: {path}")
+        if current and (current[1] != "blob" or current[0] == "120000"):
+            raise SystemExit(f"Seed path is not a regular file at the pinned commit: {path}")
         if not current and path in removed:
             raise SystemExit(f"Cannot remove a path that the pinned commit lacks: {path}")
         if current:
-            anchors = [path]
+            targets = commits
         else:
             directory = "/".join(parts[:-1])
             while directory and not git("ls-tree", "-d", "HEAD", "--", directory).strip():
                 directory = directory.rpartition("/")[0]
             anchors = [f":(glob){directory}/*" if directory else ":(glob)*", directory or "."]
-        last = next(
-            (c for a in anchors if (c := git("log", "-1", "--format=%H", "HEAD", "--", a).strip())),
-            None,
-        )
-        if last is None:
-            raise SystemExit(f"No commit touches the directory of seed path: {path}")
-        commits = [last, *git("rev-list", "--ancestry-path", f"{last}..HEAD").split()]
+            last = next(
+                (c for a in anchors if (c := git("log", "-1", "--format=%H", "HEAD", "--", a).strip())),
+                None,
+            )
+            if last is None:
+                raise SystemExit(f"No commit touches the directory of seed path: {path}")
+            targets = [last, *git("rev-list", "--ancestry-path", f"{last}..HEAD").split()]
         held = git(
-            "cat-file", "--batch-check=%(objectname)", stdin="".join(f"{c}:{path}\n" for c in commits)
+            "cat-file", "--batch-check=%(objectname)", stdin="".join(f"{c}:{path}\n" for c in targets)
         ).splitlines()
         if path in removed:
-            entry = f"0 {'0' * 40}\t{path}\n"
+            entry, wanted = f"0 {'0' * 40}\t{path}\n", None
         else:
-            mode = current[0] if current else "100755" if os.access(files[path], os.X_OK) else "100644"
+            mode = "100755" if path in executable else current[0] if current else "100644"
             blob = git("hash-object", "-w", "--no-filters", "--", str(files[path])).strip()
-            entry = f"{mode} {blob}\t{path}\n"
-        for commit, held_object in zip(commits, held):
+            entry, wanted = f"{mode} {blob}\t{path}\n", (mode, blob)
+        for commit, held_object in zip(targets, held):
             if held_object == current[2] if current else held_object.endswith(" missing"):
                 operations.setdefault(commit, []).append(entry)
-    return operations
+        checks[path] = (wanted, current[2] if current else None)
+    if set(source.get("executable", [])) - set(files):
+        raise SystemExit("Every path under `executable` must be a seed file")
+    return operations, checks
+
+
+def check_seeds(git, checks: dict) -> None:
+    """Fail unless HEAD holds every seed and no commit keeps a replaced path's pinned content."""
+    commits = git("rev-list", "HEAD").split()
+    for path, (wanted, pinned) in checks.items():
+        listed = git("ls-tree", "HEAD", "--", path)
+        held = tuple(listed.split("\t", 1)[0].split()[0::2]) if listed else None
+        if held != wanted:
+            raise SystemExit(f"HEAD does not hold the seed for {path}: {held} instead of {wanted}")
+        if pinned:
+            blobs = git(
+                "cat-file", "--batch-check=%(objectname)", stdin="".join(f"{c}:{path}\n" for c in commits)
+            ).splitlines()
+            if pinned in blobs:
+                raise SystemExit(f"A commit still holds the content seeded away at {path}")
 
 
 def prepare_from_source(case: Path, destination: Path) -> None:
     """Clone a pinned commit of a local repository and fold the case's seeded changes into it.
 
-    `source.json` names the `repository`, the full `commit` SHA, and the paths to `remove`; `seed/`
+    `source.json` names the `repository` (relative paths start at the case directory), the full
+    `commit` SHA, the paths to `remove`, and any new seed files that are `executable`; `seed/`
     holds files to add or replace, at their paths in the repository. `seed_operations` explains
-    where each change lands. Only the clone is rewritten: the source is only read, every command
-    after the clone names the clone's Git directory explicitly, and the clone keeps one branch, no
-    remote, no reflog, and no unreachable objects, so nothing in it leads back to the original files.
-    Commit metadata is kept, so the revision is the same on every preparation.
+    where each change lands. The history is rewritten in a temporary bare clone, which the
+    destination then clones, so the work tree is written once and every file has the same age, and
+    no rewrite leftovers reach the destination. The source is only read. The destination keeps one
+    branch and no remote, reflog, or unreachable objects, so nothing in it leads back to the
+    original files. Commit metadata is kept; signatures and encoding headers are dropped from every
+    commit alike. Any failure removes the destination.
     """
     source = json.loads((case / "source.json").read_text(encoding="utf-8"))
-    origin = Path(source["repository"]).expanduser().resolve()
+    origin = Path(source["repository"]).expanduser()
+    origin = (origin if origin.is_absolute() else case / origin).resolve()
     target = destination.resolve()
     if not re.fullmatch(r"[0-9a-f]{40}", str(source.get("commit", ""))):
         raise SystemExit("source.json must pin a full 40-character commit SHA")
     if target == origin or origin in target.parents or target in origin.parents:
         raise SystemExit(f"The destination must be outside the source repository: {destination}")
-    subprocess.run(
-        ["git", "clone", "-q", "--no-local", "--no-tags", "--no-checkout", "--", str(origin), str(target)],
-        check=True,
-        timeout=900,
-    )
-    if not (target / ".git").is_dir():
-        raise SystemExit(f"The clone did not create its own repository at {destination}")
-    git = partial(git_in, target)
-    git("checkout", "-q", "-B", "main", source["commit"])
-    git("remote", "remove", "origin")
-    for ref in git("for-each-ref", "--format=%(refname)").split():
-        if ref != "refs/heads/main":
-            git("update-ref", "-d", ref)
-    git("config", "core.fileMode", "false")
-    operations = seed_operations(case, source, git)
-    if operations:
+    if target.exists():
+        raise SystemExit(f"Destination already exists: {destination}")
+    try:
         with tempfile.TemporaryDirectory() as scratch:
-            entries = Path(scratch) / "entries"
-            entries.mkdir()
-            for commit, lines in operations.items():
-                (entries / commit).write_text("".join(lines), encoding="utf-8")
-            git(
-                "-c",
-                "commit.gpgsign=false",
-                "filter-branch",
-                "-d",
-                str(Path(scratch) / "rewrite"),
-                "--index-filter",
-                'if test -f "$SEED_ENTRIES/$GIT_COMMIT"; then '
-                'git update-index --index-info < "$SEED_ENTRIES/$GIT_COMMIT"; fi',
-                "--",
-                "main",
-                environment={"FILTER_BRANCH_SQUELCH_WARNING": "1", "SEED_ENTRIES": str(entries)},
-            )
-        for ref in git("for-each-ref", "--format=%(refname)", "refs/original").split():
-            git("update-ref", "-d", ref)
-        git("read-tree", "-u", "--reset", "HEAD")
-    for name in ("ORIG_HEAD", "FETCH_HEAD"):
-        (target / ".git" / name).unlink(missing_ok=True)
-    git("reflog", "expire", "--expire=now", "--expire-unreachable=now", "--all")
-    git("gc", "-q", "--prune=now")
-    if git("status", "--porcelain", "--ignored", "--untracked-files=all").strip():
-        raise SystemExit(f"The prepared repository is not clean: {destination}")
+            work = Path(scratch) / "work.git"
+            clone(origin, work, "--bare")
+            git = partial(git_at, work)
+            if (work / "shallow").exists():
+                raise SystemExit("The source repository is shallow; its history is incomplete")
+            git("update-ref", "refs/heads/main", source["commit"])
+            git("symbolic-ref", "HEAD", "refs/heads/main")
+            for ref in git("for-each-ref", "--format=%(refname)").split():
+                if ref != "refs/heads/main":
+                    git("update-ref", "-d", ref)
+            operations, checks = seed_operations(case, source, git)
+            if operations:
+                entries = Path(scratch) / "entries"
+                entries.mkdir()
+                for commit, lines in operations.items():
+                    (entries / commit).write_text("".join(lines), encoding="utf-8")
+                git(
+                    "filter-branch",
+                    "-d",
+                    str(Path(scratch) / "rewrite"),
+                    "--index-filter",
+                    'if test -f "$SEED_ENTRIES/$GIT_COMMIT"; then '
+                    'git update-index --index-info < "$SEED_ENTRIES/$GIT_COMMIT"; fi',
+                    "--",
+                    "main",
+                    environment={"FILTER_BRANCH_SQUELCH_WARNING": "1", "SEED_ENTRIES": str(entries)},
+                )
+            check_seeds(git, checks)
+            clone(work, target)
+        git = partial(git_at, target / ".git", work_tree=target)
+        git("remote", "remove", "origin")
+        git("config", "core.fileMode", "false")
+        for name in ("ORIG_HEAD", "FETCH_HEAD"):
+            (target / ".git" / name).unlink(missing_ok=True)
+        git("reflog", "expire", "--expire=now", "--expire-unreachable=now", "--all")
+        git("gc", "-q", "--prune=now")
+        if git("status", "--porcelain", "--ignored", "--untracked-files=all").strip():
+            raise SystemExit(f"The prepared repository is not clean: {destination}")
+    except BaseException:
+        shutil.rmtree(target, ignore_errors=True)
+        raise
 
 
 def verify(case: Path, destination: Path) -> list[str]:
     """Return how a prepared repository differs from a fresh preparation of the same case."""
 
     def git(directory: Path, *arguments: str) -> str:
-        return subprocess.run(
-            ["git", *arguments], cwd=directory, capture_output=True, text=True, check=True, timeout=30
-        ).stdout
+        return git_at(directory / ".git", *arguments, work_tree=directory)
 
     with tempfile.TemporaryDirectory() as directory:
         reference = Path(directory) / "reference"

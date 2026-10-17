@@ -57,15 +57,21 @@ disposable environment; some tests call external hosts.
 A case directory may hold `source.json` and `seed/` instead of `repo/`, to test an audit on a
 repository too large to read in full. `prepare` then clones the pinned commit of the local
 repository that `source.json` names, writes each file under `seed/` at the same path, and removes
-each path in its `remove` list:
+each path in its `remove` list. A relative `repository` starts at the case directory, and new seed
+files are not executable unless `executable` lists them:
 
 ```json
 {"repository": "~/Projects/example", "commit": "<full 40-character SHA>", "remove": ["docs/backup.md"]}
 ```
 
-Each change lands in the last commit that changed its path, and a new file in the last commit that
-changed a file in its directory, so no added commit points at the seeds. The clone keeps one branch
-and no remote, reflog, or unreachable objects, and the source repository is only read.
+A replaced or removed path changes in every commit that holds its content at the pinned commit, so
+no backport or revert keeps the original; a copy of that content at another path does keep it. A
+new file lands in the last commit that changed a file in its directory. No commit is added, the
+history is rewritten in a temporary clone so that every file in the prepared tree has the same age,
+and the result keeps one branch and no remote, reflog, or unreachable objects. Git runs without the
+caller's Git variables, hooks, and user or system settings, so a hook's exported index or a global
+setting cannot reach another repository or change the revision. The source repository is only read,
+and a failed preparation leaves no destination.
 
 Such a case can live outside this repository: pass its directory path wherever a command takes a
 case name, as in `python3 -m tools.evals prepare ~/cases/large /tmp/audit-large`. `score` and

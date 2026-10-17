@@ -6,13 +6,18 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+from tools import evals
 from tools.evals import (
     CASES,
     bad_citations,
     catalog,
+    check_seeds,
     compare,
     finding_rows,
+    git_at,
+    git_environment,
     leaked,
     misplaced_citations,
     prepare,
@@ -272,11 +277,10 @@ IDENTITY = {
 }
 
 
-def run_git(directory, *arguments, date="2026-01-01T00:00:00Z"):
-    environment = {**os.environ, **IDENTITY, "GIT_AUTHOR_DATE": date, "GIT_COMMITTER_DATE": date}
+def run_git(directory, *arguments, date="2026-01-01T00:00:00Z", check=True):
+    environment = git_environment(**IDENTITY, GIT_AUTHOR_DATE=date, GIT_COMMITTER_DATE=date)
     return subprocess.run(
-        ["git", "-c", "commit.gpgsign=false", *arguments],
-        cwd=directory, env=environment, capture_output=True, text=True, check=True,
+        ["git", *arguments], cwd=directory, env=environment, capture_output=True, text=True, check=check
     ).stdout
 
 
@@ -293,17 +297,18 @@ def commit_files(repository, message, files, date):
 
 
 def source_repository(root):
-    """Build a history with a merge: the side branch last changes b/two.txt."""
+    """Build a history with a merge, where the side branch last changes b/two.txt, and a revert
+    that brings b/back.txt back to the content it had two commits earlier."""
     repository = root / "source"
     repository.mkdir()
     run_git(repository, "init", "-q", "-b", "main")
     commit_files(repository, "add one", {"README.md": "# Source\n", "a/one.txt": "one\n"}, "2026-01-01T00:00:00Z")
-    commit_files(repository, "add two", {"b/two.txt": "two\n"}, "2026-01-02T00:00:00Z")
-    commit_files(repository, "change one", {"a/one.txt": "one v2\n"}, "2026-01-03T00:00:00Z")
+    commit_files(repository, "add two", {"b/two.txt": "two\n", "b/back.txt": "B\n"}, "2026-01-02T00:00:00Z")
+    commit_files(repository, "change one", {"a/one.txt": "one v2\n", "b/back.txt": "C\n"}, "2026-01-03T00:00:00Z")
     run_git(repository, "checkout", "-q", "-b", "side")
     commit_files(repository, "change two", {"b/two.txt": "two side\n"}, "2026-01-04T00:00:00Z")
     run_git(repository, "checkout", "-q", "main")
-    commit_files(repository, "change readme", {"README.md": "# Source v2\n"}, "2026-01-05T00:00:00Z")
+    commit_files(repository, "change readme", {"README.md": "# Source v2\n", "b/back.txt": "B\n"}, "2026-01-05T00:00:00Z")
     run_git(repository, "merge", "-q", "--no-ff", "-m", "merge side", "side", date="2026-01-06T00:00:00Z")
     commit_files(repository, "add c", {"c/three.txt": "three\n"}, "2026-01-07T00:00:00Z")
     return repository
@@ -318,6 +323,8 @@ class SourceCaseTests(unittest.TestCase):
         (self.case / "seed" / "a").mkdir(parents=True)
         (self.case / "seed" / "a" / "one.txt").write_text("one SEEDED\n")
         (self.case / "seed" / "a" / "new.txt").write_text("new SEEDED\n")
+        (self.case / "seed" / "b").mkdir()
+        (self.case / "seed" / "b" / "back.txt").write_text("B SEEDED\n")
         (self.case / "expected.json").write_text('{"must_find": ["REPO-01"], "must_not_flag": []}')
         self.write_source(remove=["b/two.txt"])
 
@@ -353,8 +360,17 @@ class SourceCaseTests(unittest.TestCase):
         self.assertFalse((destination / "b" / "two.txt").exists())
         self.assertEqual(git("log", "--diff-filter=D", "--format=%s", "--", "b/two.txt"), "change two\n")
         self.assertEqual(git("show", "HEAD~2:a/one.txt"), "one SEEDED\n")
-        untouched = run_git(self.source, "rev-list", "--reverse", "main")[:2 * 41]
-        self.assertIn(untouched, git("rev-list", "--reverse", "main"))
+        untouched = run_git(self.source, "rev-list", "--reverse", "main")[:41]
+        self.assertTrue(git("rev-list", "--reverse", "main").startswith(untouched))
+        for path, content in (("a/one.txt", "one v2\n"), ("b/back.txt", "B\n"), ("b/two.txt", "two side\n")):
+            for commit in git("rev-list", "--all").split():
+                with self.subTest(path=path, commit=commit[:7]):
+                    self.assertNotEqual(run_git(destination, "show", f"{commit}:{path}", check=False), content)
+        seeded = [destination / p for p in ("a/one.txt", "a/new.txt", "b/back.txt")]
+        others = [destination / p for p in ("README.md", "c/three.txt")]
+        newest = max(p.stat().st_mtime_ns for p in others)
+        self.assertLessEqual(max(p.stat().st_mtime_ns for p in seeded), newest)
+        self.assertFalse((destination / ".git" / "refs" / "original").exists())
 
         self.assertEqual(git("for-each-ref", "--format=%(refname)"), "refs/heads/main\n")
         self.assertEqual(git("remote"), "")
@@ -392,11 +408,93 @@ class SourceCaseTests(unittest.TestCase):
         self.assertEqual(run_git(outer, "status", "--porcelain"), "")
 
     def test_seed_paths_stay_inside_the_repository(self):
-        for path in ("../escape.txt", ".git/config", "a/*.txt"):
+        paths = ("../escape.txt", ".git/config", "a/*.txt", "a/./one.txt", ":(literal)README.md")
+        for number, path in enumerate(paths + ("a/.git/hooks/x", "README.md/inner.txt")):
             with self.subTest(path=path):
                 self.write_source(remove=[path])
                 with self.assertRaises(SystemExit):
-                    prepare(self.case, self.root / f"audit-{len(path)}")
+                    prepare(self.case, self.root / f"audit-{number}")
+                self.assertFalse((self.root / f"audit-{number}").exists())
+        self.write_source()
+        (self.case / "seed" / "a" / "link.txt").symlink_to(self.root / "outside.txt")
+        with self.assertRaises(SystemExit):
+            prepare(self.case, self.root / "audit-link")
+
+    def test_failures_leave_no_destination_and_never_write_inside_the_source(self):
+        before = self.source_state()
+        with self.assertRaises(SystemExit):
+            prepare(self.case, self.source / "inside")
+        self.write_source(commit="0" * 40)
+        with self.assertRaises(subprocess.CalledProcessError):
+            prepare(self.case, self.root / "audit")
+        self.assertFalse((self.root / "audit").exists())
+        self.assertEqual(before, self.source_state())
+        self.assertFalse((self.source / "inside").exists())
+
+    def test_a_failure_after_the_clone_removes_the_destination(self):
+        def failing_gc(git_dir, *arguments, **options):
+            if "gc" in arguments:
+                raise subprocess.CalledProcessError(1, ["git", "gc"])
+            return git_at(git_dir, *arguments, **options)
+
+        with mock.patch.object(evals, "git_at", failing_gc):
+            with self.assertRaises(subprocess.CalledProcessError):
+                prepare(self.case, self.root / "audit")
+        self.assertFalse((self.root / "audit").exists())
+
+    def test_seed_checks_reject_a_missing_seed_and_kept_pinned_content(self):
+        destination = self.root / "audit"
+        prepare(self.case, destination)
+
+        def git(*arguments, **options):
+            return git_at(destination / ".git", *arguments, work_tree=destination, **options)
+
+        blob = lambda content: git("hash-object", "--stdin", stdin=content).strip()
+        seeded = ("100644", blob("one SEEDED\n"))
+        check_seeds(git, {"a/one.txt": (seeded, blob("one v2\n"))})
+        with self.assertRaises(SystemExit):
+            check_seeds(git, {"a/one.txt": (("100644", blob("other\n")), None)})
+        with self.assertRaises(SystemExit):
+            check_seeds(git, {"a/one.txt": (seeded, blob("one\n"))})
+
+    def test_new_files_are_executable_only_when_declared(self):
+        (self.case / "seed" / "a" / "new.txt").chmod(0o755)
+        prepare(self.case, self.root / "plain")
+        self.assertTrue(run_git(self.root / "plain", "ls-files", "-s", "a/new.txt").startswith("100644 "))
+        self.write_source(remove=["b/two.txt"], executable=["a/new.txt"])
+        prepare(self.case, self.root / "declared")
+        self.assertTrue(run_git(self.root / "declared", "ls-files", "-s", "a/new.txt").startswith("100755 "))
+
+    def test_the_callers_git_variables_and_settings_change_nothing(self):
+        prepare(self.case, self.root / "reference")
+        outer = self.root / "outer"
+        outer.mkdir()
+        run_git(outer, "init", "-q", "-b", "main")
+        commit_files(outer, "outer", {"keep.txt": "keep\n"}, "2026-02-01T00:00:00Z")
+        files = lambda: {p: p.read_bytes() for p in sorted((outer / ".git").rglob("*")) if p.is_file()}
+        before = files()
+        hooks = self.root / "hooks"
+        hooks.mkdir()
+        (hooks / "post-checkout").write_text(f"#!/bin/sh\ntouch {self.root / 'hook-ran'}\n")
+        (hooks / "post-checkout").chmod(0o755)
+        home = self.root / "home"
+        home.mkdir()
+        settings = f"[core]\n\thooksPath = {hooks}\n[i18n]\n\tcommitEncoding = ISO-8859-1\n"
+        (home / ".gitconfig").write_text(settings)
+        exported = {
+            "GIT_INDEX_FILE": str(outer / ".git" / "index"),
+            "GIT_OBJECT_DIRECTORY": str(outer / ".git" / "objects"),
+            "GIT_WORK_TREE": str(outer),
+            "GIT_CONFIG_GLOBAL": str(home / ".gitconfig"),
+            "HOME": str(home),
+            "XDG_CONFIG_HOME": str(home),
+        }
+        with mock.patch.dict(os.environ, exported):
+            prepare(self.case, self.root / "audit")
+        self.assertEqual(before, files())
+        self.assertFalse((self.root / "hook-ran").exists())
+        heads = [run_git(self.root / name, "rev-parse", "HEAD") for name in ("reference", "audit")]
+        self.assertEqual(heads[0], heads[1])
 
 
 if __name__ == "__main__":
