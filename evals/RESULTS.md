@@ -707,3 +707,91 @@ Notes:
   reads the criterion as asking for a patch pin; the expectation and Opus do not.
 - Scorer failures by model: Opus 1 of 6 (format only), Sonnet 3 of 6 (two with missing IDs, one with
   a false flag and an unread layout).
+
+## 2026-10-17 — Runs 33 to 36 (criteria loaded by area)
+
+- Skill `6cd1e15`, with 74 core criteria and 13 in the agents, delivery, and operations area
+  files; case repositories `6c22cf9`, expectations `e329106`, scored with `9846c6f`. The skill was
+  exported from `ba29912` outside this repository.
+- Agent and prompt as in runs 29 to 32: `modelUsage` reported `claude-opus-5-5` for runs 33 and 34
+  and `claude-sonnet-5-5` for runs 35 and 36. Every tool call stayed in the allowed paths, `verify`
+  found all 12 prepared repositories unchanged, and no audit copy was left under `/tmp`. Each run's
+  stream was kept, so the files every audit read are known.
+- Prepared revisions: python-service `c67d66d`, typescript-cli `7f27a08`, well-maintained `5780341`.
+
+| Case | Run | Model | Seeded gaps found | False flags | IDs the scorer read | Findings | Meets | Not applicable | High (reproduced) | Top priorities in first five | High outside them |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| python-service | 33 | Opus | 16 of 16 | none | 87 of 87 | 34 | 5 | 48 | 5 (2) | 3 of 3 | 2 |
+| python-service | 34 | Opus | 16 of 16 | none | 87 of 87 | 33 | 5 | 49 | 5 (2) | 3 of 3 | 2 |
+| python-service | 35 | Sonnet | 16 of 16 | none | 74 of 87 (area wildcards outside the list) | 31 | 4 | 52 | 4 (0) | 3 of 3 | 1 |
+| python-service | 36 | Sonnet | 16 of 16 | none | 74 of 87 (a separate "not-applicable areas" line) | 30 | 4 | 53 | 4 (0) | 3 of 3 | 1 |
+| typescript-cli | 33 | Opus | 13 of 13 | none | 87 of 87 | 39 | 7 | 41 | 7 (3) | 3 of 3 | 4 |
+| typescript-cli | 34 | Opus | 13 of 13 | none | 87 of 87 | 39 | 8 | 40 | 7 (3) | 3 of 3 | 4 |
+| typescript-cli | 35 | Sonnet | 13 of 13 | none | 84 of 87 (no REPO-03, STRUCT-01, DEL-04) | 36 | 0 | 48 | 5 (0) | 3 of 3 | 2 |
+| typescript-cli | 36 | Sonnet | 13 of 13 | none | 87 of 87 | 35 | 6 | 46 | 4 (1) | 3 of 3 | 1 |
+| well-maintained | 33 | Opus | 2 of 2 | none | 87 of 87 | 8 | 26 | 53 | 0 | 2 of 2 | 0 |
+| well-maintained | 34 | Opus | 2 of 2 | none | 87 of 87 | 6 | 26 | 55 | 0 | 2 of 2 | 0 |
+| well-maintained | 35 | Sonnet | 2 of 2 | ARCH-05 | 87 of 87 | 4 | 21 | 62 | 0 | 2 of 2 | 0 |
+| well-maintained | 36 | Sonnet | 2 of 2 | DEP-01 | 87 of 87 | 6 | 23 | 58 | 0 | 2 of 2 | 0 |
+
+The Findings, Meets, and Not applicable columns and the agreement below also count area wildcards
+that runs 35 and 36 wrote outside the not-applicable line.
+
+Report SHA-256 hashes, as printed by the scorer:
+
+- python-service run 33: `854196de4a28b83956e13ba57169dcdae8305d232680fb12c344dbbeba77a863`
+- python-service run 34: `8074445870812885b4aa5ac0d9dfd64250604699edc940756309ccf0181fc1df`
+- python-service run 35: `5bdec3830b684ed09c436eaa1b22960d55add298e00bb6efa2d01f2935ddafe3`
+- python-service run 36: `c2fc1709e0de1e916fddede8420cde87e993392192f865057509b0b081ab809b`
+- typescript-cli run 33: `7a096e0a4bebb31c1e03b34226ea86afc89ac781b20a68a9ae97620237b762e2`
+- typescript-cli run 34: `afbe6901b2415f195f17be3c51b3a2a7b7b13b10fbcdc686879d6a320192c3a5`
+- typescript-cli run 35: `2beaa79a78c82a680020303175a4072cf139b132f0ec512045f831ece3e3186c`
+- typescript-cli run 36: `58ccb3666cbe01f3b7941992024fa384f160416ece850c2e74cd2a27b60dde03`
+- well-maintained run 33: `db9f3809df21731345f689624c0dd88e1107bdbb11fe15d2dbf7f64fa6b91313`
+- well-maintained run 34: `c8d4e02d76fe647c9724de0bb1de5f7bcfb62d67c879e56b672bdb6c13c15e3a`
+- well-maintained run 35: `113d9238b25c66058259fc24ac526bb18ac68c33b0a839f61aed48eee786f614`
+- well-maintained run 36: `e64ec934b16deed759fdadc67f5cf2d00089b64b6620a73fd8d7d2bf420c98ae`
+
+Effect of loading by area, against runs 29 to 32 with the same models and cases:
+
+| Measure | Runs 29 to 32 | Runs 33 to 36 |
+| --- | --- | --- |
+| Mean report length, Opus | 15.2 KB, 95 lines | 14.6 KB, 88 lines |
+| Mean report length, Sonnet | 13.1 KB, 90 lines | 12.0 KB, 84 lines |
+| Mean time and cost reported by the CLI, Opus | 2.2 minutes, USD 0.58 | 2.0 minutes, USD 0.55 |
+| Mean time and cost reported by the CLI, Sonnet | 0.8 minutes, USD 0.20 | 0.9 minutes, USD 0.20 |
+| Reports that pass the scorer, Opus | 5 of 6 | 6 of 6 |
+| Reports that pass the scorer, Sonnet | 3 of 6 | 1 of 6 |
+
+Agreement, summed over the three cases:
+
+| Runs | Flagged overlap | Status agreement | Priority agreement |
+| --- | --- | --- | --- |
+| 33 and 34 (Opus with Opus) | 75 of 84 | 241 of 261 | 67 of 75 |
+| 35 and 36 (Sonnet with Sonnet) | 61 of 81 | 229 of 258 | 45 of 61 |
+| 33 and 35 (Opus with Sonnet) | 63 of 89 | 211 of 258 | 53 of 63 |
+
+Notes:
+
+- Guides are now read by context. Eleven of the twelve audits read `criteria.md`, at most one area
+  file, and at most `standard.md`; one Opus audit read seven guides, `standard.md` included. No
+  audit opened the agents area, which no case needs. Subagents in runs 7 to 10 read all ten guides
+  every time; the headless streams of later rounds before this one were not kept, so that
+  comparison crosses harnesses.
+- The cost fell by about 5% for Opus and not measurably for Sonnet: most of an audit's cost comes
+  from reading the repository and running commands, not from the guides.
+- Opus passed the scorer in all six reports, the first time since the PR 2 criteria.
+- Both Sonnet python-service reports closed the three areas correctly but outside the format: run
+  35 as bullets after the not-applicable line, and run 36 on its own "not-applicable areas" line.
+  Read that way, both cover every ID.
+- Sonnet run 35 typescript-cli omitted REPO-03, STRUCT-01, and DEL-04; Sonnet has now omitted
+  REPO-03 in three of its last six python-service and typescript-cli reports.
+- Run 35 well-maintained flagged ARCH-05 because letters without an ASCII form are dropped
+  silently, although the README documents it and a test pins it. The new behavior step, which asks
+  to look for silent changes to data, does not say that documented and tested behavior is not a
+  defect. Run 36 flagged DEP-01 for the minor-version runtime pin, as Sonnet did in runs 28 and 31.
+- Every run found every seeded gap and placed the top priorities in its first five actions, and no
+  control case audit flagged an area criterion listed in its `must_not_flag`.
+- Follow-ups: give area wildcards their own Coverage line and teach the scorer to read it; say in
+  the behavior step that documented, tested behavior is not a defect; clarify in DEP-01 whether a
+  supported minor runtime version counts as pinned.
