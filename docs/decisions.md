@@ -1,5 +1,19 @@
 # Decisions
 
+## 2026-10-17 — A private case for large repositories
+
+Testing how an audit samples a repository it cannot read in full needs a real repository's size and
+history: the sample follows entry points, trust boundaries, and the files the log shows changing
+most. A generated tree would be uniform enough for an agent to recognize the filler. A public
+open-source repository would need network access and a license notice to prepare, and models may
+already know it, so an audit could assert what it never checked. The large case therefore starts
+from a pinned commit of one of the maintainer's projects, with seeded defects folded into the
+commits that last touched their paths, so the history does not point at them. Those projects are
+private: the case's seeds and expected findings stay outside this repository, only the maintainer
+can reproduce its runs, and RESULTS.md records its scores and report hashes without content. The
+cases under `evals/cases` remain the reproducible measure; the preparation code is public and tested
+on throwaway repositories.
+
 ## 2026-10-17 — Criteria loaded by area
 
 The catalog is a core file plus one file per area that only some repositories need: agent-assisted
