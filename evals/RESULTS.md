@@ -795,3 +795,67 @@ Notes:
 - Follow-ups: give area wildcards their own Coverage line and teach the scorer to read it; say in
   the behavior step that documented, tested behavior is not a defect; clarify in DEP-01 whether a
   supported minor runtime version counts as pinned.
+
+## 2026-10-17 — Runs 37 to 40 (areas line, behavior and DEP-01 clarified)
+
+- Skill `38bb20f`, case repositories `6c22cf9`, expectations `e329106`, scored with `18a8209`. The
+  skill was exported from `38bb20f` outside this repository.
+- Agent and prompt as in runs 33 to 36: `modelUsage` reported `claude-opus-5-5` for runs 37 and 38
+  and `claude-sonnet-5-5` for runs 39 and 40. Every tool call stayed in the allowed paths, `verify`
+  found all 12 prepared repositories unchanged, no audit copy was left under `/tmp`, and every
+  stream was kept.
+- Prepared revisions: python-service `c67d66d`, typescript-cli `7f27a08`, well-maintained `5780341`.
+
+| Case | Run | Model | Seeded gaps found | False flags | IDs the scorer read | Findings | Meets | Not applicable | High (reproduced) | Top priorities in first five | High outside them |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| python-service | 37 | Opus | 16 of 16 | none | 87 of 87 | 34 | 3 | 50 | 5 (2) | 3 of 3 | 2 |
+| python-service | 38 | Opus | 16 of 16 | none | 87 of 87 | 33 | 5 | 49 | 6 (2) | 3 of 3 | 3 |
+| python-service | 39 | Sonnet | 16 of 16 | none | 87 of 87 | 31 | 5 | 51 | 3 (0) | 3 of 3 | 1 |
+| python-service | 40 | Sonnet | 16 of 16 | none | 87 of 87 | 30 | 6 | 51 | 4 (0) | 3 of 3 | 2 |
+| typescript-cli | 37 | Opus | 13 of 13 | none | 87 of 87 | 38 | 7 | 42 | 7 (3) | 3 of 3 | 4 |
+| typescript-cli | 38 | Opus | 13 of 13 | none | 87 of 87 | 38 | 6 | 43 | 5 (3) | 3 of 3 | 3 |
+| typescript-cli | 39 | Sonnet | 13 of 13 | none | 86 of 87 (DEL-04 as "DEL-04: not-applicable") | 32 | 6 | 48 | 4 (1) | 3 of 3 | 1 |
+| typescript-cli | 40 | Sonnet | 13 of 13 | none | 86 of 87 (no DEL-04; PERF-01 twice) | 39 | 1 | 46 | 4 (0) | 3 of 3 | 1 |
+| well-maintained | 37 | Opus | 2 of 2 | none | 87 of 87 | 7 | 24 | 56 | 0 | 2 of 2 | 0 |
+| well-maintained | 38 | Opus | 2 of 2 | none | 87 of 87 | 6 | 31 | 50 | 0 | 2 of 2 | 0 |
+| well-maintained | 39 | Sonnet | 2 of 2 | none | 87 of 87 | 5 | 24 | 58 | 0 | 2 of 2 | 0 |
+| well-maintained | 40 | Sonnet | 2 of 2 | none | 87 of 87 | 5 | 24 | 58 | 0 | 2 of 2 | 0 |
+
+Report SHA-256 hashes, as printed by the scorer:
+
+- python-service run 37: `33abb66cd0131d285553d485888e0e5a2d5715252d3e9895342e68bc547fad81`
+- python-service run 38: `582803515eb875d85400d41762b42aacedaa14c6b499aff754eb7c683001ec6a`
+- python-service run 39: `b2f66096d3ecc0cf8feb1cf95dc30ae9cef1a54beb1925b42e53e0ecd7d2882f`
+- python-service run 40: `afc69119393b49df52629f1bc10f31e45502740ad55127bbc9226bc7ab5f1009`
+- typescript-cli run 37: `53cff5383687906d08df40eca1341b844ce2704062e567a88ce90e3eb96b55f9`
+- typescript-cli run 38: `7db6b1939183c4494bb9522636d4eb0b29d5472f7bc69da977f824dada37d871`
+- typescript-cli run 39: `a35fc3a31f1fc63587b1a92a4b77176b75c1d1826585a2e51d27992ba3c34972`
+- typescript-cli run 40: `ac22575838d0a3a84b6e437ac34da912053d62017f151d1f035e42fd172be91a`
+- well-maintained run 37: `1a835f87225bb7b81f5e0fcd5df49116c2ff3b9ec240b56af55150df8df2adf4`
+- well-maintained run 38: `e5790484d9d0c1d3fb2844044c2fce778b6b6a13f454b6b29aaeb8d344b4c2d6`
+- well-maintained run 39: `745dcf8846ff4ac6fdf687291f6bd147708f263ef692b0e8c64cc361fb8e8d92`
+- well-maintained run 40: `cb6971cf4a493e3ad9b443964e06011912cafaafea07ff2ddeaa940bfbf758bd`
+
+Agreement, summed over the three cases:
+
+| Runs | Flagged overlap | Status agreement | Priority agreement |
+| --- | --- | --- | --- |
+| 37 and 38 (Opus with Opus) | 77 of 79 | 247 of 261 | 63 of 77 |
+| 39 and 40 (Sonnet with Sonnet) | 63 of 79 | 228 of 260 | 55 of 63 |
+| 37 and 39 (Opus with Sonnet) | 67 of 80 | 234 of 260 | 50 of 67 |
+
+Mean time and cost reported by the CLI: Opus 2.0 minutes and USD 0.55; Sonnet 0.9 minutes and
+USD 0.20, as in runs 33 to 36.
+
+Notes:
+
+- Reports that pass the scorer: Opus 6 of 6, as in runs 33 to 36; Sonnet 4 of 6, against 1 of 6.
+  Both Sonnet python-service reports used the "not-applicable areas" line, and no control case
+  audit flagged ARCH-05 or DEP-01.
+- Both remaining failures concern DEL-04 in typescript-cli, which Sonnet also omitted in run 35:
+  run 39 wrote it as a bullet of its own, "DEL-04: not-applicable", which the scorer does not
+  read, and justified it with security level 1 although the package is published to npm; run 40
+  omitted it and listed PERF-01 both in Findings, as not-applicable, and in Coverage.
+- Every run found every seeded gap and placed the top priorities in its first five actions, and no
+  control case audit flagged a criterion listed in its `must_not_flag`.
+- Opus agreed with itself on 77 of 79 flagged IDs, the highest overlap recorded.
