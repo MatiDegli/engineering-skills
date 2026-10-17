@@ -75,11 +75,7 @@ Copy this checklist into your working notes and complete every step:
    check that it runs in CI on the relevant paths, that it fails on violations (look for ignored exit
    codes, `|| true`, `continue-on-error`, `--exit-zero`, warning-only severities, and skip
    conditions), and that it covers new and renamed files. Run the project's validation command once
-   when it is safe. Check whether CI actually ran and passed on the audited revision. Before you
-   report that CI, branch protection, or review lets changes reach the default branch unchecked,
-   find how changes actually reach it: a gate that the documented merge path requires is a control
-   even when CI does not run, so judge what it runs, whether merging can skip it, and who can
-   produce or forge its evidence.
+   when it is safe. Check whether CI actually ran and passed on the audited revision.
    Reproduce each `high` finding when it is safe: run the command that shows the failure, or apply
    a mutation in memory or in a scratch copy outside the repository and show that no control rejects
    it. Start that finding's evidence with `Reproduced:` or `Inferred:`. A finding is reproduced only
@@ -89,7 +85,11 @@ Copy this checklist into your working notes and complete every step:
    result. Claims without measurements are a `PERF-01` gap. Do not infer scalability from reading
    code; state what to measure instead, following
    [architecture.md](references/architecture.md#verifiable-optimization).
-8. **Report.** Write the report in the format below, then run the self-check.
+8. **Report.** Write the report in the format below, then run the self-check. When a `high` or
+   `medium` finding rests on a premise you did not verify and that could change the finding or its
+   priority, list it under Deeper checks instead of exploring further: for example, that no gate
+   outside CI checks changes before they reach the default branch. If you can ask the user, offer
+   to run those checks after the report.
 
 ## Large repositories
 
@@ -160,6 +160,11 @@ Up to five, each with evidence.
 Up to five actions, each naming the IDs of the findings it closes, with scope, an acceptance check,
 and timing: now, before release, or when the need arises.
 
+## Deeper checks
+Up to five, each naming a finding's ID, the premise you did not verify, how the finding would
+change if it is false, and how to check it, with a rough cost. Write "none" when no premise could
+change a `high` or `medium` finding.
+
 ## Coverage
 - meets: REPO-01, REPO-03
 - not-applicable: SEC-08 (level 1), CI-09 (no merge queue)
@@ -192,6 +197,8 @@ Self-check before answering:
 - Every `high` finding's evidence starts with `Reproduced:` or `Inferred:`.
 - Every `path:line` points to a line you read that holds what the finding states.
 - Every claim that something is missing comes from a search, and every count names its command.
+- Each Deeper checks entry names a `high` or `medium` finding whose unverified premise could
+  change it; there are at most five.
 - Every scratch directory you created is deleted and named in Context.
 - `git status --short --ignored` shows the same output as at the start.
 - The report shows secret-like values only in masked form, including values that look fake.

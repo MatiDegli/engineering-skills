@@ -162,6 +162,16 @@ class PriorityTests(unittest.TestCase):
         self.assertEqual(priority_actions(report), [["SEC-05", "CI-02"], ["TEST-02"], []])
         self.assertEqual(priority_actions(PRIORITIZED), [])
 
+    def test_deeper_checks_name_ids_without_adding_actions_or_statuses(self):
+        checks = (
+            "\n## Priority actions\n1. Rotate (SEC-05).\n\n## Deeper checks\n"
+            "- CI-02: no gate outside CI was looked for; if one exists, medium. Check the merge docs.\n"
+            "  - TEST-02 would not change.\n"
+        )
+        report = REPORT.replace("\n## Coverage", checks + "\n## Coverage")
+        self.assertEqual(priority_actions(report), [["SEC-05"]])
+        self.assertEqual(report_statuses(report), report_statuses(REPORT))
+
     def test_placement_reports_positions_and_extra_high_findings(self):
         report = PRIORITIZED + "\n## Priority actions\n1. Pin (CI-02)\n2. Rotate (SEC-05)\n"
         expected = {"top_priorities": ["SEC-05", "TEST-02"], "max_high": 1}
