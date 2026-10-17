@@ -11,7 +11,9 @@ import re
 import shutil
 import subprocess
 import tempfile
-from functools import cache
+from collections.abc import Iterator
+from contextlib import contextmanager
+from functools import cache, partial
 from pathlib import Path
 
 from tools.check_skills import catalog_files, criteria_ids
@@ -35,6 +37,7 @@ LEADING_IDS = re.compile(
 ACTIONS_HEADING = re.compile(r"^(#{1,6})\s*Priority actions\b", re.I | re.M)
 ACTION_ITEM = re.compile(r"(?:\d+[.)]|[-*])\s")
 CITATION = re.compile(r"(?<![\w./-])((?:[\w.-]+/)*[\w.-]+):(\d+(?:[-–]\d+)?(?:,\s?\d+(?:[-–]\d+)?)*)")
+SEED_PATH = re.compile(r"[^\t\n\\*?\[\]]+")
 FIXED_IDENTITY = {
     "GIT_AUTHOR_NAME": "Evaluation Fixture",
     "GIT_AUTHOR_EMAIL": "fixture@example.invalid",
@@ -49,10 +52,14 @@ def prepare(case: Path, destination: Path) -> None:
     """Copy a case repository and commit it so the audit has a revision to record.
 
     Identity, dates, and file modes are fixed, so the revision is the same in every environment;
-    without core.fileMode=false, WSL records files under /mnt/c as executable.
+    without core.fileMode=false, WSL records files under /mnt/c as executable. A case with a
+    `source.json` is cloned from a pinned commit instead; see `prepare_from_source`.
     """
     if destination.exists():
         raise SystemExit(f"Destination already exists: {destination}")
+    if (case / "source.json").is_file():
+        prepare_from_source(case, destination)
+        return
     shutil.copytree(case / "repo", destination)
     environment = {**os.environ, **FIXED_IDENTITY}
     for command in (
@@ -62,6 +69,151 @@ def prepare(case: Path, destination: Path) -> None:
         ["git", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "Initial commit"],
     ):
         subprocess.run(command, cwd=destination, env=environment, check=True, timeout=30)
+
+
+def git_in(
+    repository: Path, *arguments: str, stdin: str | None = None, environment: dict | None = None
+) -> str:
+    """Run Git on this repository only, never on one found by searching parent directories."""
+    variables = {
+        **os.environ,
+        **(environment or {}),
+        "GIT_DIR": str(repository / ".git"),
+        "GIT_WORK_TREE": str(repository),
+    }
+    return subprocess.run(
+        ["git", *arguments],
+        cwd=repository,
+        env=variables,
+        input=stdin,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=900,
+    ).stdout
+
+
+def seed_operations(case: Path, source: dict, git) -> dict[str, list[str]]:
+    """Map each commit of the clone to the index entries that plant the case's seeded changes.
+
+    A replaced or removed path changes in the last commit that changed it, and in every later
+    commit that still holds the content it has at the pinned commit. A new file appears in the
+    last commit that changed a file directly in its nearest existing directory, and in every later
+    commit. History gains no commit, so neither recent commits nor the log lead to the seeds.
+    """
+    seed = case / "seed"
+    files = (
+        {p.relative_to(seed).as_posix(): p for p in sorted(seed.rglob("*")) if p.is_file()}
+        if seed.is_dir()
+        else {}
+    )
+    removed = list(dict.fromkeys(source.get("remove", [])))
+    operations: dict[str, list[str]] = {}
+    for path in [*files, *removed]:
+        parts = path.split("/")
+        if (
+            not SEED_PATH.fullmatch(path)
+            or "" in parts
+            or ".." in parts
+            or parts[0] == ".git"
+            or (path in files and path in removed)
+        ):
+            raise SystemExit(f"Unsupported seed path: {path!r}")
+        listed = git("ls-tree", "HEAD", "--", path)
+        current = listed.split("\t", 1)[0].split() if listed else []
+        if current and current[1] != "blob":
+            raise SystemExit(f"Seed path is not a file at the pinned commit: {path}")
+        if not current and path in removed:
+            raise SystemExit(f"Cannot remove a path that the pinned commit lacks: {path}")
+        if current:
+            anchors = [path]
+        else:
+            directory = "/".join(parts[:-1])
+            while directory and not git("ls-tree", "-d", "HEAD", "--", directory).strip():
+                directory = directory.rpartition("/")[0]
+            anchors = [f":(glob){directory}/*" if directory else ":(glob)*", directory or "."]
+        last = next(
+            (c for a in anchors if (c := git("log", "-1", "--format=%H", "HEAD", "--", a).strip())),
+            None,
+        )
+        if last is None:
+            raise SystemExit(f"No commit touches the directory of seed path: {path}")
+        commits = [last, *git("rev-list", "--ancestry-path", f"{last}..HEAD").split()]
+        held = git(
+            "cat-file", "--batch-check=%(objectname)", stdin="".join(f"{c}:{path}\n" for c in commits)
+        ).splitlines()
+        if path in removed:
+            entry = f"0 {'0' * 40}\t{path}\n"
+        else:
+            mode = current[0] if current else "100755" if os.access(files[path], os.X_OK) else "100644"
+            blob = git("hash-object", "-w", "--no-filters", "--", str(files[path])).strip()
+            entry = f"{mode} {blob}\t{path}\n"
+        for commit, held_object in zip(commits, held):
+            if held_object == current[2] if current else held_object.endswith(" missing"):
+                operations.setdefault(commit, []).append(entry)
+    return operations
+
+
+def prepare_from_source(case: Path, destination: Path) -> None:
+    """Clone a pinned commit of a local repository and fold the case's seeded changes into it.
+
+    `source.json` names the `repository`, the full `commit` SHA, and the paths to `remove`; `seed/`
+    holds files to add or replace, at their paths in the repository. `seed_operations` explains
+    where each change lands. Only the clone is rewritten: the source is only read, every command
+    after the clone names the clone's Git directory explicitly, and the clone keeps one branch, no
+    remote, no reflog, and no unreachable objects, so nothing in it leads back to the original files.
+    Commit metadata is kept, so the revision is the same on every preparation.
+    """
+    source = json.loads((case / "source.json").read_text(encoding="utf-8"))
+    origin = Path(source["repository"]).expanduser().resolve()
+    target = destination.resolve()
+    if not re.fullmatch(r"[0-9a-f]{40}", str(source.get("commit", ""))):
+        raise SystemExit("source.json must pin a full 40-character commit SHA")
+    if target == origin or origin in target.parents or target in origin.parents:
+        raise SystemExit(f"The destination must be outside the source repository: {destination}")
+    subprocess.run(
+        ["git", "clone", "-q", "--no-local", "--no-tags", "--no-checkout", "--", str(origin), str(target)],
+        check=True,
+        timeout=900,
+    )
+    if not (target / ".git").is_dir():
+        raise SystemExit(f"The clone did not create its own repository at {destination}")
+    git = partial(git_in, target)
+    git("checkout", "-q", "-B", "main", source["commit"])
+    git("remote", "remove", "origin")
+    for ref in git("for-each-ref", "--format=%(refname)").split():
+        if ref != "refs/heads/main":
+            git("update-ref", "-d", ref)
+    git("config", "core.fileMode", "false")
+    operations = seed_operations(case, source, git)
+    if operations:
+        with tempfile.TemporaryDirectory() as scratch:
+            entries = Path(scratch) / "entries"
+            entries.mkdir()
+            for commit, lines in operations.items():
+                (entries / commit).write_text("".join(lines), encoding="utf-8")
+            git(
+                "-c",
+                "commit.gpgsign=false",
+                "filter-branch",
+                "-d",
+                str(Path(scratch) / "rewrite"),
+                "--index-filter",
+                'if test -f "$SEED_ENTRIES/$GIT_COMMIT"; then '
+                'git update-index --index-info < "$SEED_ENTRIES/$GIT_COMMIT"; fi',
+                "--",
+                "main",
+                environment={"FILTER_BRANCH_SQUELCH_WARNING": "1", "SEED_ENTRIES": str(entries)},
+            )
+        for ref in git("for-each-ref", "--format=%(refname)", "refs/original").split():
+            git("update-ref", "-d", ref)
+        git("read-tree", "-u", "--reset", "HEAD")
+    for name in ("ORIG_HEAD", "FETCH_HEAD"):
+        (target / ".git" / name).unlink(missing_ok=True)
+    git("reflog", "expire", "--expire=now", "--expire-unreachable=now", "--all")
+    git("gc", "-q", "--prune=now")
+    if git("status", "--porcelain", "--ignored", "--untracked-files=all").strip():
+        raise SystemExit(f"The prepared repository is not clean: {destination}")
 
 
 def verify(case: Path, destination: Path) -> list[str]:
@@ -286,17 +438,28 @@ def misplaced_citations(text: str, repo: Path) -> list[str]:
     return sorted(problems)
 
 
-def check_text(text: str, case: Path, expected: dict) -> dict:
+def check_text(text: str, repo: Path, expected: dict) -> dict:
     """Checks that apply to any report, with or without criterion IDs."""
-    return {"leaked": leaked(text, expected), "bad_citations": bad_citations(text, case / "repo")}
+    return {"leaked": leaked(text, expected), "bad_citations": bad_citations(text, repo)}
 
 
-def score_report(report: Path, case: Path) -> tuple[dict, dict]:
+def score_report(report: Path, case: Path, repo: Path) -> tuple[dict, dict]:
     expected = json.loads((case / "expected.json").read_text(encoding="utf-8"))
     ids = catalog()[0]
     text = report.read_text(encoding="utf-8")
     result = score(report_statuses(text), ids, expected, finding_rows(text))
-    return expected, result | check_text(text, case, expected)
+    return expected, result | check_text(text, repo, expected)
+
+
+@contextmanager
+def case_files(case: Path) -> Iterator[Path]:
+    """Yield the files that a case's reports cite: its `repo/`, or else a fresh preparation."""
+    if (case / "repo").is_dir():
+        yield case / "repo"
+        return
+    with tempfile.TemporaryDirectory() as directory:
+        prepare(case, Path(directory) / "repo")
+        yield Path(directory) / "repo"
 
 
 def compare(first: str, second: str) -> dict:
@@ -377,7 +540,9 @@ def priority_placement(text: str, expected: dict) -> str | None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    prepare_parser = commands.add_parser("prepare", help="copy a case into a new Git repository")
+    prepare_parser = commands.add_parser(
+        "prepare", help="copy a case into a new Git repository; a case may also be a directory path"
+    )
     prepare_parser.add_argument("case")
     prepare_parser.add_argument("destination", type=Path)
     score_parser = commands.add_parser("score", help="score an audit report for a case")
@@ -403,7 +568,7 @@ def main() -> int:
             shown = f"{value[0]} of {value[1]}" if isinstance(value, tuple) else ", ".join(value)
             print(f"{key}: {shown or 'none'}")
         return 0
-    case = CASES / arguments.case
+    case = Path(arguments.case).expanduser() if "/" in arguments.case else CASES / arguments.case
     if not (case / "expected.json").is_file():
         parser.error(f"unknown case: {arguments.case}")
     if arguments.command == "prepare":
@@ -414,24 +579,34 @@ def main() -> int:
         problems = verify(case, arguments.destination)
         print("\n".join(problems) or f"{arguments.destination} is unchanged")
         return int(bool(problems))
-    if arguments.command == "check":
-        expected = json.loads((case / "expected.json").read_text(encoding="utf-8"))
-        result = check_text(arguments.report.read_text(encoding="utf-8"), case, expected)
-        print(f"report sha256: {hashlib.sha256(arguments.report.read_bytes()).hexdigest()}")
-        for key, values in result.items():
-            print(f"{key}: {', '.join(values) or 'none'}")
-        misplaced = misplaced_citations(arguments.report.read_text(encoding="utf-8"), case / "repo")
-        print(f"misplaced citations (not a failure): {', '.join(misplaced) or 'none'}")
-        return int(any(result.values()))
-    expected, result = score_report(arguments.report, case)
-    text = arguments.report.read_text(encoding="utf-8")
-    print(f"Case {arguments.case}: found {len(result['found'])} of {len(expected['must_find'])} seeded gaps.")
-    print(f"report sha256: {hashlib.sha256(arguments.report.read_bytes()).hexdigest()}")
+    with case_files(case) as repo:
+        if arguments.command == "check":
+            return check_command(arguments.report, case, repo)
+        return score_command(arguments.report, case, repo)
+
+
+def check_command(report: Path, case: Path, repo: Path) -> int:
+    expected = json.loads((case / "expected.json").read_text(encoding="utf-8"))
+    text = report.read_text(encoding="utf-8")
+    result = check_text(text, repo, expected)
+    print(f"report sha256: {hashlib.sha256(report.read_bytes()).hexdigest()}")
+    for key, values in result.items():
+        print(f"{key}: {', '.join(values) or 'none'}")
+    misplaced = misplaced_citations(text, repo)
+    print(f"misplaced citations (not a failure): {', '.join(misplaced) or 'none'}")
+    return int(any(result.values()))
+
+
+def score_command(report: Path, case: Path, repo: Path) -> int:
+    expected, result = score_report(report, case, repo)
+    text = report.read_text(encoding="utf-8")
+    print(f"Case {case.name}: found {len(result['found'])} of {len(expected['must_find'])} seeded gaps.")
+    print(f"report sha256: {hashlib.sha256(report.read_bytes()).hexdigest()}")
     print(priority_summary(text))
     placement = priority_placement(text, expected)
     if placement:
         print(placement)
-    misplaced = misplaced_citations(text, case / "repo")
+    misplaced = misplaced_citations(text, repo)
     if misplaced:
         print(f"misplaced citations (not a failure): {', '.join(misplaced)}")
     for key, values in result.items():

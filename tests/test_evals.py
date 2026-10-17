@@ -1,6 +1,7 @@
 """Check report parsing, scoring outcomes, case consistency, and fixture preparation."""
 
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -261,6 +262,141 @@ class CaseTests(unittest.TestCase):
             git("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q",
                 "--allow-empty", "-m", "extra")
             self.assertTrue(verify(case, destination)[0].startswith("HEAD is "))
+
+
+IDENTITY = {
+    "GIT_AUTHOR_NAME": "Source Author",
+    "GIT_AUTHOR_EMAIL": "author@example.invalid",
+    "GIT_COMMITTER_NAME": "Source Author",
+    "GIT_COMMITTER_EMAIL": "author@example.invalid",
+}
+
+
+def run_git(directory, *arguments, date="2026-01-01T00:00:00Z"):
+    environment = {**os.environ, **IDENTITY, "GIT_AUTHOR_DATE": date, "GIT_COMMITTER_DATE": date}
+    return subprocess.run(
+        ["git", "-c", "commit.gpgsign=false", *arguments],
+        cwd=directory, env=environment, capture_output=True, text=True, check=True,
+    ).stdout
+
+
+def commit_files(repository, message, files, date):
+    for name, content in files.items():
+        path = repository / name
+        if content is None:
+            path.unlink()
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+    run_git(repository, "add", "-A")
+    run_git(repository, "commit", "-q", "-m", message, date=date)
+
+
+def source_repository(root):
+    """Build a history with a merge: the side branch last changes b/two.txt."""
+    repository = root / "source"
+    repository.mkdir()
+    run_git(repository, "init", "-q", "-b", "main")
+    commit_files(repository, "add one", {"README.md": "# Source\n", "a/one.txt": "one\n"}, "2026-01-01T00:00:00Z")
+    commit_files(repository, "add two", {"b/two.txt": "two\n"}, "2026-01-02T00:00:00Z")
+    commit_files(repository, "change one", {"a/one.txt": "one v2\n"}, "2026-01-03T00:00:00Z")
+    run_git(repository, "checkout", "-q", "-b", "side")
+    commit_files(repository, "change two", {"b/two.txt": "two side\n"}, "2026-01-04T00:00:00Z")
+    run_git(repository, "checkout", "-q", "main")
+    commit_files(repository, "change readme", {"README.md": "# Source v2\n"}, "2026-01-05T00:00:00Z")
+    run_git(repository, "merge", "-q", "--no-ff", "-m", "merge side", "side", date="2026-01-06T00:00:00Z")
+    commit_files(repository, "add c", {"c/three.txt": "three\n"}, "2026-01-07T00:00:00Z")
+    return repository
+
+
+class SourceCaseTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.root = Path(self.directory.name)
+        self.source = source_repository(self.root)
+        self.case = self.root / "case"
+        (self.case / "seed" / "a").mkdir(parents=True)
+        (self.case / "seed" / "a" / "one.txt").write_text("one SEEDED\n")
+        (self.case / "seed" / "a" / "new.txt").write_text("new SEEDED\n")
+        (self.case / "expected.json").write_text('{"must_find": ["REPO-01"], "must_not_flag": []}')
+        self.write_source(remove=["b/two.txt"])
+
+    def tearDown(self):
+        self.directory.cleanup()
+
+    def write_source(self, **fields):
+        head = run_git(self.source, "rev-parse", "main").strip()
+        (self.case / "source.json").write_text(
+            json.dumps({"repository": str(self.source), "commit": head, **fields})
+        )
+
+    def source_state(self):
+        return (
+            run_git(self.source, "for-each-ref"),
+            run_git(self.source, "status", "--porcelain", "--ignored"),
+            run_git(self.source, "reflog", "--all"),
+        )
+
+    def test_seeds_fold_into_the_commits_that_last_touched_their_paths(self):
+        before = self.source_state()
+        destination = self.root / "audit"
+        prepare(self.case, destination)
+
+        def git(*arguments):
+            return run_git(destination, *arguments)
+
+        self.assertEqual(before, self.source_state())
+        self.assertEqual(git("log", "--format=%s"), run_git(self.source, "log", "--format=%s"))
+        self.assertEqual((destination / "a" / "one.txt").read_text(), "one SEEDED\n")
+        self.assertEqual(git("log", "-1", "--format=%s", "--", "a/one.txt"), "change one\n")
+        self.assertEqual(git("log", "--diff-filter=A", "--format=%s", "--", "a/new.txt"), "change one\n")
+        self.assertFalse((destination / "b" / "two.txt").exists())
+        self.assertEqual(git("log", "--diff-filter=D", "--format=%s", "--", "b/two.txt"), "change two\n")
+        self.assertEqual(git("show", "HEAD~2:a/one.txt"), "one SEEDED\n")
+        untouched = run_git(self.source, "rev-list", "--reverse", "main")[:2 * 41]
+        self.assertIn(untouched, git("rev-list", "--reverse", "main"))
+
+        self.assertEqual(git("for-each-ref", "--format=%(refname)"), "refs/heads/main\n")
+        self.assertEqual(git("remote"), "")
+        self.assertEqual(git("reflog", "--all"), "")
+        self.assertEqual(git("fsck", "--unreachable", "--no-reflogs"), "")
+        self.assertFalse((destination / ".git" / "ORIG_HEAD").exists())
+        self.assertNotIn(str(self.source), (destination / ".git" / "config").read_text())
+        self.assertEqual(git("status", "--porcelain", "--ignored"), "")
+        self.assertEqual(verify(self.case, destination), [])
+
+    def test_preparation_is_deterministic_and_refuses_unpinned_sources(self):
+        heads = []
+        for name in ("first", "second"):
+            prepare(self.case, self.root / name)
+            heads.append(run_git(self.root / name, "rev-parse", "HEAD"))
+        self.assertEqual(heads[0], heads[1])
+        self.write_source(commit="main")
+        with self.assertRaises(SystemExit):
+            prepare(self.case, self.root / "third")
+
+    def test_a_failed_clone_never_touches_an_enclosing_repository(self):
+        outer = self.root / "outer"
+        outer.mkdir()
+        run_git(outer, "init", "-q", "-b", "main")
+        commit_files(outer, "outer", {"keep.txt": "keep\n"}, "2026-02-01T00:00:00Z")
+        state = run_git(outer, "log", "--format=%H %s"), run_git(outer, "for-each-ref")
+        self.write_source()
+        source = json.loads((self.case / "source.json").read_text())
+        (self.case / "source.json").write_text(
+            json.dumps({**source, "repository": str(self.root / "missing")})
+        )
+        with self.assertRaises((SystemExit, subprocess.CalledProcessError)):
+            prepare(self.case, outer / "nested" / "audit")
+        self.assertEqual(state, (run_git(outer, "log", "--format=%H %s"), run_git(outer, "for-each-ref")))
+        self.assertEqual(run_git(outer, "status", "--porcelain"), "")
+
+    def test_seed_paths_stay_inside_the_repository(self):
+        for path in ("../escape.txt", ".git/config", "a/*.txt"):
+            with self.subTest(path=path):
+                self.write_source(remove=[path])
+                with self.assertRaises(SystemExit):
+                    prepare(self.case, self.root / f"audit-{len(path)}")
 
 
 if __name__ == "__main__":
