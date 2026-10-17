@@ -69,6 +69,25 @@ class ScoringTests(unittest.TestCase):
             },
         )
 
+    def test_emphasis_around_labels_ids_and_statuses_is_presentation(self):
+        report = (
+            "| **ID** | **Status** | Priority | Evidence |\n| --- | --- | --- | --- |\n"
+            "| **CI-02** | **partial** | **high** | Inferred: tag |\n\n"
+            "## Coverage\n- **meets:** REPO-01, `TEST-02`\n- __not-applicable__: OPS-02 (no data)\n"
+            "  - **CI-09** (no merge queue)\n"
+        )
+        self.assertEqual(
+            report_statuses(report),
+            {
+                "CI-02": ["partial"],
+                "REPO-01": ["meets"],
+                "TEST-02": ["meets"],
+                "OPS-02": ["not-applicable"],
+                "CI-09": ["not-applicable"],
+            },
+        )
+        self.assertEqual(finding_rows(report)["CI-02"]["priority"], "high")
+
     def test_complete_report_has_no_problems(self):
         expected = {"must_find": ["CI-02", "SEC-05"], "must_not_flag": ["TEST-02"]}
         result = score(report_statuses(REPORT), CATALOG_IDS, expected)

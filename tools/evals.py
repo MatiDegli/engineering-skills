@@ -21,9 +21,10 @@ CATALOG = ROOT / "skills" / "auditing-repositories" / "references" / "criteria.m
 FINDING_STATUSES = {"partial", "pending-implementation", "pending-verification"}
 COVERAGE_STATUSES = {"meets", "not-applicable"}
 CRITERION = re.compile(r"\b[A-Z]+-\d{2}\b")
-COVERAGE_LINE = re.compile(r"[-*]\s*(meets|not-applicable)\s*:\s*(.*)", re.I)
+MARKS = "`*_"
+COVERAGE_LINE = re.compile(r"[-*]\s*[`*_]*(meets|not-applicable)[`*_]*\s*:[`*_]*\s*(.*)", re.I)
 EVIDENCE_MARK = re.compile(r"[*_`\s]*(reproduced|inferred)\s*:", re.I)
-LEADING_IDS = re.compile(r"[-*]\s*`?((?:[A-Z]+-\d{2}`?\s*,\s*`?)*[A-Z]+-\d{2})")
+LEADING_IDS = re.compile(r"[-*]\s*[`*_]*((?:[A-Z]+-\d{2}[`*_]*\s*,\s*[`*_]*)*[A-Z]+-\d{2})")
 ACTIONS_HEADING = re.compile(r"^(#{1,6})\s*Priority actions\b", re.I | re.M)
 ACTION_ITEM = re.compile(r"(?:\d+[.)]|[-*])\s")
 CITATION = re.compile(r"(?<![\w./-])((?:[\w.-]+/)*[\w.-]+):(\d+(?:[-–]\d+)?(?:,\s?\d+(?:[-–]\d+)?)*)")
@@ -85,7 +86,7 @@ def report_statuses(text: str) -> dict[str, list[str]]:
     for line in text.splitlines():
         stripped = line.strip()
         if stripped.startswith("|"):
-            cells = [cell.strip().strip("`") for cell in stripped.strip("|").split("|")]
+            cells = [cell.strip().strip(MARKS) for cell in stripped.strip("|").split("|")]
             if cells[:2] == ["ID", "Status"]:
                 in_findings = True
             elif in_findings and len(cells) > 1 and CRITERION.fullmatch(cells[0]):
@@ -117,13 +118,13 @@ def finding_rows(text: str) -> dict[str, dict[str, str]]:
             in_findings = False
             continue
         cells = [cell.strip() for cell in stripped.strip("|").split("|")]
-        identifier = cells[0].strip("`")
-        if [cell.strip("`") for cell in cells[:2]] == ["ID", "Status"]:
+        identifier = cells[0].strip(MARKS)
+        if [cell.strip(MARKS) for cell in cells[:2]] == ["ID", "Status"]:
             in_findings = True
         elif in_findings and len(cells) >= 4 and CRITERION.fullmatch(identifier):
             rows[identifier] = {
-                "status": cells[1].strip("`").lower(),
-                "priority": cells[2].strip("`").lower(),
+                "status": cells[1].strip(MARKS).lower(),
+                "priority": cells[2].strip(MARKS).lower(),
                 "evidence": cells[3],
             }
     return rows
