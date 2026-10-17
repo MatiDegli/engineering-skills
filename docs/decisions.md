@@ -1,5 +1,18 @@
 # Decisions
 
+## 2026-10-17 — Release v0.2.0 with one level criterion unmet
+
+In the release level comparison (runs 87 to 92), the full skill met four of the five criteria
+scored against the catalog alone: no copied secret, 19 high findings outside the top priorities
+against 77, complete coverage, and no citation outside a file. It placed 26 of 28 top priorities in
+its first five actions against 28. Both misses are OPS-02 in orders-service, which the full skill
+rates `pending-verification` and medium because the case's data sits in a managed database whose
+backups may exist outside the repository; the case expects it as its second priority. The
+maintainer chose to release with this exception recorded rather than reopen the frozen skill. How
+an audit ranks unverified backups of production data moves to the secondary line of experiments,
+to be validated with Opus at the next milestone. Changing the case's expectation to pass the gate
+was rejected.
+
 ## 2026-10-17 — Intermediate commits that need repository history
 
 The commit policy asks every commit in a stack to pass the checks on its own. Twenty-three commits

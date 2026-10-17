@@ -1819,3 +1819,6 @@ Notes:
   independent review; no content or history secret scan runs; the validator skips force-added files
   under directories named like `build`; a test asserts a wall-clock bound; two commit subjects exceed
   72 characters; and the README's "about 10,000 tokens of guidance" has no recorded measurement.
+
+- On 2026-10-17 the maintainer decided to release with the top-priority criterion unmet; see
+  [decisions](../docs/decisions.md#2026-10-17--release-v020-with-one-level-criterion-unmet).
