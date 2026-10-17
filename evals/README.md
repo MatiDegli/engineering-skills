@@ -71,9 +71,9 @@ change includes the current version as a control, with the same models and runs,
 `plan` lists the jobs case by case, so both arms run side by side.
 `run` starts agents and spends usage, so the maintainer runs it or allows it; `--budget-usd` stops
 launching audits once the finished ones reach that API-equivalent cost, which on a subscription
-measures quota rather than money. `--model-env glm-5.3=SETTINGS` runs a model from another provider
-through the `env` section of a Claude Code settings file, passing the alias that file maps to it;
-the token stays in memory. `summarize` scores every report,
+measures quota rather than money. `--model-settings glm-5.3=SETTINGS` runs a model from another
+provider through a Claude Code settings file that routes it, passing the alias that file maps to
+the model; the CLI reads the file, so its token never passes through the runner. `summarize` scores every report,
 verifies every prepared repository, and writes `summary.md` with the tables that RESULTS.md records.
 `clean` removes only the directories that `plan` created.
 

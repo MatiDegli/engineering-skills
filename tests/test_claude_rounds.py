@@ -26,8 +26,10 @@ if arguments == ["--version"]:
     print("0.0.0 (Claude Code)")
     raise SystemExit(0)
 model = arguments[arguments.index("--model") + 1]
-if os.environ.get("ANTHROPIC_BASE_URL") and model in ("sonnet", "opus", "haiku"):
-    model = os.environ["ANTHROPIC_DEFAULT_" + model.upper() + "_MODEL"]
+settings = arguments[arguments.index("--settings") + 1] if "--settings" in arguments else "{{}}"
+env = json.load(open(settings)).get("env", {{}}) if os.path.isfile(settings) else {{}}
+if env.get("ANTHROPIC_BASE_URL") and model in ("sonnet", "opus", "haiku"):
+    model = env["ANTHROPIC_DEFAULT_" + model.upper() + "_MODEL"]
 if "json" == arguments[arguments.index("--output-format") + 1]:
     if model == "claude-unknown-1-0":
         print(json.dumps({{"type": "result", "is_error": True, "result": "unknown model"}}))
@@ -167,14 +169,18 @@ class RoundTests(unittest.TestCase):
         env = {"ANTHROPIC_BASE_URL": "https://provider.example", "ANTHROPIC_AUTH_TOKEN": "fake-token",
                "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-5.3[1m]"}
         settings.write_text(json.dumps({"env": env}))
-        routed = {"glm-5.3": claude_rounds.provider_env(settings)}
+        routed = {"glm-5.3": claude_rounds.provider_settings(settings)}
         self.assertEqual(claude_rounds.cli_model("glm-5.3", routed["glm-5.3"]), "sonnet")
         with self.assertRaises(SystemExit):
             claude_rounds.cli_model("other-1", routed["glm-5.3"])
+        hooked = self.root / "hooked.json"
+        hooked.write_text(json.dumps({"env": env, "hooks": {"PreToolUse": []}}))
+        with self.assertRaises(SystemExit):
+            claude_rounds.provider_settings(hooked)
         round_dir = self.plan("round", ("1", "glm-5.3"))
         with mock.patch("builtins.print"):
             self.assertEqual(
-                claude_rounds.run(round_dir, jobs=1, timeout=60, budget=100, pause=(0, 0), model_env=routed), 0
+                claude_rounds.run(round_dir, jobs=1, timeout=60, budget=100, pause=(0, 0), providers=routed), 0
             )
         self.assertIn("models glm-5.3[1m]", (round_dir / "log.txt").read_text())
         self.assertNotIn("fake-token", "".join(p.read_text() for p in round_dir.rglob("*") if p.is_file()))

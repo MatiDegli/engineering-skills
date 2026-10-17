@@ -69,17 +69,18 @@ def now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def claude_command(prompt: str, model: str, skill: Path) -> list[str]:
+def claude_command(prompt: str, model: str, skill: Path, settings: str | None = None) -> list[str]:
     """Return the audit command.
 
     Only user settings load, with hooks off, so the audited repository's own agent settings,
-    hooks, skills, and agents never load; the effort is fixed rather than inherited.
+    hooks, skills, and agents never load; the effort is fixed rather than inherited. A provider's
+    settings file, which `provider_settings` checks has no hooks, replaces the hooks switch.
     """
     return [
         *("claude", "-p", prompt, "--model", model, "--effort", "high", "--add-dir", str(skill)),
         *("--allowedTools", "Bash", "Read", "Grep", "Glob"),
         *("--disallowedTools", "WebFetch", "WebSearch", "Edit", "Write", "NotebookEdit"),
-        *("--setting-sources", "user", "--settings", '{"disableAllHooks": true}'),
+        *("--setting-sources", "user", "--settings", settings or '{"disableAllHooks": true}'),
         *("--output-format", "stream-json", "--verbose", "--no-session-persistence"),
         "--strict-mcp-config",
     ]
@@ -277,21 +278,26 @@ def run_command(
             return -1
 
 
-def provider_env(path: Path) -> dict[str, str]:
-    """Read the `env` section of a Claude Code settings file, such as one that routes a provider.
+def provider_settings(path: Path) -> dict:
+    """Check a Claude Code settings file that routes a provider, and return how to use it.
 
-    The values, a token among them, stay in memory and reach only the CLI's environment.
+    The CLI reads the file itself, so its token never passes through the runner; the runner reads
+    only the model aliases. A file with hooks is refused, since it replaces the hooks switch.
     """
     settings = json.loads(path.read_text(encoding="utf-8"))
-    return {str(name): str(value) for name, value in (settings.get("env") or {}).items()}
+    if settings.get("hooks"):
+        raise SystemExit(f"Provider settings must not define hooks: {path}")
+    env = settings.get("env") or {}
+    aliases = {name: str(value) for name, value in env.items() if name.startswith("ANTHROPIC_DEFAULT_")}
+    return {"path": str(path.resolve()), "aliases": aliases}
 
 
-def cli_model(model: str, env: dict[str, str]) -> str:
+def cli_model(model: str, provider: dict | None) -> str:
     """Return what to pass to `--model`: the model itself, or the alias its provider maps to it."""
-    if not env:
+    if not provider:
         return model
     for alias in ("sonnet", "opus", "haiku"):
-        if env.get(f"ANTHROPIC_DEFAULT_{alias.upper()}_MODEL", "").split("[")[0] == model:
+        if provider["aliases"].get(f"ANTHROPIC_DEFAULT_{alias.upper()}_MODEL", "").split("[")[0] == model:
             return alias
     raise SystemExit(f"No alias in the provider settings maps to {model}")
 
@@ -315,7 +321,7 @@ class Spending:
             self.spent += cost
 
 
-def warm_up(round_dir: Path, models: list[str], model_env: dict[str, dict[str, str]]) -> None:
+def warm_up(round_dir: Path, models: list[str], providers: dict[str, dict]) -> None:
     """Make one short call per model, one at a time, before any parallel run.
 
     Parallel runs that find an expired login race to refresh it, and most fail before their first
@@ -324,16 +330,16 @@ def warm_up(round_dir: Path, models: list[str], model_env: dict[str, dict[str, s
     """
     for model in models:
         output = round_dir / f"warmup-{model}.json"
-        env = model_env.get(model, {})
-        command = ["claude", "-p", "Reply with the single word OK.", "--model", cli_model(model, env)]
+        provider = providers.get(model)
+        command = ["claude", "-p", "Reply with the single word OK.", "--model", cli_model(model, provider)]
         command += ["--setting-sources", "user", "--strict-mcp-config", "--no-session-persistence"]
+        command += ["--settings", provider["path"]] if provider else []
         with output.open("w", encoding="utf-8") as out:
             subprocess.run(
                 [*command, "--output-format", "json"],
                 cwd=tempfile.gettempdir(),
-                env={**os.environ, **env},
                 stdout=out,
-                stderr=subprocess.STDOUT,
+                stderr=subprocess.DEVNULL,
                 timeout=300,
             )
         try:
@@ -365,12 +371,14 @@ def audit(round_dir: Path, data: dict, job: dict, launch: dict) -> str:
         return f"{label}: skipped, the prepared repository is missing or changed"
     if not launch["spending"].allows():
         return f"{label}: skipped, budget reached"
-    env = launch["model_env"].get(job["model"], {})
+    provider = launch["providers"].get(job["model"])
     stream, stderr = paths["streams"] / f"{label}.jsonl", paths["streams"] / f"{label}.stderr.txt"
     prompt = PROMPTS[data["level"]].format(skill=job_skill(data, job))
-    command = claude_command(prompt, cli_model(job["model"], env), Path(job_skill(data, job)))
+    skill = Path(job_skill(data, job))
+    settings = provider["path"] if provider else None
+    command = claude_command(prompt, cli_model(job["model"], provider), skill, settings)
     for attempt in range(1, ATTEMPTS + 1):
-        environment = audit_environment(round_dir) | env
+        environment = audit_environment(round_dir)
         code = run_command(command, repo, stream, stderr, launch["timeout"], environment)
         results = stream_results(stream)
         if not login_failed(results) or attempt == ATTEMPTS:
@@ -391,11 +399,11 @@ def run(
     timeout: float,
     budget: float,
     pause: tuple[int, int] = (20, 60),
-    model_env: dict[str, dict[str, str]] | None = None,
+    providers: dict[str, dict] | None = None,
 ) -> int:
     """Run every planned audit; return 1 when a model differs or an audit was skipped.
 
-    `model_env` maps a model to the environment that routes it to its provider.
+    `providers` maps a model to the checked settings file that routes it to its provider.
     """
     paths = round_paths(round_dir)
     data = json.loads(paths["plan.json"].read_text(encoding="utf-8"))
@@ -404,9 +412,9 @@ def run(
         raise SystemExit("claude is not logged in here: run 'claude auth login' first")
     version = subprocess.run(["claude", "--version"], capture_output=True, text=True, timeout=60)
     (round_dir / "cli-version.txt").write_text(version.stdout, encoding="utf-8")
-    model_env = model_env or {}
-    warm_up(round_dir, sorted({job["model"] for job in data["jobs"]}), model_env)
-    launch = {"timeout": timeout, "pause": pause, "model_env": model_env, "spending": Spending(budget)}
+    providers = providers or {}
+    warm_up(round_dir, sorted({job["model"] for job in data["jobs"]}), providers)
+    launch = {"timeout": timeout, "pause": pause, "providers": providers, "spending": Spending(budget)}
     lines = []
     with paths["log.txt"].open("a", encoding="utf-8") as log:
         log.write(f"start {now()} {version.stdout.strip()}, budget USD {budget:g}\n")
@@ -643,11 +651,11 @@ def main() -> int:
         help="stop launching audits once finished ones reach this API-equivalent cost",
     )
     run_parser.add_argument(
-        "--model-env",
+        "--model-settings",
         action="append",
         default=[],
         metavar="MODEL=SETTINGS",
-        help="route MODEL through the env section of a Claude Code settings file, such as glm-5.3",
+        help="run MODEL through a Claude Code settings file that routes its provider, such as glm-5.3",
     )
     for name, text in (
         ("summarize", "score the reports and check what the runs left behind"),
@@ -661,14 +669,14 @@ def main() -> int:
         print(f"planned {len(data['jobs'])} runs of skill {data['skill_commit']}")
         return 0
     if arguments.command == "run":
-        model_env = {}
-        for value in arguments.model_env:
+        providers = {}
+        for value in arguments.model_settings:
             model, _, path = value.partition("=")
             if not model or not path:
-                parser.error(f"--model-env takes MODEL=SETTINGS, not {value!r}")
-            model_env[model] = provider_env(Path(path).expanduser())
+                parser.error(f"--model-settings takes MODEL=SETTINGS, not {value!r}")
+            providers[model] = provider_settings(Path(path).expanduser())
         timeout = arguments.timeout_minutes * 60
-        return run(arguments.round_dir, arguments.jobs, timeout, arguments.budget_usd, model_env=model_env)
+        return run(arguments.round_dir, arguments.jobs, timeout, arguments.budget_usd, providers=providers)
     if arguments.command == "summarize":
         print(summarize(arguments.round_dir), end="")
         return 0
