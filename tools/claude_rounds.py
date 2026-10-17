@@ -293,13 +293,14 @@ def provider_settings(path: Path) -> dict:
 
 
 def cli_model(model: str, provider: dict | None) -> str:
-    """Return what to pass to `--model`: the model itself, or the alias its provider maps to it."""
-    if not provider:
-        return model
-    for alias in ("sonnet", "opus", "haiku"):
-        if provider["aliases"].get(f"ANTHROPIC_DEFAULT_{alias.upper()}_MODEL", "").split("[")[0] == model:
-            return alias
-    raise SystemExit(f"No alias in the provider settings maps to {model}")
+    """Return what to pass to `--model`, after checking that a provider's settings route the model.
+
+    The model's own ID is passed: an alias would resolve to the settings' value, whose context
+    suffix, such as `[1m]` in `glm-5.3[1m]`, Claude Code 2.1.299 sends to the provider unchanged.
+    """
+    if provider and not any(v.split("[")[0] == model for v in provider["aliases"].values()):
+        raise SystemExit(f"The provider settings route no alias to {model}")
+    return model
 
 
 class Spending:

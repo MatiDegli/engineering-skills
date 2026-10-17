@@ -164,13 +164,13 @@ class RoundTests(unittest.TestCase):
         self.assertEqual(log.count(": exit 0"), 1)
         self.assertIn("skipped, budget reached", log)
 
-    def test_a_provider_model_runs_through_its_alias_and_settings(self):
+    def test_a_provider_model_runs_through_its_settings_file(self):
         settings = self.root / "provider-settings.json"
         env = {"ANTHROPIC_BASE_URL": "https://provider.example", "ANTHROPIC_AUTH_TOKEN": "fake-token",
                "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-5.3[1m]"}
         settings.write_text(json.dumps({"env": env}))
         routed = {"glm-5.3": claude_rounds.provider_settings(settings)}
-        self.assertEqual(claude_rounds.cli_model("glm-5.3", routed["glm-5.3"]), "sonnet")
+        self.assertEqual(claude_rounds.cli_model("glm-5.3", routed["glm-5.3"]), "glm-5.3")
         with self.assertRaises(SystemExit):
             claude_rounds.cli_model("other-1", routed["glm-5.3"])
         hooked = self.root / "hooked.json"
@@ -182,7 +182,7 @@ class RoundTests(unittest.TestCase):
             self.assertEqual(
                 claude_rounds.run(round_dir, jobs=1, timeout=60, budget=100, pause=(0, 0), providers=routed), 0
             )
-        self.assertIn("models glm-5.3[1m]", (round_dir / "log.txt").read_text())
+        self.assertIn("models glm-5.3\n", (round_dir / "log.txt").read_text())
         self.assertNotIn("fake-token", "".join(p.read_text() for p in round_dir.rglob("*") if p.is_file()))
 
     def test_a_model_other_than_the_requested_one_is_flagged(self):
