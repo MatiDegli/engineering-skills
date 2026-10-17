@@ -67,13 +67,19 @@ Copy this checklist into your working notes and complete every step:
 5. **Criteria.** Open [criteria.md](references/criteria.md) and decide applicability for every core
    ID and for each area in its areas table. Open an area's criteria file only when the area applies;
    otherwise close the area in Coverage with its wildcard. For each applicable criterion, collect
-   evidence: a path with line numbers, a configuration value, or command output. Read the linked
-   guide section only when a rule needs detail; do not read the guides in full up front.
+   evidence: a path with line numbers, a configuration value, or command output. A claim that
+   something is missing rests on a search of its whole scope that lists the matches, not on one
+   place you read. Read the linked guide section only when a rule needs detail; do not read the
+   guides in full up front.
 6. **Controls.** A file, tool, or workflow is not evidence that a control works. For each control,
    check that it runs in CI on the relevant paths, that it fails on violations (look for ignored exit
    codes, `|| true`, `continue-on-error`, `--exit-zero`, warning-only severities, and skip
    conditions), and that it covers new and renamed files. Run the project's validation command once
-   when it is safe. Check whether CI actually ran and passed on the audited revision.
+   when it is safe. Check whether CI actually ran and passed on the audited revision. Before you
+   report that CI, branch protection, or review lets changes reach the default branch unchecked,
+   find how changes actually reach it: a gate that the documented merge path requires is a control
+   even when CI does not run, so judge what it runs, whether merging can skip it, and who can
+   produce or forge its evidence.
    Reproduce each `high` finding when it is safe: run the command that shows the failure, or apply
    a mutation in memory or in a scratch copy outside the repository and show that no control rejects
    it. Start that finding's evidence with `Reproduced:` or `Inferred:`. A finding is reproduced only
@@ -164,14 +170,14 @@ What could not be inspected or executed, and anything that needs separate verifi
 ```
 
 Order findings by [priority](#priority) (`high`, `medium`, `low`). Each finding cites concrete
-evidence: a path with line numbers, a configuration value, or a command and its result. Take each
-line number from output that numbers that file alone, such as a numbered read of the file or a
-search; a command that numbers several files at once, as `cat -n a b` does, continues the count
-across them. When you have no such number, cite the path alone. A `high` finding also quotes the
-code it cites, as the example row does, with secret-like values masked. In Coverage, list entries
-after their status, separated by commas; a long list may continue in indented bullets that start
-with IDs, without labels. An area that does not apply appears once, as its wildcard on the
-`not-applicable areas` line.
+evidence: a path with line numbers, a configuration value, or a command and its result; a count
+names the command and the bounds, such as a date range, that produced it. Take each line number from
+output that numbers that file alone, such as a numbered read of the file or a search; a command that
+numbers several files at once, as `cat -n a b` does, continues the count across them. When you have
+no such number, cite the path alone. A `high` finding also quotes the code it cites, as the example
+row does, with secret-like values masked. In Coverage, list entries after their status, separated by
+commas; a long list may continue in indented bullets that start with IDs, without labels. An area
+that does not apply appears once, as its wildcard on the `not-applicable areas` line.
 
 Self-check before answering:
 
@@ -185,6 +191,7 @@ Self-check before answering:
 - No finding relies on the mere presence of a file, tool, or workflow.
 - Every `high` finding's evidence starts with `Reproduced:` or `Inferred:`.
 - Every `path:line` points to a line you read that holds what the finding states.
+- Every claim that something is missing comes from a search, and every count names its command.
 - Every scratch directory you created is deleted and named in Context.
 - `git status --short --ignored` shows the same output as at the start.
 - The report shows secret-like values only in masked form, including values that look fake.

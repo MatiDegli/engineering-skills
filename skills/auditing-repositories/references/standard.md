@@ -42,7 +42,9 @@ it rejects failures.
 | 2 | Public or distributed product | Above; authorization where applicable, resource limits, secret/dependency review, recovery, and support |
 | 3 | Sensitive data or high impact | Above; threat model, independent review, traceability, and rehearsed recovery |
 
-Review the level when data, users, or permissions change. At every applicable level:
+A product is distributed once people outside the team that maintains it receive it; an installer
+or package that only its maintainers use does not raise the level. Review the level when data,
+users, or permissions change. At every applicable level:
 
 - Validate inputs and authorization per resource; verify the authenticity of external events.
 - Limit time, attempts, and size; define idempotency and conflict handling for retryable writes.
