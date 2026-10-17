@@ -165,11 +165,13 @@ What could not be inspected or executed, and anything that needs separate verifi
 
 Order findings by [priority](#priority) (`high`, `medium`, `low`). Each finding cites concrete
 evidence: a path with line numbers, a configuration value, or a command and its result. Take each
-line number from output that shows it, such as a numbered read or a search; when you have none,
-cite the path alone. A `high` finding also quotes the code it cites, as the example row does, with
-secret-like values masked. In Coverage, list entries after their status, separated by commas; a
-long list may continue in indented bullets that start with IDs, without labels. An area that does
-not apply appears once, as its wildcard on the `not-applicable areas` line.
+line number from output that numbers that file alone, such as a numbered read of the file or a
+search; a command that numbers several files at once, as `cat -n a b` does, continues the count
+across them. When you have no such number, cite the path alone. A `high` finding also quotes the
+code it cites, as the example row does, with secret-like values masked. In Coverage, list entries
+after their status, separated by commas; a long list may continue in indented bullets that start
+with IDs, without labels. An area that does not apply appears once, as its wildcard on the
+`not-applicable areas` line.
 
 Self-check before answering:
 
