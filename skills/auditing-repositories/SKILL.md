@@ -1,6 +1,6 @@
 ---
 name: auditing-repositories
-description: Audits a software repository against evidence-based engineering criteria covering structure, quality controls, dependencies, tests, CI, security, delivery, operations, architecture, and measured performance, then reports gaps with evidence and prioritized actions. Works with any language or toolchain. Use when asked to audit, review, or assess a repository, find its gaps, risks, or improvements, or check whether its controls actually work.
+description: Audits a software repository against evidence-based engineering criteria covering structure, quality controls, dependencies, tests, CI, security, delivery, operations, architecture, measured performance, and agent-assisted development, then reports gaps with evidence and prioritized actions. Works with any language or toolchain. Use when asked to audit, review, or assess a repository, find its gaps, risks, or improvements, or check whether its controls actually work.
 license: CC-BY-4.0
 ---
 
@@ -170,3 +170,4 @@ Self-check before answering:
 - [architecture.md](references/architecture.md): contracts, resources, optimization, and models.
 - [commits.md](references/commits.md): commit size, naming, and history rewrites.
 - [tooling.md](references/tooling.md): optional tools, skills, and MCP servers.
+- [agents.md](references/agents.md): briefs, review, isolation, and capacity for agent-assisted work.

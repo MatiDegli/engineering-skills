@@ -8,7 +8,7 @@ agent applies its knowledge of the project's stack.
 
 | Skill | What it does |
 | --- | --- |
-| [auditing-repositories](skills/auditing-repositories/SKILL.md) | Read-only audit of structure, quality controls, dependencies, tests, CI, security, delivery, operations, architecture, and measured performance against a [catalog of criteria](skills/auditing-repositories/references/criteria.md) with stable IDs |
+| [auditing-repositories](skills/auditing-repositories/SKILL.md) | Read-only audit of structure, quality controls, dependencies, tests, CI, security, delivery, operations, architecture, measured performance, and agent-assisted development against a [catalog of criteria](skills/auditing-repositories/references/criteria.md) with stable IDs |
 
 ## Install
 
