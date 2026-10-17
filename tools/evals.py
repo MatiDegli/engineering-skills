@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 from tools.check_skills import criteria_ids
@@ -53,6 +54,24 @@ def prepare(case: Path, destination: Path) -> None:
         ["git", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "Initial commit"],
     ):
         subprocess.run(command, cwd=destination, env=environment, check=True, timeout=30)
+
+
+def verify(case: Path, destination: Path) -> list[str]:
+    """Return how a prepared repository differs from a fresh preparation of the same case."""
+
+    def git(directory: Path, *arguments: str) -> str:
+        return subprocess.run(
+            ["git", *arguments], cwd=directory, capture_output=True, text=True, check=True, timeout=30
+        ).stdout
+
+    with tempfile.TemporaryDirectory() as directory:
+        reference = Path(directory) / "reference"
+        prepare(case, reference)
+        expected = git(reference, "rev-parse", "HEAD").strip()
+    head = git(destination, "rev-parse", "HEAD").strip()
+    problems = [f"HEAD is {head[:7]}, expected {expected[:7]}"] if head != expected else []
+    status = git(destination, "status", "--porcelain", "--ignored", "--untracked-files=all")
+    return problems + [f"changed: {line}" for line in status.splitlines()]
 
 
 def report_statuses(text: str) -> dict[str, list[str]]:
@@ -275,6 +294,11 @@ def main() -> int:
     )
     check_parser.add_argument("report", type=Path)
     check_parser.add_argument("case")
+    verify_parser = commands.add_parser(
+        "verify", help="check that an audit left a prepared repository unchanged"
+    )
+    verify_parser.add_argument("case")
+    verify_parser.add_argument("destination", type=Path)
     compare_parser = commands.add_parser("compare", help="compare two reports of one case")
     compare_parser.add_argument("first", type=Path)
     compare_parser.add_argument("second", type=Path)
@@ -292,6 +316,10 @@ def main() -> int:
         prepare(case, arguments.destination)
         print(f"Prepared {arguments.case} at {arguments.destination}")
         return 0
+    if arguments.command == "verify":
+        problems = verify(case, arguments.destination)
+        print("\n".join(problems) or f"{arguments.destination} is unchanged")
+        return int(bool(problems))
     if arguments.command == "check":
         expected = json.loads((case / "expected.json").read_text(encoding="utf-8"))
         result = check_text(arguments.report.read_text(encoding="utf-8"), case, expected)

@@ -28,6 +28,10 @@ reproduced or inferred. It also exits with 1 when the report contains a string l
 `must_not_contain`, such as a seeded secret, or cites a line outside a case file. Run
 `python3 -m tools.evals check <report> <case>` for these last two checks on a report without IDs.
 
+After an audit, `python3 -m tools.evals verify <case> <destination>` checks that the prepared
+repository is unchanged: the same revision as a fresh preparation, and no modified, untracked, or
+ignored files.
+
 `top_priorities` lists, in order, the gaps a reviewer should act on first, and `max_high` caps the
 high findings a case justifies. The maintainer fixes both before reading any report. The scorer
 prints which priority action names each top priority and how many high findings fall outside them;

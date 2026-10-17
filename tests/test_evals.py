@@ -20,6 +20,7 @@ from tools.evals import (
     priority_summary,
     report_statuses,
     score,
+    verify,
 )
 
 REPORT = """## Findings
@@ -198,6 +199,14 @@ class CaseTests(unittest.TestCase):
             self.assertTrue(git("ls-files", "-s", "README.md").startswith("100644 "))
             with self.assertRaises(SystemExit):
                 prepare(case, destination)
+
+            self.assertEqual(verify(case, destination), [])
+            (destination / "cache").mkdir()
+            (destination / "cache" / "notes.txt").write_text("left behind\n")
+            self.assertEqual(verify(case, destination), ["changed: ?? cache/notes.txt"])
+            git("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q",
+                "--allow-empty", "-m", "extra")
+            self.assertTrue(verify(case, destination)[0].startswith("HEAD is "))
 
 
 if __name__ == "__main__":
