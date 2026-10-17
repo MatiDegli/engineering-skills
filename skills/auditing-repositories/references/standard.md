@@ -26,6 +26,8 @@ it rejects failures.
 - Formatting, linting, types, tests, and builds where appropriate to the stack.
 - Test public behavior, failures, and limits; separate costly integrations.
 - Justified dependencies, supported versions, lockfiles, and periodic review.
+- Pin the runtime at least to a minor version, such as 3.12, which keeps compatible patch releases
+  flowing; pin the patch version too only when the project depends on one.
 - Results state the tested revision, command, and limitations; a skipped check is not a pass.
 
 [Quality](quality.md) details limits and exceptions; [validation](validation.md) explains what to test;

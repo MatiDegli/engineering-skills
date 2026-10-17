@@ -81,7 +81,7 @@ area in Coverage with its wildcard and the reason on the `not-applicable areas` 
 
 | ID | Check | Applies when | Guide |
 | --- | --- | --- | --- |
-| DEP-01 | The runtime and dependency versions are pinned and the lockfile is committed where the package manager supports it | Dependencies exist | [standard](standard.md#quality) |
+| DEP-01 | The runtime is pinned to at least a minor version, such as 3.12, dependency versions are pinned, and the lockfile is committed where the package manager supports it | Dependencies exist | [standard](standard.md#quality) |
 | DEP-02 | Production dependencies are justified by need, alternatives, maintenance, license, and size | Dependencies exist | [quality](quality.md#rules-for-changes-and-agents) |
 | DEP-03 | Dependencies have an owner and a periodic review; automated update proposals are configured | Dependencies exist | [quality](quality.md#dependency-maintenance) |
 | DEP-04 | Resolved dependencies are audited for vulnerabilities across relevant groups and platforms; a failed query is not an approved audit | Dependencies exist; required before distribution | [quality](quality.md#dependency-maintenance) |
