@@ -24,6 +24,10 @@ there. Avoid layers that only forward calls. See [structure](structure.md).
   Entrypoints create resources explicitly; imports do not start services.
 - Give tasks, threads, and processes clear ownership, timeouts, cancellation, and cleanup. Avoid
   unsupervised tasks, blocking waits in async code, and mutable global runtime state.
+- Apply the same to scripts and tooling, agent tooling included. Give every wait a deadline, start
+  children in their own process group so that a timeout reaches grandchildren too, clean up the whole
+  tree on termination signals, and stop processes by exact identifier. A pattern that matches command
+  lines can also match the shell that runs it, so a wait on such a pattern never ends.
 - Make errors observable; use broad catches only at justified isolation boundaries. Bound retries
   by cause, time, cost, and idempotency.
 - Derive state that can be computed and make shared state explicit. Separate DTOs from domain/ORM models,
@@ -37,7 +41,9 @@ there. Avoid layers that only forward calls. See [structure](structure.md).
 2. Measure a baseline and profile the bottleneck.
 3. Change one primary variable and compare under the same conditions.
 4. Record the result and decision cost; explain differences in scope.
-5. Add a stable regression check to the critical path when feasible.
+5. Add a regression check to the critical path when feasible. Measure run-to-run variance on the
+   target machine before fixing its threshold, and keep it out of correctness suites, which a busy
+   host makes flaky.
 
 For services, measure errors, p95/p99 latency, saturation, and volume; correlate logs without
 secrets. Test sustained load, peaks, concurrency, data growth, and recovery after overload/restart.
@@ -52,3 +58,6 @@ Version prompts, schemas, and evaluations. Validate outputs and provenance; limi
 time, and retries. Treat retrieved content as data that grants no permissions. Record model
 source/version; evaluate abstention or human review according to the harm of an error. Add context
 retrieval or memory only in response to a measured need.
+
+Sources checked on 2026-10-17 against the claims they support:
+[signals to process groups](https://man7.org/linux/man-pages/man2/kill.2.html).

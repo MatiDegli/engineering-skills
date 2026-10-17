@@ -132,7 +132,7 @@ configuration exists, and without a remote or a readable run it is pending verif
 | ARCH-01 | Business rules are independent of network, disk, processes, and SDKs; imports do not start services; there are no layers that only forward calls | Application code | [architecture](architecture.md#contracts-effects-and-resources) |
 | ARCH-02 | Schemas are validated at inputs, persistence, and integrations, and compatibility is tested when they change | Integrations or persistence | [architecture](architecture.md#contracts-effects-and-resources) |
 | ARCH-03 | Configuration is centralized; times are timezone-aware; migrations are compatible with deploy and rollback; transactions and pools are bounded | Matching components exist | [architecture](architecture.md#contracts-effects-and-resources) |
-| ARCH-04 | Tasks, threads, and processes have ownership, timeouts, cancellation, and cleanup; there are no unsupervised tasks or blocking calls in async code | Concurrency | [architecture](architecture.md#contracts-effects-and-resources) |
+| ARCH-04 | Tasks, threads, and processes have ownership, timeouts, cancellation, and cleanup; there are no unsupervised tasks or blocking calls in async code; waits have deadlines, and processes are stopped by exact identity, never by a pattern that can match the caller | Concurrency, subprocesses, or background waits, including in scripts and tooling | [architecture](architecture.md#contracts-effects-and-resources) |
 | ARCH-05 | Errors are observable; broad catches exist only at justified isolation boundaries; retries are bounded | Application code | [architecture](architecture.md#contracts-effects-and-resources) |
 | ARCH-06 | Added complexity such as caches, queues, services, or monorepos answers an observed need with evidence | Such components exist | [architecture](architecture.md#start-small) |
 
@@ -142,7 +142,7 @@ configuration exists, and without a remote or a readable run it is pending verif
 | --- | --- | --- | --- |
 | PERF-01 | Performance and capacity claims rest on measurements with a defined load, budget, baseline, and comparison | Claims exist or performance matters | [architecture](architecture.md#verifiable-optimization) |
 | PERF-02 | Services measure errors, p95/p99 latency, saturation, and volume, and were tested under sustained load, peaks, and recovery | Service in operation | [architecture](architecture.md#verifiable-optimization) |
-| PERF-03 | Critical paths have a stable performance regression check | Performance-sensitive paths | [architecture](architecture.md#verifiable-optimization) |
+| PERF-03 | Critical paths have a performance regression check whose threshold was set after measuring run-to-run variance, outside the correctness suites | Performance-sensitive paths | [architecture](architecture.md#verifiable-optimization) |
 
 ## History, agents, and tooling
 
