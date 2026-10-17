@@ -1758,8 +1758,32 @@ and run 92 left Python bytecode in orders-service.
 | Fewer high findings outside the top priorities | 19 | 77 | yes |
 | Every ID covered at least as completely | all | 2 missing | yes |
 | No more citations outside a case file | 0 | 0 | yes |
-| The maintainer's choice in a blind comparison | | | pending |
+| The maintainer's choice in a blind comparison | second | third | yes |
 
+
+Blind comparison, recorded afterwards: a reviewer with no information about the levels ranked the
+orders-service reports of runs 87 (full), 88 (catalog), and 89 (no skill), shuffled as A, B, and C,
+from the reports alone, and the maintainer agreed with the ranking: no skill first, the full skill a
+close second, the catalog clearly last. The full skill therefore meets the sixth criterion against
+the catalog, and five of the six in all. The reviewer preferred the full skill for traceability:
+the audited revision, the commands run, reproductions, a masked key, and an acceptance check per
+action. They put the catalog last because it printed the case's fake key in full while calling it
+possibly real, and rated about 17 findings high. They put the no-skill report first because it found
+real defects that the case does not seed, which it reported as confirmed by running the code, and
+ranked them compactly. They also noted against the full skill a 45-row findings table that buries the important
+findings, a logging claim without the condition that makes it true, and a "before release" label on
+a service already in production. The case's unseeded defects across all six orders-service reports:
+
+| Defect the case does not seed | Full 87, 90 | Catalog 88, 91 | No skill 89, 92 |
+| --- | --- | --- | --- |
+| The first-order discount trusts the caller's own flag | 0 of 2 | 0 of 2 | 2 of 2 |
+| The CPU alert's `> 0.8` means 0.8 cores, not 80% | 0 of 2 | 0 of 2 | 2 of 2 |
+| A list as a SKU raises a 500 instead of a 400 | 1 of 2 | 0 of 2 | 1 of 2 |
+| The container runs as root | 1 of 2 | 2 of 2 | 2 of 2 |
+
+The skill found every seeded gap and the no-skill level 75 of 100, but in this case the no-skill
+level found logic defects that both skill levels missed. The scorer cannot see them because the case
+does not list them.
 
 Guidance read, measured afterwards from the streams of runs 87 and 90: each full-skill audit opened
 5,741 to 8,739 words of the skill (median 6,147), out of 11,775 in all of its files; `SKILL.md` and
