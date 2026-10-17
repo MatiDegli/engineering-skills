@@ -37,7 +37,8 @@ if model == "claude-flaky-1-0" and not state.exists():
     print(json.dumps({{"type": "result", "result": "Failed to refresh OAuth token: another process"}}))
     raise SystemExit(1)
 used = "claude-other-1-0" if model == "claude-mismatch-1-0" else model
-tool = {{"type": "tool_use", "name": "Bash", "input": {{"command": "cat /home/someone/notes.txt"}}}}
+command = "cat /home/someone/notes.txt; grep -E '/home/|/Users/' x; cat /home/u/.claude/projects/-tmp-audit-x/out.txt"
+tool = {{"type": "tool_use", "name": "Bash", "input": {{"command": command}}}}
 print(json.dumps({{"type": "assistant", "message": {{"content": [tool]}}}}))
 report = "## Findings\n| ID | Status | Priority | Evidence | Improvement |\n| --- | --- | --- | --- | --- |\n"
 report += "| REPO-01 | partial | low | `README.md:1` | Say more |\n"
@@ -91,7 +92,7 @@ class RoundTests(unittest.TestCase):
         summary = claude_rounds.summarize(round_dir)
         self.assertIn("| case | 1 | Test 1.0 | 1 of 1 | no |", summary)
         self.assertIn("| case | 2 | Flaky 1.0 | 1 of 1 | no |", summary)
-        self.assertIn("paths outside the run: /home/someone/notes.txt", summary)
+        self.assertIn("paths outside the run: /home/someone/notes.txt\n", summary)
         self.assertIn("| 1.0 | 0.50 | 1 | 1,010 | 200 |", summary)
         self.assertNotIn("prepared repository changed", summary)
 

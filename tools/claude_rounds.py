@@ -310,7 +310,8 @@ def run(round_dir: Path, jobs: int, timeout: float, pause: tuple[int, int] = (20
 def outside_paths(stream: Path, allowed: list[Path]) -> list[str]:
     """List home or Windows paths in the run's tool calls outside its repository and the skill.
 
-    Executables, such as an interpreter the run started, are left out.
+    Executables, such as an interpreter the run started, are left out, and so are search patterns
+    that only look like paths and the files where the CLI keeps a long tool output for the run.
     """
     found = set()
     for line in stream.read_text(encoding="utf-8").splitlines():
@@ -325,6 +326,8 @@ def outside_paths(stream: Path, allowed: list[Path]) -> list[str]:
             for match in HOME_PATH.findall(json.dumps(item.get("input"))):
                 path = Path(match)
                 if any(match == str(a) or match.startswith(f"{a}/") for a in allowed):
+                    continue
+                if any(mark in match for mark in "|\\*") or "/.claude/projects/-tmp-audit" in match:
                     continue
                 if not (path.is_file() and os.access(path, os.X_OK)):
                     found.add(match)
