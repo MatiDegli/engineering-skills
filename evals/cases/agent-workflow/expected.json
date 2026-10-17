@@ -1,0 +1,22 @@
+{
+  "description": "A small Python CLI developed by several coding agents at once, with seeded gaps in the agent workflow and its tooling.",
+  "must_find": {
+    "AGENT-02": "the brief template has no base revision, allowed paths, reserved identifiers, verification, or report format",
+    "AGENT-03": "AGENTS.md merges a branch as soon as its agent reports green; nobody checks the claim on the revision",
+    "AGENT-04": "AGENTS.md moves work between worktrees with git stash, which every worktree of a repository shares",
+    "ARCH-04": "scripts/wait_for.sh waits with no deadline on a pattern its own command line matches, and stop_workers.sh kills by pattern",
+    "QUAL-10": "hooks/run_guard.sh blocks every command when python3 or guard.py is missing, and no test covers those failure modes",
+    "TEST-08": "the worker test looks for leftover processes host-wide by a marker every run shares"
+  },
+  "must_not_flag": {
+    "SEC-05": "no credentials anywhere",
+    "SEC-09": "the product has no model or LLM features; agents only develop it",
+    "CI-02": "actions are pinned to full commit SHAs",
+    "CI-03": "contents: read permissions and persist-credentials: false",
+    "OPS-03": "a local command-line tool, not a service in operation",
+    "OPS-04": "a local command-line tool, not a deployed service",
+    "DEL-04": "nothing is built or distributed",
+    "TEST-09": "security level 1 and no mutation testing in use"
+  },
+  "top_priorities": ["AGENT-04", "ARCH-04", "QUAL-10"]
+}
