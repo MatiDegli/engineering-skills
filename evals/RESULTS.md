@@ -1404,3 +1404,133 @@ Notes:
   runs differ by about 10%, that is at the limit rather than clearly over it.
 - Comparisons with rounds run hours apart are not reliable. A round that tests a change needs a
   control arm run alongside it.
+
+## 2026-10-17 — Runs 66 to 73 (control and candidate side by side)
+
+- The first round with a control arm: `8b2a2c6`, the skill of runs 47 to 50, against the candidate
+  `63b733b`, with Sonnet and Haiku 5.5 twice per arm and case, interleaved case by case from 18:00
+  to 18:22 UTC with `e5d5936`. Agent otherwise as in runs 59 to 65.
+- Decision rule, fixed before the runs, for each model: the candidate cites no line outside a file,
+  loses no seeded gap, adds no false flag that the control lacks, and costs at most 10% more than
+  the control.
+
+| Case | Run | Model | Seeded gaps found | Passes the scorer | Top priorities in first five | Problems |
+| --- | --- | --- | --- | --- | --- | --- |
+| python-service | 66 | Sonnet 5.5 @ 8b2a2c6 | 16 of 16 | yes | 3 of 3 | — |
+| python-service | 67 | Sonnet 5.5 @ 63b733b | 16 of 16 | yes | 3 of 3 | — |
+| python-service | 68 | Sonnet 5.5 @ 8b2a2c6 | 16 of 16 | yes | 3 of 3 | — |
+| python-service | 69 | Sonnet 5.5 @ 63b733b | 16 of 16 | yes | 3 of 3 | — |
+| python-service | 70 | Haiku 5.5 @ 8b2a2c6 | 16 of 16 | no | 3 of 3 | secret copied |
+| python-service | 71 | Haiku 5.5 @ 63b733b | 16 of 16 | no | 3 of 3 | secret copied |
+| python-service | 72 | Haiku 5.5 @ 8b2a2c6 | 16 of 16 | no | 3 of 3 | unmarked high 1 |
+| python-service | 73 | Haiku 5.5 @ 63b733b | 16 of 16 | yes | 3 of 3 | — |
+| typescript-cli | 66 | Sonnet 5.5 @ 8b2a2c6 | 13 of 13 | yes | 3 of 3 | — |
+| typescript-cli | 67 | Sonnet 5.5 @ 63b733b | 13 of 13 | yes | 3 of 3 | — |
+| typescript-cli | 68 | Sonnet 5.5 @ 8b2a2c6 | 13 of 13 | yes | 3 of 3 | — |
+| typescript-cli | 69 | Sonnet 5.5 @ 63b733b | 13 of 13 | no | 3 of 3 | uncovered 1, duplicated 3 |
+| typescript-cli | 70 | Haiku 5.5 @ 8b2a2c6 | 13 of 13 | yes | 3 of 3 | — |
+| typescript-cli | 71 | Haiku 5.5 @ 63b733b | 13 of 13 | yes | 3 of 3 | — |
+| typescript-cli | 72 | Haiku 5.5 @ 8b2a2c6 | 13 of 13 | no | 3 of 3 | uncovered 13, false flag TOOL-01 |
+| typescript-cli | 73 | Haiku 5.5 @ 63b733b | 13 of 13 | yes | 3 of 3 | — |
+| well-maintained | 66 | Sonnet 5.5 @ 8b2a2c6 | 2 of 2 | yes | 2 of 2 | — |
+| well-maintained | 67 | Sonnet 5.5 @ 63b733b | 2 of 2 | yes | 2 of 2 | — |
+| well-maintained | 68 | Sonnet 5.5 @ 8b2a2c6 | 2 of 2 | no | 2 of 2 | false flag REPO-04 |
+| well-maintained | 69 | Sonnet 5.5 @ 63b733b | 2 of 2 | no | 2 of 2 | false flag REPO-04 |
+| well-maintained | 70 | Haiku 5.5 @ 8b2a2c6 | 2 of 2 | no | 2 of 2 | false flag REPO-04 |
+| well-maintained | 71 | Haiku 5.5 @ 63b733b | 2 of 2 | no | 2 of 2 | false flag REPO-04 |
+| well-maintained | 72 | Haiku 5.5 @ 8b2a2c6 | 2 of 2 | no | 2 of 2 | false flag QUAL-01 |
+| well-maintained | 73 | Haiku 5.5 @ 63b733b | 2 of 2 | no | 2 of 2 | false flag REPO-04 |
+| agent-workflow | 66 | Sonnet 5.5 @ 8b2a2c6 | 6 of 6 | yes | 3 of 3 | — |
+| agent-workflow | 67 | Sonnet 5.5 @ 63b733b | 6 of 6 | yes | 3 of 3 | — |
+| agent-workflow | 68 | Sonnet 5.5 @ 8b2a2c6 | 6 of 6 | yes | 3 of 3 | — |
+| agent-workflow | 69 | Sonnet 5.5 @ 63b733b | 6 of 6 | yes | 3 of 3 | — |
+| agent-workflow | 70 | Haiku 5.5 @ 8b2a2c6 | 6 of 6 | no | 3 of 3 | uncovered 3 |
+| agent-workflow | 71 | Haiku 5.5 @ 63b733b | 6 of 6 | no | 2 of 3 | uncovered 4 |
+| agent-workflow | 72 | Haiku 5.5 @ 8b2a2c6 | 6 of 6 | yes | 3 of 3 | — |
+| agent-workflow | 73 | Haiku 5.5 @ 63b733b | 6 of 6 | yes | 3 of 3 | — |
+| orders-service | 66 | Sonnet 5.5 @ 8b2a2c6 | 9 of 9 | no | 3 of 3 | duplicated 1 |
+| orders-service | 67 | Sonnet 5.5 @ 63b733b | 9 of 9 | yes | 2 of 3 | — |
+| orders-service | 68 | Sonnet 5.5 @ 8b2a2c6 | 9 of 9 | yes | 2 of 3 | — |
+| orders-service | 69 | Sonnet 5.5 @ 63b733b | 9 of 9 | yes | 3 of 3 | — |
+| orders-service | 70 | Haiku 5.5 @ 8b2a2c6 | 9 of 9 | yes | 2 of 3 | — |
+| orders-service | 71 | Haiku 5.5 @ 63b733b | 9 of 9 | yes | 2 of 3 | — |
+| orders-service | 72 | Haiku 5.5 @ 8b2a2c6 | 9 of 9 | yes | 2 of 3 | — |
+| orders-service | 73 | Haiku 5.5 @ 63b733b | 9 of 9 | yes | 2 of 3 | — |
+| go-ratelimiter | 66 | Sonnet 5.5 @ 8b2a2c6 | 4 of 4 | yes | — | — |
+| go-ratelimiter | 67 | Sonnet 5.5 @ 63b733b | 4 of 4 | yes | — | — |
+| go-ratelimiter | 68 | Sonnet 5.5 @ 8b2a2c6 | 4 of 4 | yes | — | — |
+| go-ratelimiter | 69 | Sonnet 5.5 @ 63b733b | 4 of 4 | yes | — | — |
+| go-ratelimiter | 70 | Haiku 5.5 @ 8b2a2c6 | 4 of 4 | yes | — | — |
+| go-ratelimiter | 71 | Haiku 5.5 @ 63b733b | 4 of 4 | yes | — | — |
+| go-ratelimiter | 72 | Haiku 5.5 @ 8b2a2c6 | 4 of 4 | yes | — | — |
+| go-ratelimiter | 73 | Haiku 5.5 @ 63b733b | 4 of 4 | yes | — | — |
+
+| Model | Seeded gaps found | Reports that pass the scorer | Top priorities in first five | Bad citations | Misplaced citations | High findings | Mean minutes | Mean USD | Mean tool calls | Mean input tokens | Mean output tokens |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Sonnet 5.5 @ 8b2a2c6 | 100 of 100 | 10 of 12 | 27 of 28 | 0 | 1 | 29 | 1.7 | 0.31 | 9 | 265,203 | 14,971 |
+| Sonnet 5.5 @ 63b733b | 100 of 100 | 10 of 12 | 27 of 28 | 0 | 3 | 28 | 1.9 | 0.34 | 10 | 308,161 | 16,118 |
+| Haiku 5.5 @ 8b2a2c6 | 100 of 100 | 6 of 12 | 26 of 28 | 0 | 0 | 37 | 5.3 | 0.12 | 17 | 640,845 | 73,573 |
+| Haiku 5.5 @ 63b733b | 100 of 100 | 8 of 12 | 25 of 28 | 0 | 0 | 30 | 5.5 | 0.12 | 14 | 611,288 | 77,255 |
+
+Report SHA-256 hashes, as printed by the summary:
+
+- python-service run 66: `148ce7eb30db941d5da8c7b7d1d7930b4b475e06d28ecd4005569bcb8ad90778`
+- python-service run 67: `9478c05a94971f766118b1920979ddf735af2095a22090dde3c8c879e9bfd0bf`
+- python-service run 68: `ebea128df6df4bc0677dbb6bcd9fbc16beea810c1c0076389e0c6fd9893314d2`
+- python-service run 69: `f7115f80c5b5bee8fe8ee4a12c078dd5ba0f557cc2915eb04354a0a8f8204065`
+- python-service run 70: `3cf4748c3ccd3cace10e82d9f1e07bac038b72181d1cf4ff5c435feb2e27fd2a`
+- python-service run 71: `560bbdeccb9235e29d95b344a3a415483045a9639bbfaa0850982e6a2756d758`
+- python-service run 72: `5ca8685a4e967efbb9621c097531e2c56ed57b22908bb3eeaec2c93e40935c4e`
+- python-service run 73: `956a7630c4b4cf9edb9e2f337c3a3f014b60c91f6ca7c7f29cc3bfdb5fdf9139`
+- typescript-cli run 66: `ab947add868feb912d8fa746904d208e1e3173ccaa08e517987bcd65be805624`
+- typescript-cli run 67: `19ede85e2c221cdff7801f874550ec41ea1eaad0e4b4af1e713dbb284522b814`
+- typescript-cli run 68: `eb5cb84d44c3b00bd6783d80875a38957d25a86c3899d1d402c6382da83713cf`
+- typescript-cli run 69: `0f0a9ee055215e58b12187552106adeea2ff3e5b73adb59a1b14454ab4d6a26d`
+- typescript-cli run 70: `6bc36f7d151481adf3af8b91d8ee2449b3238e4c4d37e34e15d2e0ac28334d41`
+- typescript-cli run 71: `1702f44853410c14c212a8381b3d0d800c6a7956e07450b01ff684a62a94e0f7`
+- typescript-cli run 72: `606bdf59f3b067b27293d701835b7cc1b007a07f02d97d113fb1c9f21af399d1`
+- typescript-cli run 73: `77fb92a9396a4dc3de749daf488ad7b52ec3f09c88bec12462da76b5c8f8164d`
+- well-maintained run 66: `2669825e2e05e3f827dcd8d7e0393a4ecc2cfed739c75cd438d010a8a187f4fe`
+- well-maintained run 67: `824b3ec75a0ebb2d405afdfa102b4ee79dcd4c233db1c99f0fa46928908ee192`
+- well-maintained run 68: `4a41547bae43516d4d7deeac0745ffbae2a7e2b2103c537b75163bfe1772c664`
+- well-maintained run 69: `50526b073be4334dd673d41d61de7625416b7fd96bb5d0bf490717bdc964ba34`
+- well-maintained run 70: `9d36f7e9c9d2d4abc0ad89d47f998846742ed82ba2f0c2b5003bdd7161a5abbf`
+- well-maintained run 71: `2ec5a59bd868ce10c70ddc25ebb22cbc7ae81f5d20b71af636592ac86a0da2ec`
+- well-maintained run 72: `df24324ec3e31547d1aea123df6c5647c65861bced0129884e564d1d2cedb4e6`
+- well-maintained run 73: `1b249e08cbe3092f43863cfb5d7cf1f22b5345a74647be7cb2a05a4aa68d7bba`
+- agent-workflow run 66: `6a6fc6ee4c63592092652646134b2b14c51f9588b33e78040c3d5120bdd3d99c`
+- agent-workflow run 67: `4c54c0191b57db7fd2f01fc130c846b472a0460309a363758f40314c67d68318`
+- agent-workflow run 68: `f9a6b1fdaeb0cc73c9863927a216f10c8770f3d42ad4fbb839f5e044c07ecf30`
+- agent-workflow run 69: `8e2c40bfe2cc8d504ba02fc42796be44a61cc88ecacdcb17b8576283cdb236dd`
+- agent-workflow run 70: `fb10dca848c9b768f24c07e99133183fd0b66789e7abc2781a42257fef84aa90`
+- agent-workflow run 71: `b3fea1926a5895987472ebd2c988759551976bfc2a90dd5101860e576346bae8`
+- agent-workflow run 72: `cd8c2f1b5d22b51e77135080a8e417d02110edc95028e5c78d64b1db78128192`
+- agent-workflow run 73: `6ed19c7ff69513fc2117d32c04eae3368f81829e3d31a06836d1930e94bd5915`
+- orders-service run 66: `3927fa7cc7a7f042dea2512386a2e1691d719deab50b2e85b5ff51062c14f0cd`
+- orders-service run 67: `dc5e0d9e77cae73479c89f19b25cec4ec7673f9653a7344313384d63bdc3eae8`
+- orders-service run 68: `45fe1ea954fce918994ca6f1a32ec68f8acc9f012664d016230aa16ce0ff7319`
+- orders-service run 69: `492e30694230c387e4e7bcf3f55ffa21a9a87751185a1bc323591f091e84031b`
+- orders-service run 70: `7d725ce8320ddbf66b26fd8179ff5bd1115a280c2ebe6b24cd9996db7b937699`
+- orders-service run 71: `4f90947e78a18d460fe1ab11964efb87015d02f9b2ccc47764430977369213b0`
+- orders-service run 72: `eb75f709164efd1893b2462c13b2df89cdcad6c40e08630d76d60e2b9345427f`
+- orders-service run 73: `8c95535ac36e2b1235cad5c123db9dd3aecf21bc7c1cdd436f6cdaa954e37478`
+- go-ratelimiter run 66: `d08ed8977c9a0a85bd777e1690a159a39b4d7a12acbfd170ef6d0bf5af288bae`
+- go-ratelimiter run 67: `1e5f49b06c4e00b97ee4a7f13fb13301e6410c3244421f42e7325e3fda46e401`
+- go-ratelimiter run 68: `5bc55778aa43453db2c9ad5a9ca641bd86e723c512ee13b46b5e7cdcaa886aa0`
+- go-ratelimiter run 69: `afa2a04c9d903f71023a119f9d11d42634fa847fbfd781fb913f8ff8c2df7f07`
+- go-ratelimiter run 70: `41971f80faf808204afd4ecd185e5a3ff4e57477884449256cb8c12232d05caa`
+- go-ratelimiter run 71: `b6f83bb11fd11abbbfaae35f9475428820ae2c4b770ee420f0683933685ad89f`
+- go-ratelimiter run 72: `2eabc52c9862ce626ed7167cd57410b1bdab02fafaed4db38417dc3fc0281211`
+- go-ratelimiter run 73: `41199f60e5244f0a75435aed0566048d3aa46f72f4483963a64745b5d68f33ac`
+
+Notes:
+
+- The candidate meets the rule for both models. Neither arm cited a line outside a file, both found
+  every seeded gap, and the candidate's false flags (REPO-04 for each model) also appear in the
+  control. Mean cost rose 9.7% for Sonnet and not at all for Haiku 5.5; per case, the candidate cost
+  7% more for Sonnet and 9% more for Haiku 5.5 on average, with Sonnet higher in five of six cases.
+- Haiku 5.5 passed the scorer in 8 of 12 candidate reports against 6 of 12 control reports, and
+  marked fewer high findings, 30 against 37.
+- Haiku 5.5 copied the python-service seeded password in one report per arm. Sonnet had three
+  citations of quoted code on another line with the candidate and one with the control; high
+  findings now quote their code, which makes such citations checkable.
