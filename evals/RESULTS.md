@@ -1618,3 +1618,72 @@ Notes:
   hosted history and whether hosted runs passed, each with its check.
 - By the rule, the candidate regresses on cost on the cases with Opus and misses one more gap on the
   large case, while costing less on the large case.
+
+## 2026-10-17 — Runs 80 to 82 (the cost of Deeper checks with Opus)
+
+- Opus 5.5 runs the control `8b2a2c6` (run 80) beside two variants of the candidate `63b733b`, once
+  per case, interleaved from 20:09 to 20:21 UTC with `86ba453`: `b35f54d` without the Deeper checks
+  section (run 81), and `09c8e51` with Deeper checks limited to `high` findings, at most three
+  entries of one line each (run 82). Both variants live on evaluation branches.
+- Decision rule, fixed before the runs: `09c8e51` becomes the candidate if it meets the rule of runs
+  66 to 73 against the control; `b35f54d` only measures what the section costs.
+
+| Case | Run | Model | Seeded gaps found | Passes the scorer | Top priorities in first five | Problems |
+| --- | --- | --- | --- | --- | --- | --- |
+| python-service | 80 | Opus 5.5 @ 8b2a2c6 | 16 of 16 | yes | 3 of 3 | — |
+| python-service | 81 | Opus 5.5 @ b35f54d | 16 of 16 | yes | 3 of 3 | — |
+| python-service | 82 | Opus 5.5 @ 09c8e51 | 16 of 16 | yes | 3 of 3 | — |
+| typescript-cli | 80 | Opus 5.5 @ 8b2a2c6 | 13 of 13 | no | 3 of 3 | duplicated 1 |
+| typescript-cli | 81 | Opus 5.5 @ b35f54d | 13 of 13 | yes | 3 of 3 | — |
+| typescript-cli | 82 | Opus 5.5 @ 09c8e51 | 13 of 13 | yes | 3 of 3 | — |
+| well-maintained | 80 | Opus 5.5 @ 8b2a2c6 | 2 of 2 | yes | 2 of 2 | — |
+| well-maintained | 81 | Opus 5.5 @ b35f54d | 2 of 2 | yes | 2 of 2 | — |
+| well-maintained | 82 | Opus 5.5 @ 09c8e51 | 2 of 2 | yes | 2 of 2 | — |
+| agent-workflow | 80 | Opus 5.5 @ 8b2a2c6 | 6 of 6 | yes | 3 of 3 | — |
+| agent-workflow | 81 | Opus 5.5 @ b35f54d | 6 of 6 | yes | 3 of 3 | — |
+| agent-workflow | 82 | Opus 5.5 @ 09c8e51 | 6 of 6 | yes | 3 of 3 | — |
+| orders-service | 80 | Opus 5.5 @ 8b2a2c6 | 9 of 9 | yes | 2 of 3 | — |
+| orders-service | 81 | Opus 5.5 @ b35f54d | 9 of 9 | yes | 2 of 3 | — |
+| orders-service | 82 | Opus 5.5 @ 09c8e51 | 9 of 9 | no | 2 of 3 | uncovered 1 |
+| go-ratelimiter | 80 | Opus 5.5 @ 8b2a2c6 | 4 of 4 | yes | — | — |
+| go-ratelimiter | 81 | Opus 5.5 @ b35f54d | 4 of 4 | yes | — | — |
+| go-ratelimiter | 82 | Opus 5.5 @ 09c8e51 | 4 of 4 | yes | — | — |
+
+| Model | Seeded gaps found | Reports that pass the scorer | Top priorities in first five | Bad citations | Misplaced citations | High findings | Mean minutes | Mean USD | Mean tool calls | Mean input tokens | Mean output tokens |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Opus 5.5 @ 8b2a2c6 | 50 of 50 | 5 of 6 | 13 of 14 | 0 | 0 | 17 | 3.2 | 0.77 | 10 | 399,131 | 19,439 |
+| Opus 5.5 @ b35f54d | 50 of 50 | 6 of 6 | 13 of 14 | 0 | 0 | 17 | 3.3 | 0.83 | 12 | 457,253 | 20,742 |
+| Opus 5.5 @ 09c8e51 | 50 of 50 | 5 of 6 | 13 of 14 | 0 | 0 | 18 | 3.7 | 0.82 | 11 | 399,909 | 21,217 |
+
+Report SHA-256 hashes, as printed by the summary:
+
+- python-service run 80: `4a4d03236b02ca58bd97d5be4299688613603d3a02aca1664e28d0c9a708cc00`
+- python-service run 81: `f541dc1f0626348a85289d637dcbb2b7c58ad897c9a469acbd634e87bdacc96b`
+- python-service run 82: `d8d7a7f7408374b33c8321305551ed2c2dca5eee8af3857628a908b3eb0574b7`
+- typescript-cli run 80: `907453d72618be4fc23976ff803fa2f7764a02892f57cd4b041cbd1b507d2f60`
+- typescript-cli run 81: `9f0c28438f52dadc63ca4d4b1874ab6895447bd2c83134b45e6ea9cc193ce7f8`
+- typescript-cli run 82: `dd7301bb1993219a51a18364fa0c66a8e3a3ebdc949bf8b4ca8ceb2a6cd0c2a2`
+- well-maintained run 80: `7fb3a60954b15734b9a00989dd16ceb0974f24a47f028c8355c4343f448395ae`
+- well-maintained run 81: `ea2b00609345e9c84911654c4087ecec1f8bef7b33f9de507059eae8eb23b0ce`
+- well-maintained run 82: `a143b9a11bdbd1d0d3fd0ac2bf45f1c6aad2517331507140bedc2198c20d5181`
+- agent-workflow run 80: `8d1027c4504fdeabc6300f146af4d57e35c853055173bf9f8f5e63b4fdabb8f9`
+- agent-workflow run 81: `8fe987289bf574725940d15efb6c210007d92f64acf5c8244996f751509196a0`
+- agent-workflow run 82: `efa337254ba4eda8153350c7111136662a2ca249b978f732417d173edd8248dc`
+- orders-service run 80: `73d41991df52c1b31f25b602675b9b4d752b344aed7240e9845254f09ce54664`
+- orders-service run 81: `150a1f72aa33116b04fa848dbabbb343dff84982c42d753366a3daeeaa236303`
+- orders-service run 82: `46553310b6c8d8757da5912e2a3e9e1c61e197d4923e1e074862542d6c1598b8`
+- go-ratelimiter run 80: `977ef7361cdc5d43bd34daf6f7e2c5fbcbfa9dae8b04570857d4abc7ae01b73f`
+- go-ratelimiter run 81: `556df9ed0b83d604b0b7f36ee255e2eba6807a893d6913ece84b3fb23f188285`
+- go-ratelimiter run 82: `dd21626eb03facea44d0566c45528f7d925d1b81b4578d67912efb82e58bc087`
+
+Notes:
+
+- `09c8e51` meets the rule: every seeded gap, no citation outside a file, no false flag, and mean
+  cost 6.5% above the control, 8% in the mean of per-case ratios, higher in five of six cases.
+- Without Deeper checks, `b35f54d` cost 8% more than the control, 11% per case, so the section is
+  not what raised the candidate's cost; the rest of the change costs Opus about 8% on the cases.
+  The candidate's 17% in runs 74 and 75 came from a different hour.
+- The limited section listed three entries in four reports and none in two.
+- In run 81 a cleanup command passed to `sh -c` with `rm` was refused by Claude Code's safety
+  check; no file was left behind.
+- The maintainer had decided to freeze the v0.2 skill after this round: `09c8e51` is that version.
