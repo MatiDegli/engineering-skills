@@ -1088,3 +1088,42 @@ Notes:
   after the maintainer reviews them.
 - The reserved go-ratelimiter case is recorded like the others; by its definition, these results
   do not change the skill.
+
+## 2026-10-17 — Real audit of a private project
+
+- Skill `8b2a2c6`, Opus 5.5 (`claude-opus-5-5`), Claude Code 2.1.299, headless with the agent and
+  prompt of runs 47 to 50, in the same round. The audited repository is one of the maintainer's
+  private projects, an application developed with coding agents (about 1,800 tracked files and 700
+  commits), cloned at a pinned commit without a remote. The report and the project stay private;
+  only the counts below are recorded.
+- The audit read the documentation, manifests, and CI in full, sampled about 10% of the maintained
+  files with two read-only helpers whose key evidence it re-read, and read hosting state through
+  read-only `gh` commands. It reported 32 findings: 2 high, 11 medium, and 19 low. The CLI reported
+  5.5 minutes and USD 6.81. The clone was unchanged afterwards.
+- Review: an agent proposed a label with evidence for each high and medium finding against the
+  audited commit, and the maintainer confirmed them. The low findings were not reviewed.
+
+| Label | High and medium findings |
+| --- | --- |
+| Correct | 4 |
+| Correct, already recorded as known debt or a decision | 3 |
+| Real, but rated too high (low was due) | 3 |
+| Partly correct | 2 |
+| Wrong | 1 |
+
+Notes:
+
+- Ten of 13 high and medium findings describe a real problem, two are partly right, and one is
+  wrong. Every priority error was too high: three medium findings deserved low, and one high
+  finding deserved medium.
+- Most errors share one cause. The audit judged CI, branch protection, and agent review without
+  reading the project's documented integration path: a local gate whose passing receipt for the
+  exact head the merge tool requires. Without it, a CI outage read as "nothing was validated", the
+  documented administrator merge read as a bypass, and one agent-review finding was wrong.
+- The audit classified an internal, unsigned pre-release used by its maintainer as a distributed
+  product, security level 2, which made distribution criteria such as a software bill of materials
+  and a public reporting channel apply.
+- One citation did not support its claim: the audit inferred that a tool was missing from one line
+  while the next lines ran it. One count, repeated in three findings, was a fifth of the real one.
+- The reviewer added one gap the audit missed: the gate's receipts are local and unsigned, so the
+  only evidence of each merge comes from the author's machine.
