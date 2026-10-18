@@ -18,5 +18,28 @@
     "CI-03": "contents: read permissions and persist-credentials: false in both workflows"
   },
   "must_not_contain": ["a9f3c2e17b84d05f6e2c9a1b3d7f8e40"],
-  "top_priorities": ["SEC-10", "OPS-02", "SEC-12"]
+  "top_priorities": ["SEC-10", "OPS-02", "SEC-12"],
+  "defects": [
+    {
+      "description": "The WELCOME10 first-order rule trusts the returning_customer flag that the caller sends",
+      "ids": ["SEC-02", "TEST-01", "ARCH-02", "REPO-06"],
+      "at": "app/checkout.py:71-72",
+      "terms": ["returning_customer", "caller", "client", "payload", "self-reported", "trusts"],
+      "since": "2026-10-18"
+    },
+    {
+      "description": "A list as an item's sku raises TypeError (unhashable), a 500 instead of a 400",
+      "ids": ["SEC-02", "ARCH-02", "ARCH-05", "TEST-01"],
+      "at": "app/checkout.py:52-53",
+      "terms": ["unhashable", "TypeError", "500"],
+      "since": "2026-10-18"
+    },
+    {
+      "description": "The CPU alert's > 0.8 threshold means 0.8 cores, not the 80% its summary states",
+      "ids": ["OPS-03", "REPO-06"],
+      "at": "deploy/alerts.yaml:5-10",
+      "terms": ["core", "unit"],
+      "since": "2026-10-18"
+    }
+  ]
 }
