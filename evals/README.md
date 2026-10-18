@@ -4,6 +4,40 @@ Each case under `cases/` is a small fictional repository with seeded defects. `e
 the criteria an audit must report as findings (`must_find`) and the criteria it must not report as
 findings because they hold or do not apply (`must_not_flag`). The values explain each choice.
 
+`must_find` credits a criterion whenever a report flags its ID, for any reason, so it cannot tell
+whether an audit found a particular defect. An optional `defects` list can:
+
+```json
+"defects": [
+  {"description": "...", "ids": ["SEC-02"], "at": "app/checkout.py:71-72",
+   "terms": ["returning_customer", "caller"], "since": "2026-10-18"}
+]
+```
+
+`description` names the defect in results. `ids` lists every criterion the defect may be reported
+under, because an audit files a behavior defect under the closest criterion. `at` is a
+`path:line` or `path:first-last` in the case's `repo/`. `terms` and `since` are optional.
+
+A defect is found when a single row of the report's findings table meets all of these:
+
+- Its ID is in `ids`, and its status is `partial`, `pending-implementation`, or
+  `pending-verification`.
+- Any of its cells cites the file of `at` with a line or range that overlaps the lines of `at`. A
+  path resolves by its full relative path or else a unique suffix, as in the citation check, and a
+  citation without a line number does not count.
+- When `terms` is present, the row contains at least one term, ignoring case. The terms name the
+  mechanism, so a row that cites the right lines for another reason, such as a missing test, does not
+  find the defect.
+
+`since` (YYYY-MM-DD) dates a defect: it counts only when the report is scored as of that day or
+later. `score --as-of YYYY-MM-DD` sets the day, today in UTC by default, and `summarize` uses the day
+of the round's first `start` line in `log.txt`. When a run finds a real defect that the case does not
+seed, add it with `since` set to that day: earlier rounds keep their scores. `must_find` stays as it
+is, because recorded results depend on it.
+
+`score` prints `Found 1 of 3 seeded defects at their location.` and lists the defects not found only
+when the case counts a defect, and neither changes the exit code.
+
 The cases measure three things: coverage of every criterion ID, recall of seeded gaps, and false
 positives. They do not prove that an audit finds every problem in a real repository.
 
@@ -84,6 +118,8 @@ filesystem root, which stops Claude Code's Read tool and the file commands it re
 `cat`, but not a script or a command that reads without naming the file. `summarize` scores every
 report,
 verifies every prepared repository, and writes `summary.md` with the tables that RESULTS.md records.
+The tables get a "Defects at location" column only when a case in the round counts a defect, so
+older summaries keep their shape.
 `clean` removes only the directories that `plan` created. `run --stagger-seconds` (5 by default)
 spaces launches, so later audits read the prompt cache the first one wrote.
 

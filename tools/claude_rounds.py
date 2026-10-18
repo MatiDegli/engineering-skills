@@ -28,7 +28,7 @@ import time
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import ExitStack, contextmanager
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from tools.evals import (
@@ -38,6 +38,7 @@ from tools.evals import (
     finding_rows,
     git_at,
     git_environment,
+    has_problems,
     misplaced_citations,
     prepare,
     priority_placement,
@@ -766,17 +767,32 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def score_job(job: dict, data: dict, paths: dict[str, Path], repo: Path, totals: Counter) -> dict:
+def round_date(paths: dict[str, Path], data: dict) -> date:
+    """Return the day the round's audits started, in UTC: the first `start` line of log.txt.
+
+    A round that was run in several sessions counts from its first, so a defect found later is not
+    held against it. A plan that was never run gives the day it was planned.
+    """
+    log = paths["log.txt"].read_text(encoding="utf-8") if paths["log.txt"].exists() else ""
+    started = re.search(r"^start (\d{4}-\d{2}-\d{2})T", log, re.M)
+    return date.fromisoformat(started[1] if started else data["created"][:10])
+
+
+def score_job(
+    job: dict, data: dict, paths: dict[str, Path], repo: Path, totals: Counter, as_of: date
+) -> dict:
     """Score one run's report and check its stream and prepared repository.
 
     A report of the no-skill level has no criterion IDs: only its leaks and citations are checked
-    here, and its gaps and priorities are scored by hand with the rules of evals/README.md.
+    here, and its gaps, defects, and priorities are scored by hand with the rules of evals/README.md.
+    The defects count as of the round's date.
     """
     label, case = f"run{job['run']}-{job['name']}", case_path(job["case"])
     report, stream = paths["reports"] / f"{label}.md", paths["streams"] / f"{label}.jsonl"
-    expected, result = score_report(report, case, repo)
+    expected, result = score_report(report, case, repo, as_of)
     text = report.read_text(encoding="utf-8")
     by_hand = job_level(data, job) == "none"
+    defects = (len(result["defects_found"]), len(result["defects_counted"]))
     if by_hand:
         result = {key: [] for key in result} | check_text(text, repo, expected)
     problems = [f"{name} {len(result[key])}" for key, name in PROBLEMS if result.get(key)]
@@ -788,13 +804,15 @@ def score_job(job: dict, data: dict, paths: dict[str, Path], repo: Path, totals:
     if result["missed"]:
         gaps += f" (missed {', '.join(result['missed'])})"
     top = re.search(r"(\d+) of (\d+) in the first five", priority_placement(text, expected) or "")
-    passed = not any(values for key, values in result.items() if key != "found")
+    passed = not has_problems(result)
     if by_hand:
         gaps, top = "by hand", None
     results = stream_results(stream) if stream.exists() else []
     totals.update(
         found=0 if by_hand else len(result["found"]),
         seeded=0 if by_hand else len(expected["must_find"]),
+        defects_found=0 if by_hand else defects[0],
+        defects_counted=0 if by_hand else defects[1],
         passed=0 if by_hand else int(passed),
         reports=1,
         top=int(top[1]) if top else 0,
@@ -820,12 +838,23 @@ def score_job(job: dict, data: dict, paths: dict[str, Path], repo: Path, totals:
     outside = outside_paths(stream, allowed) if results else []
     if outside:
         notes.append(f"{label}: tool calls name paths outside the run: {', '.join(outside[:8])}")
-    row = (
-        f"| {job['name']} | {job['run']} | {arm_label(data, job)} | {gaps} "
-        f"| {'by hand' if by_hand else 'yes' if passed else 'no'} | {f'{top[1]} of {top[2]}' if top else '—'} "
-        f"| {', '.join(problems) or '—'} |"
-    )
-    return {"row": row, "hash": f"- {job['name']} run {job['run']}: `{sha256(report)}`", "notes": notes}
+    cells = [
+        job["name"],
+        str(job["run"]),
+        arm_label(data, job),
+        gaps,
+        "by hand" if by_hand else "yes" if passed else "no",
+        f"{top[1]} of {top[2]}" if top else "—",
+        ", ".join(problems) or "—",
+    ]
+    # A figure only for a case that counts a defect; a run by hand has none to give.
+    figure = None if not defects[1] else "by hand" if by_hand else f"{defects[0]} of {defects[1]}"
+    return {
+        "cells": cells,
+        "defects": figure,
+        "hash": f"- {job['name']} run {job['run']}: `{sha256(report)}`",
+        "notes": notes,
+    }
 
 
 def leftovers(paths: dict[str, Path], data: dict) -> list[str]:
@@ -856,8 +885,9 @@ def summarize(round_dir: Path) -> str:
     """Score every report, check the prepared repositories, and write summary.md."""
     paths = round_paths(round_dir)
     data = json.loads(paths["plan.json"].read_text(encoding="utf-8"))
-    rows, hashes, notes = [], [], []
+    scored_jobs, hashes, notes = [], [], []
     totals: dict[str, Counter] = defaultdict(Counter)
+    as_of = round_date(paths, data)
     with ExitStack() as stack:
         repos: dict[str, Path] = {}
         for job in data["jobs"]:
@@ -867,30 +897,48 @@ def summarize(round_dir: Path) -> str:
                 continue
             if job["case"] not in repos:
                 repos[job["case"]] = stack.enter_context(case_files(case_path(job["case"])))
-            scored = score_job(job, data, paths, repos[job["case"]], totals[arm_label(data, job)])
-            rows.append(scored["row"])
+            scored = score_job(
+                job, data, paths, repos[job["case"]], totals[arm_label(data, job)], as_of
+            )
+            scored_jobs.append(scored)
             hashes.append(scored["hash"])
             notes += scored["notes"]
     notes += leftovers(paths, data)
+    # Rounds of cases without dated defects keep the shape of older summaries.
+    located = any(scored["defects"] for scored in scored_jobs)
+    run_header = ["Case", "Run", "Model", "Seeded gaps found", "Passes the scorer"]
+    run_header += ["Top priorities in first five", "Problems"]
+    model_header = ["Model", "Seeded gaps found", "Reports that pass the scorer"]
+    model_header += ["Top priorities in first five", "Bad citations", "Misplaced citations"]
+    model_header += ["High findings", "Mean minutes", "Mean USD", "Mean tool calls"]
+    model_header += ["Mean cache writes", "Mean cache reads", "Mean output tokens"]
+    if located:
+        run_header.insert(4, "Defects at location")
+        model_header.insert(2, "Defects at location")
+    rows = []
+    for scored in scored_jobs:
+        cells = list(scored["cells"])
+        if located:
+            cells.insert(4, scored["defects"] or "—")
+        rows.append("| " + " | ".join(cells) + " |")
     lines = [
         f"# Round summary ({now()})",
         "",
         f"Skill `{data['skill_commit']}`, level {data['level']}, planned {data['created']}.",
         "",
-        "| Case | Run | Model | Seeded gaps found | Passes the scorer"
-        " | Top priorities in first five | Problems |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
+        "| " + " | ".join(run_header) + " |",
+        "|" + " --- |" * len(run_header),
         *rows,
         "",
-        "| Model | Seeded gaps found | Reports that pass the scorer | Top priorities in first five"
-        " | Bad citations | Misplaced citations | High findings | Mean minutes | Mean USD"
-        " | Mean tool calls | Mean cache writes | Mean cache reads | Mean output tokens |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| " + " | ".join(model_header) + " |",
+        "|" + " --- |" * len(model_header),
     ]
     for model, t in totals.items():
         n = t["reports"] or 1
         lines.append(
-            f"| {model} | {t['found']} of {t['seeded']} | {t['passed']} of {t['reports']} "
+            f"| {model} | {t['found']} of {t['seeded']} "
+            + (f"| {t['defects_found']} of {t['defects_counted']} " if located else "")
+            + f"| {t['passed']} of {t['reports']} "
             f"| {t['top']} of {t['top_of']} | {t['bad']} | {t['misplaced']} | {t['high']} "
             f"| {t['seconds'] / 60 / n:.1f} | {t['cents'] / 100 / n:.2f} | {t['tools'] / n:.0f} "
             f"| {t['tokens_written'] / n:,.0f} | {t['tokens_read'] / n:,.0f} | {t['tokens_out'] / n:,.0f} |"

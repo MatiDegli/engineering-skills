@@ -1,10 +1,13 @@
 """Check report parsing, scoring outcomes, case consistency, and fixture preparation."""
 
+import contextlib
+import io
 import json
 import os
 import subprocess
 import tempfile
 import unittest
+from datetime import date
 from pathlib import Path
 from unittest import mock
 
@@ -15,17 +18,24 @@ from tools.evals import (
     catalog,
     check_seeds,
     compare,
+    defect_location,
     finding_rows,
+    finding_table,
     git_at,
     git_environment,
+    has_problems,
     leaked,
     misplaced_citations,
+    parse_date,
     prepare,
     priority_actions,
     priority_placement,
     priority_summary,
+    repo_files,
     report_statuses,
+    resolve_path,
     score,
+    score_command,
     verify,
 )
 
@@ -229,6 +239,303 @@ class TextCheckTests(unittest.TestCase):
             )
 
 
+FIRST_ORDER = {
+    "description": "The first-order rule trusts a flag that the caller sends",
+    "ids": ["SEC-02", "TEST-01"],
+    "at": "app/checkout.py:71-72",
+    "terms": ["returning_customer", "caller"],
+    "since": "2026-10-18",
+}
+SKU_LIST = {
+    "description": "A list as a sku raises TypeError, a 500 instead of a 400",
+    "ids": ["SEC-02"],
+    "at": "app/checkout.py:52-53",
+    "since": "2026-10-18",
+}
+ON_THE_DAY = date(2026, 10, 18)
+
+
+def findings(*rows):
+    """Build a report whose findings table has these (ID, status, evidence[, improvement]) rows."""
+    header = "| ID | Status | Priority | Evidence | Improvement |\n| --- | --- | --- | --- | --- |\n"
+    return "## Findings\n" + header + "".join(
+        f"| {identifier} | {status} | medium | {evidence} | {''.join(improvement) or 'Fix it'} |\n"
+        for identifier, status, evidence, *improvement in rows
+    )
+
+
+class DefectTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.repo, self.case = Path(self.directory.name) / "repo", Path(self.directory.name) / "case"
+        self.case.mkdir()
+        for name in ("app/checkout.py", "deploy/alerts.yaml"):
+            (self.repo / name).parent.mkdir(parents=True, exist_ok=True)
+            (self.repo / name).write_text("".join(f"line {n}\n" for n in range(1, 81)))
+
+    def expected(self, *defects):
+        return {"must_find": {}, "must_not_flag": {}, **({"defects": list(defects)} if defects else {})}
+
+    def result(self, report, *defects, as_of=ON_THE_DAY):
+        return score(
+            report_statuses(report),
+            CATALOG_IDS,
+            self.expected(*defects),
+            finding_rows(report),
+            table=finding_table(report),
+            repo=self.repo,
+            as_of=as_of,
+        )
+
+    def found(self, *rows, defect=FIRST_ORDER):
+        return defect["description"] in self.result(findings(*rows), defect)["defects_found"]
+
+    def test_a_row_with_the_id_a_finding_status_the_lines_and_a_term_finds_the_defect(self):
+        said = "`app/checkout.py:71` lets the caller set returning_customer"
+        self.assertTrue(self.found(("SEC-02", "partial", said)))
+        for status in ("pending-implementation", "pending-verification"):
+            with self.subTest(status=status):
+                self.assertTrue(self.found(("TEST-01", status, said)))
+
+    def test_the_cited_path_may_be_a_unique_suffix_and_the_lines_a_list_or_a_range_that_overlaps(self):
+        for evidence in (
+            "`checkout.py:72` trusts the caller",
+            "`app/checkout.py:60-71` trusts the caller",
+            "`app/checkout.py:72-90` trusts the caller",
+            "`app/checkout.py:5, 72` trusts the caller",
+            "`app/checkout.py:1-80` trusts the caller",
+            "`app/checkout.py:71-72` trusts the caller",
+        ):
+            with self.subTest(evidence=evidence):
+                self.assertTrue(self.found(("SEC-02", "partial", evidence)))
+
+    def test_the_right_lines_under_another_id_do_not_find_the_defect(self):
+        said = "`app/checkout.py:71` trusts the caller's returning_customer flag"
+        self.assertFalse(self.found(("TEST-02", "partial", said)))
+        self.assertFalse(self.found(("SEC-03", "pending-implementation", said)))
+        elsewhere = ("SEC-02", "partial", "`app/checkout.py:12` is unsafe")
+        self.assertFalse(self.found(elsewhere, ("TEST-02", "partial", said)))
+
+    def test_a_status_that_is_not_a_finding_does_not_find_the_defect(self):
+        said = "`app/checkout.py:71` trusts the caller's returning_customer flag"
+        for status in ("meets", "not-applicable"):
+            with self.subTest(status=status):
+                self.assertFalse(self.found(("SEC-02", status, said)))
+
+    def test_the_right_id_citing_other_lines_or_files_does_not_find_the_defect(self):
+        for evidence in (
+            "`app/checkout.py:70` trusts the caller",
+            "`app/checkout.py:73-80` trusts the caller",
+            "`app/checkout.py:1-70` trusts the caller",
+            "`deploy/alerts.yaml:71` trusts the caller",
+            "`app/missing.py:71` trusts the caller",
+            "trusts the caller",
+        ):
+            with self.subTest(evidence=evidence):
+                self.assertFalse(self.found(("SEC-02", "partial", evidence)))
+
+    def test_the_right_id_and_lines_without_a_term_do_not_find_the_defect(self):
+        self.assertFalse(self.found(("SEC-02", "partial", "`app/checkout.py:71` is unsafe")))
+        self.assertTrue(self.found(("SEC-02", "partial", "`app/checkout.py:71` trusts the CALLER")))
+        loose = {key: value for key, value in FIRST_ORDER.items() if key != "terms"}
+        self.assertTrue(self.found(("SEC-02", "partial", "`app/checkout.py:71` is unsafe"), defect=loose))
+
+    def test_any_cell_of_the_row_may_cite_the_lines_and_carry_a_term(self):
+        row = ("SEC-02", "partial", "the flag", "`app/checkout.py:71` trusts the caller")
+        self.assertTrue(self.found(row))
+        self.assertTrue(self.found(("SEC-02", "partial", "`app/checkout.py:71`", "Validate it, the caller lies")))
+
+    def test_a_citation_without_a_line_number_does_not_count(self):
+        for evidence in (
+            "`app/checkout.py` trusts the caller",
+            "app/checkout.py: trusts the caller",
+            "`checkout.py` trusts the caller; see line 71",
+        ):
+            with self.subTest(evidence=evidence):
+                self.assertFalse(self.found(("SEC-02", "partial", evidence)))
+
+    def test_one_row_must_meet_every_condition(self):
+        rows = [
+            ("SEC-02", "partial", "`app/checkout.py:71` is unsafe"),
+            ("SEC-02", "partial", "the caller is trusted, see `app/checkout.py:12`"),
+            ("TEST-01", "partial", "`app/checkout.py:72` is not tested"),
+        ]
+        self.assertFalse(self.found(*rows))
+        self.assertTrue(self.found(*rows, ("SEC-02", "partial", "`app/checkout.py:71` trusts the caller")))
+
+    def test_a_row_that_repeats_an_id_does_not_hide_another_defect(self):
+        report = findings(
+            ("SEC-02", "partial", "`app/checkout.py:71` trusts the caller"),
+            ("SEC-02", "partial", "`app/checkout.py:53` raises TypeError, a 500"),
+        )
+        result = self.result(report, FIRST_ORDER, SKU_LIST)
+        self.assertEqual(result["defects_found"], [FIRST_ORDER["description"], SKU_LIST["description"]])
+        self.assertEqual(result["defects_missed"], [])
+
+    def test_a_path_that_names_several_files_is_not_resolved(self):
+        (self.repo / "legacy").mkdir()
+        (self.repo / "legacy" / "checkout.py").write_text("old\n" * 80)
+        self.assertFalse(self.found(("SEC-02", "partial", "`checkout.py:71` trusts the caller")))
+        self.assertTrue(self.found(("SEC-02", "partial", "`app/checkout.py:71` trusts the caller")))
+        files = repo_files(self.repo)
+        self.assertIsNone(resolve_path("checkout.py", files))
+        self.assertEqual(resolve_path("alerts.yaml", files), "deploy/alerts.yaml")
+        self.assertEqual(resolve_path("legacy/checkout.py", files), "legacy/checkout.py")
+
+    def test_a_test_gap_at_the_lines_is_not_the_defect_but_the_trusted_flag_is(self):
+        welcome = {
+            "description": "The WELCOME10 first-order rule trusts the returning_customer flag",
+            "ids": ["SEC-02", "TEST-01", "ARCH-02", "REPO-06"],
+            "at": "app/checkout.py:71-72",
+            "terms": ["returning_customer", "caller", "client", "payload", "self-reported", "trusts"],
+        }
+        gap = findings(("TEST-01", "partial", "Nothing tests the WELCOME10 rule at `checkout.py:71`"))
+        flag = findings(
+            ("TEST-01", "partial", "`checkout.py:71`: the rule trusts the caller's returning_customer flag")
+        )
+        self.assertEqual(self.result(gap, welcome)["defects_found"], [])
+        self.assertEqual(self.result(flag, welcome)["defects_found"], [welcome["description"]])
+
+    def test_a_defect_counts_only_from_its_since_date(self):
+        report = findings(("SEC-02", "partial", "`app/checkout.py:71` trusts the caller"))
+        undated = {key: value for key, value in FIRST_ORDER.items() if key != "since"}
+        for as_of, counted in ((date(2026, 10, 17), 0), (ON_THE_DAY, 1), (date(2026, 10, 19), 1)):
+            with self.subTest(as_of=as_of):
+                result = self.result(report, FIRST_ORDER, as_of=as_of)
+                self.assertEqual(result["defects_counted"], [FIRST_ORDER["description"]] * counted)
+                self.assertEqual(result["defects_found"], [FIRST_ORDER["description"]] * counted)
+                self.assertEqual(result["defects_missed"], [])
+        self.assertEqual(
+            self.result(report, undated, as_of=date(2000, 1, 1))["defects_found"], [undated["description"]]
+        )
+
+    def test_a_missed_defect_is_counted_and_listed_by_description(self):
+        report = findings(("SEC-02", "partial", "`app/checkout.py:71` trusts the caller"))
+        result = self.result(report, FIRST_ORDER, SKU_LIST)
+        self.assertEqual(result["defects_found"], [FIRST_ORDER["description"]])
+        self.assertEqual(result["defects_missed"], [SKU_LIST["description"]])
+        self.assertEqual(result["defects_counted"], [FIRST_ORDER["description"], SKU_LIST["description"]])
+
+    def test_a_case_without_defects_scores_without_a_repository(self):
+        result = score(report_statuses(REPORT), CATALOG_IDS, self.expected())
+        self.assertEqual(
+            (result["defects_found"], result["defects_missed"], result["defects_counted"]), ([], [], [])
+        )
+        with self.assertRaises(ValueError):
+            score({}, CATALOG_IDS, self.expected(FIRST_ORDER), as_of=ON_THE_DAY)
+
+    def test_the_date_defaults_to_today_in_utc(self):
+        report = findings(("SEC-02", "partial", "`app/checkout.py:71` trusts the caller"))
+        arguments = (report_statuses(report), CATALOG_IDS, self.expected(FIRST_ORDER))
+        keywords = {"table": finding_table(report), "repo": self.repo}
+        with mock.patch.object(evals, "today", return_value=date(2026, 10, 17)):
+            self.assertEqual(score(*arguments, **keywords)["defects_counted"], [])
+        with mock.patch.object(evals, "today", return_value=ON_THE_DAY):
+            self.assertEqual(score(*arguments, **keywords)["defects_found"], [FIRST_ORDER["description"]])
+
+    def test_dates_are_year_month_day_and_nothing_looser(self):
+        self.assertEqual(parse_date("2026-10-18"), ON_THE_DAY)
+        for value in ("20261018", "2026-1-8", "2026-13-01", "18/10/2026", "2026-10-18T00:00"):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    parse_date(value)
+
+    def test_a_location_is_a_path_with_one_ascending_range(self):
+        self.assertEqual(defect_location("app/checkout.py:71-72"), ("app/checkout.py", 71, 72))
+        self.assertEqual(defect_location("deploy/alerts.yaml:5"), ("deploy/alerts.yaml", 5, 5))
+        for value in ("app/checkout.py", "app/checkout.py:72-71", "app/checkout.py:0", "a.py:1, 3"):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    defect_location(value)
+
+    def test_the_score_command_reports_defects_only_when_the_case_counts_one(self):
+        report = self.case / "report.md"
+        report.write_text(findings(("SEC-02", "partial", "`app/checkout.py:71` trusts the caller")))
+
+        def printed(*defects, as_of=ON_THE_DAY):
+            (self.case / "expected.json").write_text(json.dumps(self.expected(*defects)))
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                score_command(report, self.case, self.repo, as_of)
+            return output.getvalue()
+
+        both = printed(FIRST_ORDER, SKU_LIST)
+        self.assertIn("Found 1 of 2 seeded defects at their location.\n", both)
+        self.assertIn(f"defects not found (not a failure): {SKU_LIST['description']}\n", both)
+        self.assertIn("Found 1 of 1 seeded defects at their location.\n", printed(FIRST_ORDER))
+        self.assertNotIn("seeded defects", printed(FIRST_ORDER, as_of=date(2026, 10, 17)))
+        self.assertNotIn("seeded defects", printed())
+        self.assertNotIn("defects not found", printed())
+
+    def test_missed_defects_are_measures_that_never_fail_a_report(self):
+        everything = catalog()[0]
+        report = findings(("SEC-02", "partial", "`app/checkout.py:12`")) + (
+            "\n## Coverage\n- meets: " + ", ".join(i for i in everything if i != "SEC-02") + "\n"
+        )
+        result = score(
+            report_statuses(report),
+            everything,
+            self.expected(FIRST_ORDER),
+            finding_rows(report),
+            table=finding_table(report),
+            repo=self.repo,
+            as_of=ON_THE_DAY,
+        )
+        self.assertEqual(result["defects_missed"], [FIRST_ORDER["description"]])
+        self.assertFalse(has_problems(result), result)
+        self.assertTrue(has_problems(result | {"false_flags": ["SEC-09"]}))
+        (self.case / "report.md").write_text(report)
+        (self.case / "expected.json").write_text(json.dumps(self.expected(FIRST_ORDER)))
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(score_command(self.case / "report.md", self.case, self.repo, ON_THE_DAY), 0)
+
+
+def defect_problems(defects, ids, repo):
+    """Return what is wrong with a case's seeded defects; `repo` is the case's repository."""
+    if not isinstance(defects, list):
+        return ["defects must be a list"]
+    problems, descriptions, files = [], set(), repo_files(repo)
+    for number, defect in enumerate(defects, 1):
+        name = f"defect {number}"
+        if not isinstance(defect, dict):
+            problems.append(f"{name} must be an object")
+            continue
+        for key in sorted(set(defect) - {"description", "ids", "at", "terms", "since"}):
+            problems.append(f"{name} has an unknown field {key}")
+        description = defect.get("description")
+        if not isinstance(description, str) or not description.strip():
+            problems.append(f"{name} needs a description")
+        elif description in descriptions:
+            problems.append(f"{name} repeats the description {description!r}")
+        else:
+            descriptions.add(description)
+        listed = defect.get("ids")
+        if not (isinstance(listed, list) and listed and all(isinstance(i, str) and i in ids for i in listed)):
+            problems.append(f"{name} needs ids that are all in the catalog")
+        try:
+            path, _, last = defect_location(defect.get("at", ""))
+        except (TypeError, ValueError) as error:
+            problems.append(f"{name} has a bad location: {error}")
+        else:
+            target = resolve_path(path, files)
+            if target is None:
+                problems.append(f"{name} locates {path}, which is not one file of the repository")
+            elif last > len(files[target].read_text(encoding="utf-8").splitlines()):
+                problems.append(f"{name} locates lines past the end of {target}")
+        if "since" in defect:
+            try:
+                parse_date(defect["since"])
+            except (TypeError, ValueError):
+                problems.append(f"{name} has a since that is not a YYYY-MM-DD date")
+        terms = defect.get("terms")
+        if "terms" in defect and (
+            not isinstance(terms, list) or not terms or not all(isinstance(t, str) and t.strip() for t in terms)
+        ):
+            problems.append(f"{name} needs terms that are non-empty strings")
+    return problems
+
+
 class CaseTests(unittest.TestCase):
     def test_forbidden_strings_appear_in_their_case(self):
         for expected_path in sorted(CASES.glob("*/expected.json")):
@@ -250,6 +557,53 @@ class CaseTests(unittest.TestCase):
                 self.assertLessEqual(set(expected.get("top_priorities", [])), must_find)
                 self.assertGreaterEqual(expected.get("max_high", 0), 0)
                 self.assertTrue((expected_path.parent / "repo").is_dir())
+                self.assertEqual(
+                    defect_problems(expected.get("defects", []), ids, expected_path.parent / "repo"), []
+                )
+
+    def test_seeded_defects_need_a_description_catalog_ids_a_location_and_valid_fields(self):
+        ids = set(catalog()[0])
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            (repo / "app").mkdir()
+            (repo / "app" / "checkout.py").write_text("one\ntwo\nthree\n")
+            good = {
+                "description": "A defect",
+                "ids": ["SEC-02"],
+                "at": "app/checkout.py:2-3",
+                "terms": ["term"],
+                "since": "2026-10-18",
+            }
+            self.assertEqual(defect_problems([good, good | {"description": "Another"}], ids, repo), [])
+            bare = {k: v for k, v in good.items() if k not in ("terms", "since")}
+            self.assertEqual(defect_problems([bare], ids, repo), [])
+            bad = {
+                "no description": {"description": ""},
+                "blank description": {"description": "  "},
+                "repeated description": {"description": "A defect"},
+                "no ids": {"ids": []},
+                "unknown id": {"ids": ["SEC-02", "ZZZ-99"]},
+                "ids that are not text": {"ids": [2]},
+                "no location": {"at": None},
+                "location without a line": {"at": "app/checkout.py"},
+                "location in no file": {"at": "app/missing.py:1"},
+                "location past the end": {"at": "app/checkout.py:3-4"},
+                "location before the start": {"at": "app/checkout.py:0-1"},
+                "since that is not a date": {"since": "18/10/2026"},
+                "since that is not text": {"since": 20261018},
+                "no terms": {"terms": []},
+                "blank term": {"terms": ["term", " "]},
+                "terms that are not a list": {"terms": "term"},
+                "unknown field": {"term": ["term"]},
+            }
+            for name, change in bad.items():
+                with self.subTest(name):
+                    defects = [good, good | {"description": "Second"} | change]
+                    problems = defect_problems(defects, ids, repo)
+                    self.assertEqual(len(problems), 1, problems)
+                    self.assertTrue(problems[0].startswith("defect 2 "), problems)
+            self.assertEqual(defect_problems({"description": "x"}, ids, repo), ["defects must be a list"])
+            self.assertEqual(defect_problems(["x"], ids, repo), ["defect 1 must be an object"])
 
     def test_prepare_commits_a_copy_and_refuses_existing_destinations(self):
         with tempfile.TemporaryDirectory() as directory:

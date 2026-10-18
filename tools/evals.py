@@ -13,6 +13,7 @@ import subprocess
 import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import date, datetime, timezone
 from functools import cache, partial
 from pathlib import Path
 
@@ -24,6 +25,8 @@ REFERENCES = ROOT / "skills" / "auditing-repositories" / "references"
 CATALOG = REFERENCES / "criteria.md"
 FINDING_STATUSES = {"partial", "pending-implementation", "pending-verification"}
 COVERAGE_STATUSES = {"meets", "not-applicable"}
+# Result keys that measure recall instead of reporting a problem; they never fail a report.
+MEASURES = {"found", "defects_found", "defects_missed", "defects_counted"}
 CRITERION = re.compile(r"\b[A-Z]+-\d{2}\b")
 MARKS = "`*_"
 COVERAGE_LINE = re.compile(
@@ -396,9 +399,12 @@ def report_statuses(
     return statuses
 
 
-def finding_rows(text: str) -> dict[str, dict[str, str]]:
-    """Return the status, priority, and evidence of each row in the findings table."""
-    rows: dict[str, dict[str, str]] = {}
+def finding_table(text: str) -> list[dict[str, str]]:
+    """Return every row of the findings table, in order, with its ID, status, priority, evidence, and text.
+
+    The text is the whole row, so a check can look at any of its cells.
+    """
+    rows: list[dict[str, str]] = []
     in_findings = False
     for line in text.splitlines():
         stripped = line.strip()
@@ -410,16 +416,132 @@ def finding_rows(text: str) -> dict[str, dict[str, str]]:
         if [cell.strip(MARKS) for cell in cells[:2]] == ["ID", "Status"]:
             in_findings = True
         elif in_findings and len(cells) >= 4 and CRITERION.fullmatch(identifier):
-            rows[identifier] = {
-                "status": cells[1].strip(MARKS).lower(),
-                "priority": cells[2].strip(MARKS).lower(),
-                "evidence": cells[3],
-            }
+            rows.append(
+                {
+                    "id": identifier,
+                    "status": cells[1].strip(MARKS).lower(),
+                    "priority": cells[2].strip(MARKS).lower(),
+                    "evidence": cells[3],
+                    "text": stripped,
+                }
+            )
     return rows
+
+
+def finding_rows(text: str) -> dict[str, dict[str, str]]:
+    """Return the status, priority, evidence, and whole text of each ID's row; a repeated ID keeps its last."""
+    return {
+        row["id"]: {key: value for key, value in row.items() if key != "id"}
+        for row in finding_table(text)
+    }
 
 
 def flagged_ids(statuses: dict[str, list[str]]) -> set[str]:
     return {i for i, values in statuses.items() if FINDING_STATUSES.intersection(values)}
+
+
+def has_problems(result: dict) -> bool:
+    """Whether a score result holds anything but measures; a report with problems fails the scorer."""
+    return any(values for key, values in result.items() if key not in MEASURES)
+
+
+def today() -> date:
+    return datetime.now(timezone.utc).date()
+
+
+def parse_date(value: str) -> date:
+    """Parse a YYYY-MM-DD date, and nothing looser."""
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        raise ValueError(f"not a YYYY-MM-DD date: {value!r}")
+    return date.fromisoformat(value)
+
+
+def repo_files(repo: Path) -> dict[str, Path]:
+    """Return the files of a case repository by relative path, leaving out Git's own."""
+    return {
+        path.relative_to(repo).as_posix(): path
+        for path in repo.rglob("*")
+        if path.is_file() and ".git" not in path.relative_to(repo).parts
+    }
+
+
+def resolve_path(cited: str, files: dict[str, Path]) -> str | None:
+    """Return the file that a cited path names: the full relative path, else a unique suffix."""
+    if cited in files:
+        return cited
+    matches = [name for name in files if name.endswith("/" + cited)]
+    return matches[0] if len(matches) == 1 else None
+
+
+def cited_ranges(lines: str) -> list[tuple[int, int]]:
+    """Return the (first, last) lines of a citation's list, such as `52, 71-72`."""
+    ranges = []
+    for part in re.split(r",\s?", lines):
+        first, _, last = part.replace("–", "-").partition("-")
+        ranges.append((int(first), int(last or first)))
+    return ranges
+
+
+def defect_location(at: str) -> tuple[str, int, int]:
+    """Split a defect's `at`, such as `app/checkout.py:71-72`, into its path and line range."""
+    match = CITATION.fullmatch(at)
+    if not match or "," in match[2]:
+        raise ValueError(f"not path:line or path:first-last: {at!r}")
+    (first, last), = cited_ranges(match[2])
+    if first < 1 or last < first:
+        raise ValueError(f"not an ascending range of lines: {at!r}")
+    return match[1], first, last
+
+
+def counted_defects(expected: dict, as_of: date) -> list[dict]:
+    """Return the case's defects that count for a report scored as of this date.
+
+    A defect with `since` counts from that date on, so a defect found later is never held against
+    an older run.
+    """
+    return [
+        defect
+        for defect in expected.get("defects", [])
+        if not defect.get("since") or parse_date(defect["since"]) <= as_of
+    ]
+
+
+def defect_found(defect: dict, table: list[dict[str, str]], files: dict[str, Path]) -> bool:
+    """Whether one row of the findings table pins the defect, not only its criterion.
+
+    The row has one of the defect's IDs and a finding status, cites a line or range of the defect's
+    file that overlaps its lines, and, when the defect lists terms, contains one of them.
+    """
+    path, first, last = defect_location(defect["at"])
+    target = resolve_path(path, files)
+    terms = [term.lower() for term in defect.get("terms", [])]
+    for row in table:
+        if row["id"] not in defect["ids"] or row["status"] not in FINDING_STATUSES:
+            continue
+        if terms and not any(term in row["text"].lower() for term in terms):
+            continue
+        for cited, lines in CITATION.findall(row["text"]):
+            overlaps = any(a <= last and first <= b for a, b in cited_ranges(lines))
+            if target is not None and resolve_path(cited, files) == target and overlaps:
+                return True
+    return False
+
+
+def score_defects(
+    expected: dict, table: list[dict[str, str]], repo: Path | None, as_of: date
+) -> dict[str, list[str]]:
+    """Return, by description, the defects that count as of this date, and which of them the report found."""
+    counted = counted_defects(expected, as_of)
+    if counted and repo is None:
+        raise ValueError("scoring defects needs the case's repository")
+    files = repo_files(repo) if counted else {}
+    found = [d["description"] for d in counted if defect_found(d, table, files)]
+    counted = [d["description"] for d in counted]
+    return {
+        "defects_found": found,
+        "defects_missed": [d for d in counted if d not in found],
+        "defects_counted": counted,
+    }
 
 
 def score(
@@ -427,11 +549,20 @@ def score(
     catalog: list[str],
     expected: dict,
     rows: dict[str, dict[str, str]] | None = None,
+    *,
+    table: list[dict[str, str]] | None = None,
+    repo: Path | None = None,
+    as_of: date | None = None,
 ) -> dict:
+    """Score a report's statuses and rows against a case.
+
+    The seeded defects of `expected["defects"]` are scored from `table`, the report's rows in order,
+    and the case's `repo`, as of the date `as_of`, which is today (UTC) when omitted.
+    """
     flagged = flagged_ids(statuses)
     allowed = FINDING_STATUSES | COVERAGE_STATUSES
     rows = rows or {}
-    return {
+    result = {
         "unmarked_high": sorted(
             i
             for i, row in rows.items()
@@ -447,6 +578,7 @@ def score(
             i for i, values in statuses.items() if set(values) - allowed
         ),
     }
+    return result | score_defects(expected, table or [], repo, as_of or today())
 
 
 def leaked(text: str, expected: dict) -> list[str]:
@@ -464,17 +596,13 @@ def bad_citations(text: str, repo: Path) -> list[str]:
     A path resolves to a file by its full relative path or, failing that, by a unique suffix such
     as `app.py`. Paths that do not resolve, like guide names or missing files, are not checked.
     """
-    files = {
-        path.relative_to(repo).as_posix(): path
-        for path in repo.rglob("*")
-        if path.is_file() and ".git" not in path.relative_to(repo).parts
-    }
+    files = repo_files(repo)
     problems = set()
     for path, lines in CITATION.findall(text):
-        matches = [path] if path in files else [f for f in files if f.endswith("/" + path)]
-        if len(matches) != 1:
+        name = resolve_path(path, files)
+        if name is None:
             continue
-        length = len(files[matches[0]].read_text(encoding="utf-8", errors="replace").splitlines())
+        length = len(files[name].read_text(encoding="utf-8", errors="replace").splitlines())
         numbers = [int(number) for number in re.findall(r"\d+", lines)]
         if min(numbers) < 1 or max(numbers) > length:
             problems.add(f"{path}:{lines} ({length} lines)")
@@ -512,26 +640,19 @@ def misplaced_citations(text: str, repo: Path) -> list[str]:
     This catches citations of the wrong line, which `bad_citations` cannot. A citation without a
     quoted neighbor that occurs in the file is not checked.
     """
-    files = {
-        path.relative_to(repo).as_posix(): path
-        for path in repo.rglob("*")
-        if path.is_file() and ".git" not in path.relative_to(repo).parts
-    }
+    files = repo_files(repo)
     problems = set()
     for match in CITATION.finditer(text):
         path, lines = match.groups()
-        matches = [path] if path in files else [f for f in files if f.endswith("/" + path)]
-        if len(matches) != 1:
+        name = resolve_path(path, files)
+        if name is None:
             continue
         snippet = quoted_code(text, match.start(), match.end())
         if snippet is None:
             continue
-        content = files[matches[0]].read_text(encoding="utf-8", errors="replace").splitlines()
+        content = files[name].read_text(encoding="utf-8", errors="replace").splitlines()
         found = [n for n, line in enumerate(content, 1) if snippet in " ".join(line.split())]
-        cited = set()
-        for part in re.split(r",\s?", lines):
-            first, _, last = part.replace("–", "-").partition("-")
-            cited.update(range(int(first), int(last or first) + 1))
+        cited = {n for first, last in cited_ranges(lines) for n in range(first, last + 1)}
         if found and not cited & set(found):
             problems.add(f"{path}:{lines} (quoted code is on line {found[0]})")
     return sorted(problems)
@@ -542,11 +663,22 @@ def check_text(text: str, repo: Path, expected: dict) -> dict:
     return {"leaked": leaked(text, expected), "bad_citations": bad_citations(text, repo)}
 
 
-def score_report(report: Path, case: Path, repo: Path) -> tuple[dict, dict]:
+def score_report(
+    report: Path, case: Path, repo: Path, as_of: date | None = None
+) -> tuple[dict, dict]:
+    """Score a report against a case as of a date, which is today (UTC) when omitted."""
     expected = json.loads((case / "expected.json").read_text(encoding="utf-8"))
     ids = catalog()[0]
     text = report.read_text(encoding="utf-8")
-    result = score(report_statuses(text), ids, expected, finding_rows(text))
+    result = score(
+        report_statuses(text),
+        ids,
+        expected,
+        finding_rows(text),
+        table=finding_table(text),
+        repo=repo,
+        as_of=as_of,
+    )
     return expected, result | check_text(text, repo, expected)
 
 
@@ -647,6 +779,12 @@ def main() -> int:
     score_parser = commands.add_parser("score", help="score an audit report for a case")
     score_parser.add_argument("report", type=Path)
     score_parser.add_argument("case")
+    score_parser.add_argument(
+        "--as-of",
+        type=parse_date,
+        metavar="YYYY-MM-DD",
+        help="count the defects known on this date (default: today, UTC); see `since` in evals/README.md",
+    )
     check_parser = commands.add_parser(
         "check", help="check any report, even one without IDs, for leaks and bad citations"
     )
@@ -681,7 +819,7 @@ def main() -> int:
     with case_files(case) as repo:
         if arguments.command == "check":
             return check_command(arguments.report, case, repo)
-        return score_command(arguments.report, case, repo)
+        return score_command(arguments.report, case, repo, arguments.as_of)
 
 
 def check_command(report: Path, case: Path, repo: Path) -> int:
@@ -696,10 +834,13 @@ def check_command(report: Path, case: Path, repo: Path) -> int:
     return int(any(result.values()))
 
 
-def score_command(report: Path, case: Path, repo: Path) -> int:
-    expected, result = score_report(report, case, repo)
+def score_command(report: Path, case: Path, repo: Path, as_of: date | None = None) -> int:
+    expected, result = score_report(report, case, repo, as_of)
     text = report.read_text(encoding="utf-8")
     print(f"Case {case.name}: found {len(result['found'])} of {len(expected['must_find'])} seeded gaps.")
+    if result["defects_counted"]:
+        found, counted = len(result["defects_found"]), len(result["defects_counted"])
+        print(f"Found {found} of {counted} seeded defects at their location.")
     print(f"report sha256: {hashlib.sha256(report.read_bytes()).hexdigest()}")
     print(priority_summary(text))
     placement = priority_placement(text, expected)
@@ -708,10 +849,12 @@ def score_command(report: Path, case: Path, repo: Path) -> int:
     misplaced = misplaced_citations(text, repo)
     if misplaced:
         print(f"misplaced citations (not a failure): {', '.join(misplaced)}")
+    if result["defects_missed"]:
+        print(f"defects not found (not a failure): {'; '.join(result['defects_missed'])}")
     for key, values in result.items():
-        if key != "found" and values:
+        if key not in MEASURES and values:
             print(f"{key}: {', '.join(values)}")
-    return int(any(values for key, values in result.items() if key != "found"))
+    return int(has_problems(result))
 
 
 if __name__ == "__main__":

@@ -2,12 +2,14 @@
 
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
+from datetime import date
 from pathlib import Path
 from unittest import mock
 
@@ -266,6 +268,71 @@ class RoundTests(unittest.TestCase):
         summary = claude_rounds.summarize(round_dir)
         self.assertIn("| case | 3 | Test 1.0 none | by hand | by hand |", summary)
         self.assertIn("| case | 2 | Test 1.0 catalog | 1 of 1 |", summary)
+
+    def test_the_summary_adds_defects_at_location_only_when_a_case_counts_one(self):
+        second = self.root / "second"
+        (second / "repo").mkdir(parents=True)
+        (second / "repo" / "README.md").write_text("# Second\n")
+        (second / "expected.json").write_text('{"must_find": ["REPO-01"], "must_not_flag": []}')
+        defect = {
+            "description": "The README says too little",
+            "ids": ["REPO-01"],
+            "at": "README.md:1",
+            "terms": ["more"],
+            "since": "2026-10-18",
+        }
+        missed = defect | {"description": "The README names no owner", "terms": ["owner"]}
+        round_dir = self.root / "round"
+        with mock.patch("builtins.print"):
+            claude_rounds.plan(round_dir, [("1", "claude-test-1-0")], [str(self.case), str(second)], "HEAD")
+            self.assertEqual(claude_rounds.run(round_dir, jobs=1, timeout=60, budget=100, pause=(0, 0)), 0)
+        self.rounds.append(round_dir)
+
+        def summary(started, *defects):
+            log = round_dir / "log.txt"
+            log.write_text(re.sub(r"^start \S+", f"start {started}", log.read_text(), flags=re.M))
+            (self.case / "expected.json").write_text(
+                json.dumps({"must_find": ["REPO-01"], "must_not_flag": [], "defects": list(defects)})
+            )
+            return claude_rounds.summarize(round_dir)
+
+        for text in (summary("2026-10-18T09:00:00Z"), summary("2026-10-17T23:59:59Z", defect)):
+            self.assertNotIn("Defects at location", text)
+            self.assertIn("| case | 1 | Test 1.0 | 1 of 1 | no |", text)
+            self.assertIn("| Test 1.0 | 2 of 2 | 0 of 2 |", text)
+        text = summary("2026-10-18T00:00:00Z", defect, missed)
+        self.assertIn("| Case | Run | Model | Seeded gaps found | Defects at location | Passes the scorer |", text)
+        self.assertIn("| case | 1 | Test 1.0 | 1 of 1 | 1 of 2 | no |", text)
+        self.assertIn("| second | 1 | Test 1.0 | 1 of 1 | — | no |", text)
+        self.assertIn("| Model | Seeded gaps found | Defects at location | Reports that pass the scorer |", text)
+        self.assertIn("| Test 1.0 | 2 of 2 | 1 of 2 | 0 of 2 |", text)
+
+    def test_a_report_without_the_skill_leaves_its_defects_to_be_scored_by_hand(self):
+        defect = {"description": "The README says too little", "ids": ["REPO-01"], "at": "README.md:1"}
+        (self.case / "expected.json").write_text(
+            json.dumps({"must_find": ["REPO-01"], "must_not_flag": [], "defects": [defect]})
+        )
+        runs = claude_rounds.parse_runs(["1=claude-test-1-0", "2=claude-test-1-0+none"])
+        round_dir = self.root / "round"
+        with mock.patch("builtins.print"):
+            claude_rounds.plan(round_dir, runs, [str(self.case)], "HEAD")
+            self.assertEqual(claude_rounds.run(round_dir, jobs=2, timeout=60, budget=100, pause=(0, 0)), 0)
+        self.rounds.append(round_dir)
+        summary = claude_rounds.summarize(round_dir)
+        self.assertIn("| case | 1 | Test 1.0 full | 1 of 1 | 1 of 1 | no |", summary)
+        self.assertIn("| case | 2 | Test 1.0 none | by hand | by hand | by hand |", summary)
+        self.assertIn("| Test 1.0 full | 1 of 1 | 1 of 1 | 0 of 1 |", summary)
+        self.assertIn("| Test 1.0 none | 0 of 0 | 0 of 0 | 0 of 1 |", summary)
+
+    def test_a_round_counts_defects_as_of_its_first_start_or_else_its_plan(self):
+        log = self.root / "log.txt"
+        data = {"created": "2026-10-16T08:00:00Z"}
+        self.assertEqual(claude_rounds.round_date({"log.txt": log}, data), date(2026, 10, 16))
+        log.write_text(
+            "warm-up 2026-10-15T08:00:00Z ok\nstart 2026-10-17T09:00:00Z 0.0.0, budget USD 5\n"
+            "stopped 2026-10-18T10:00:00Z by SIGINT\nstart 2026-10-19T09:00:00Z 0.0.0, budget USD 5\n"
+        )
+        self.assertEqual(claude_rounds.round_date({"log.txt": log}, data), date(2026, 10, 17))
 
     def test_a_model_other_than_the_requested_one_is_flagged(self):
         round_dir = self.plan("round", ("1", "claude-mismatch-1-0"))
