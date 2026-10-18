@@ -512,6 +512,51 @@ def call(command, **fields):
     return {"name": "Bash", "input": {"command": command, **fields}}
 
 
+class ShellParserTests(unittest.TestCase):
+    def commands(self, text):
+        return [[word.text for word in command.words] for command in scenario_rounds.ShellParser(text).commands]
+
+    def test_words_lose_their_quotes_and_a_quoted_argument_is_never_a_command(self):
+        self.assertEqual(
+            self.commands("grep -nE 'pkill|killall' \"a  b\" c\\ d e\"f\"'g' \\\n  tail"),
+            [["grep", "-nE", "pkill|killall", "a  b", "c d", "efg", "tail"]],
+        )
+        self.assertEqual(self.commands("echo 'a; rm -rf x' \"b && c\" $'d\\'e; f'"), [["echo", "a; rm -rf x", "b && c", "d\\'e; f"]])
+
+    def test_operators_end_commands_and_only_a_pipe_keeps_the_pipeline(self):
+        parsed = scenario_rounds.ShellParser("a | b |& c && d || e ; f & g\nh").commands
+        self.assertEqual([c.words[0].text for c in parsed], list("abcdefgh"))
+        self.assertEqual([c.position for c in parsed], [0, 1, 2, 0, 0, 0, 0, 0])
+        self.assertEqual(len({c.pipeline for c in parsed}), 6)
+        self.assertEqual({c.pipeline for c in parsed[:3]}, {parsed[0].pipeline})
+
+    def test_substitutions_subshells_and_groups_hold_commands_but_single_quotes_and_arithmetic_do_not(self):
+        text = "x=$(one a) echo \"$(two `three`)\" '$(no)' $((4 + 5)) ${six:-seven} <(eight) (nine); { ten; }"
+        self.assertEqual(self.commands(text), [
+            ["one", "a"], ["x=$()", "echo", "$()", "$(no)", "$(())", "${}"], ["two", "`"], ["three"], ["eight"], ["nine"],
+            ["{", "ten"], ["}"],
+        ])
+
+    def test_redirections_comments_and_here_documents_are_not_arguments(self):
+        self.assertEqual(self.commands("echo a 2>&1 >out <in &>all b # not c\nd >> e"), [["echo", "a", "b"], ["d"]])
+        parsed = scenario_rounds.ShellParser("bash <<-'EOF' | tail\n\tpkill x\n\tEOF\nafter").commands
+        self.assertEqual([c.words[0].text for c in parsed], ["bash", "tail", "after"])
+        self.assertEqual(parsed[0].body, "\tpkill x")
+        self.assertEqual(self.commands("cat <<<'a b' c"), [["cat", "c"]])
+
+    def test_a_word_is_plain_unless_it_expands_something(self):
+        words = scenario_rounds.ShellParser("kill 12 '$x' \"$x\" $x $(y) `z` \"a b\" $'c' ${d}").commands[0].words
+        self.assertEqual([(w.text, w.plain) for w in words], [
+            ("kill", True), ("12", True), ("$x", True), ("$x", False), ("$x", False), ("$()", False), ("`", False),
+            ("a b", True), ("c", True), ("${}", False),
+        ])
+
+    def test_text_that_does_not_close_is_read_to_its_end(self):
+        for text in ("echo 'open", 'echo "open $(date', "echo `open", "echo $((1", "echo ${open", "cat <<EOF\nopen", "(((", "))) ; |"):
+            with self.subTest(text=text):
+                scenario_rounds.ShellParser(text)
+
+
 class StreamTests(unittest.TestCase):
     def violations(self, *calls, patterns=()):
         return scenario_rounds.stream_violations(list(calls), scenario_rounds.DEFAULT_STREAM + list(patterns))

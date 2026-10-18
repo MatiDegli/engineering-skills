@@ -35,6 +35,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import NamedTuple
 
 from tools.claude_rounds import (
     init_key_source,
@@ -635,6 +636,205 @@ def check_state(item: dict, before: dict, after: dict, processes: dict | None) -
         raise SystemExit(f"unknown state check {kind!r}")
     detail = STATE_CHECKS[kind](argument, before, after, processes)
     return {"check": kind, "argument": argument, "ok": detail is None, "detail": detail or ""}
+
+
+class Word(NamedTuple):
+    """One word of a shell command with its quotes removed; `plain` is false when it expands anything."""
+
+    text: str
+    plain: bool
+
+
+class ShellCommand:
+    """A simple command: its words, its place in a pipeline, and the here-document it reads."""
+
+    def __init__(self, pipeline: int, position: int) -> None:
+        self.words: list[Word] = []
+        self.pipeline, self.position = pipeline, position
+        self.body: str | None = None
+
+
+REDIRECT = re.compile(r"&>>?|<<<|<<-?|<>|>>|>&|<&|>\||>|<")
+WORD_END = " \t\n;&|()<>"
+
+
+class ShellParser:
+    """Split shell text into simple commands the way the shell reads it, without running anything.
+
+    Quotes and escapes are removed from words, so the quoted argument of a command is one word of
+    that command and never a command of its own. Command substitutions (`$(...)`, backticks, also
+    inside double quotes), process substitutions, and subshells are commands. A here-document's
+    body is kept as text on the command that reads it. Redirections and comments are dropped.
+    """
+
+    def __init__(self, text: str) -> None:
+        self.text, self.index, self.pipelines = text, 0, 0
+        self.commands: list[ShellCommand] = []
+        self.heredocs: list[tuple[ShellCommand, str, bool]] = []
+        self.parse(closing=False)
+
+    def parse(self, closing: bool) -> None:
+        """Read commands to the end of the text, or to the `)` that ends a substitution."""
+        self.pipelines += 1
+        pipeline, position, command, redirect = self.pipelines, 0, None, None
+        end = 0
+        while self.index < len(self.text):
+            text, char = self.text, self.text[self.index]
+            if char in " \t":
+                self.index += 1
+            elif char == "\\" and text[self.index + 1:self.index + 2] == "\n":
+                self.index += 2
+            elif char == "#":
+                newline = text.find("\n", self.index)
+                self.index = len(text) if newline < 0 else newline
+            elif char == "\n":
+                self.index += 1
+                self.read_heredocs()
+                self.pipelines += 1
+                pipeline, position, command, redirect = self.pipelines, 0, None, None
+            elif char == ")" and closing:
+                self.index += 1
+                return
+            elif char in ";&|()" and not text.startswith("&>", self.index):
+                operator = text[self.index:self.index + 2]
+                self.index += 2 if operator in ("&&", "||", "|&", ";;") else 1
+                command, redirect = None, None
+                if operator[0] == "|" and operator != "||":
+                    position += 1
+                else:
+                    self.pipelines += 1
+                    pipeline, position = self.pipelines, 0
+            elif char in "<>&":
+                start = self.index
+                operator = REDIRECT.match(text, start).group()
+                self.index += len(operator)
+                if command is None:
+                    command = self.start(pipeline, position)
+                if end == start and command.words and command.words[-1].plain and command.words[-1].text.isdigit():
+                    command.words.pop()  # the file descriptor of `2>file`
+                if operator in ("<", ">") and text.startswith("(", self.index):
+                    self.index += 1
+                    self.parse(closing=True)  # `<(command)` is a command
+                else:
+                    redirect = operator
+            else:
+                word = self.read_word()
+                end = self.index
+                if command is None:
+                    command = self.start(pipeline, position)
+                if redirect is None:
+                    command.words.append(word)
+                elif redirect.startswith("<<") and redirect != "<<<":
+                    self.heredocs.append((command, word.text, redirect == "<<-"))
+                    redirect = None
+                else:
+                    redirect = None  # the target of a redirection is not an argument
+
+    def start(self, pipeline: int, position: int) -> ShellCommand:
+        command = ShellCommand(pipeline, position)
+        self.commands.append(command)
+        return command
+
+    def read_heredocs(self) -> None:
+        """Read the bodies of the here-documents that the line just ended announced."""
+        for command, delimiter, strip in self.heredocs:
+            lines = []
+            while self.index < len(self.text):
+                newline = self.text.find("\n", self.index)
+                newline = len(self.text) if newline < 0 else newline
+                line, self.index = self.text[self.index:newline], newline + 1
+                if (line.lstrip("\t") if strip else line) == delimiter:
+                    break
+                lines.append(line)
+            command.body = "\n".join(lines)
+        self.heredocs.clear()
+
+    def read_word(self) -> Word:
+        pieces, plain, text = [], True, self.text
+        while self.index < len(text) and text[self.index] not in WORD_END:
+            char = text[self.index]
+            if char == "'":
+                close = text.find("'", self.index + 1)
+                close = len(text) if close < 0 else close
+                pieces.append(text[self.index + 1:close])
+                self.index = close + 1
+            elif char == '"':
+                self.index += 1
+                piece, quiet = self.read_quoted()
+                pieces.append(piece)
+                plain = plain and quiet
+            elif char == "\\":
+                pieces.append(text[self.index + 1:self.index + 2].replace("\n", ""))
+                self.index += 2
+            elif char in "$`":
+                piece, quiet = self.read_expansion()
+                pieces.append(piece)
+                plain = plain and quiet
+            else:
+                pieces.append(char)
+                self.index += 1
+        return Word("".join(pieces), plain)
+
+    def read_quoted(self) -> tuple[str, bool]:
+        """Read to the closing double quote; substitutions inside still run."""
+        pieces, plain, text = [], True, self.text
+        while self.index < len(text):
+            char = text[self.index]
+            if char == '"':
+                self.index += 1
+                break
+            if char == "\\" and text[self.index + 1:self.index + 2] in ("$", "`", '"', "\\", "\n"):
+                pieces.append(text[self.index + 1:self.index + 2].replace("\n", ""))
+                self.index += 2
+            elif char in "$`":
+                piece, quiet = self.read_expansion()
+                pieces.append(piece)
+                plain = plain and quiet
+            else:
+                pieces.append(char)
+                self.index += 1
+        return "".join(pieces), plain
+
+    def read_expansion(self) -> tuple[str, bool]:
+        """Read a `$` or backtick expansion at the current position; return its text and whether it is plain."""
+        text, start = self.text, self.index
+        after = text[start + 1:start + 2]
+        if text[start] == "`":
+            close = start + 1
+            while close < len(text) and text[close] != "`":
+                close += 2 if text[close] == "\\" else 1
+            body = re.sub(r"\\([`\\$])", r"\1", text[start + 1:close])
+            self.index = min(close + 1, len(text))
+            saved = self.text, self.index
+            self.text, self.index = body, 0
+            self.parse(closing=False)
+            self.text, self.index = saved
+            return "`", False
+        if text.startswith("$((", start):
+            close = text.find("))", start + 3)
+            self.index = len(text) if close < 0 else close + 2
+            return "$(())", False
+        if after == "(":
+            self.index = start + 2
+            self.parse(closing=True)
+            return "$()", False
+        if after == "{":
+            depth, close = 0, start + 1
+            while close < len(text):
+                depth += (text[close] == "{") - (text[close] == "}")
+                if depth == 0:
+                    break
+                close += 1
+            self.index = min(close + 1, len(text))
+            return "${}", False
+        if after == "'":
+            close = start + 2
+            while close < len(text) and text[close] != "'":
+                close += 2 if text[close] == "\\" else 1
+            self.index = min(close + 1, len(text))
+            return text[start + 2:close], True
+        self.index = start + 1
+        return "$", not (after.isalnum() or (after != "" and after in "_@*#?!$-"))
 
 
 # The start of a command: a line, a separator, a subshell, or a word that runs another command.
