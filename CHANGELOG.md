@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.2.1 — 2026-10-18
 
 ### auditing-repositories
 
@@ -29,6 +29,17 @@
   A new `booking-api` case breaks five rules its README states, and `orders-service` lists three
   defects found after v0.2.0.
 - `tools/claude_rounds.py` runs one round at a time on a machine.
+- The scorer matches a numeric defect term only as a whole number, so `500` no longer matches inside
+  `5000`, and ignores parentheses inside code in Coverage reasons, which had hidden the IDs after
+  them.
+- Against v0.2.0 with Opus (runs 177 to 187), this release found 28 of 32 logic defects against 22,
+  rated unverified backups high and among the first five actions in 8 of 8 reports against 5,
+  and kept seeded gaps, secrets, top priorities, and cost.
+
+### Documentation
+
+- `docs/agentic-workflow.md` records what building this repository with coding agents has
+  taught, each lesson with its incident and the mechanism that enforces it or its follow-up.
 
 ## v0.2.0 — 2026-10-18
 
