@@ -9,6 +9,8 @@
   one at a time. A round takes all its locks or none, and checks the Claude login only when it uses
   it. Its log records the other rounds' locks at its start and end, and its summary marks a round
   that overlapped another, whose minutes are then not comparable.
+- Every `claude` the round runner starts has automatic updates off, so a round that runs beside
+  another cannot have its CLI updated midway, which would split its audits across two versions.
 
 ## v0.2.1 — 2026-10-18
 

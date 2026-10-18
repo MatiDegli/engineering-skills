@@ -23,6 +23,9 @@ import json, os, signal, subprocess, sys, time
 from pathlib import Path
 
 arguments = sys.argv[1:]
+if os.environ.get("FAKE_STATE"):
+    with open(Path(os.environ["FAKE_STATE"]) / "updates", "a") as record:
+        record.write(os.environ.get("DISABLE_AUTOUPDATER", "on") + "\n")
 if arguments[:2] == ["auth", "status"]:
     if os.environ.get("FAKE_STATE"):
         (Path(os.environ["FAKE_STATE"]) / "auth-status").write_text("asked")
@@ -205,6 +208,15 @@ class RoundTests(unittest.TestCase):
         self.assertIn("paths outside the run: /home/someone/notes.txt\n", summary)
         self.assertIn("| 1.0 | 0.50 | 1 | 0 | 1,000 | 200 |", summary)
         self.assertNotIn("prepared repository changed", summary)
+
+    def test_no_claude_the_runner_starts_can_update_itself(self):
+        # Claude Code turns updates off for the shells it starts; the runner must not rely on that.
+        os.environ.pop("DISABLE_AUTOUPDATER", None)
+        round_dir = self.plan("round", ("1", "claude-test-1-0"))
+        with mock.patch("builtins.print"):
+            self.assertEqual(claude_rounds.run(round_dir, jobs=1, timeout=60, budget=100, pause=(0, 0)), 0)
+        # The login check, the version, the warm-up, and the audit.
+        self.assertEqual((self.root / "state" / "updates").read_text().split(), ["1"] * 4)
 
     def test_a_control_and_a_candidate_share_a_round_side_by_side(self):
         second = self.root / "second"

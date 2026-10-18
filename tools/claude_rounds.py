@@ -537,8 +537,14 @@ def plan(round_dir: Path, runs: list[tuple], cases: list[str], revision: str) ->
 HOSTING_TOKENS = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN")
 
 
+# Rounds on different providers may run at once: a CLI that updated itself during a round would run
+# its audits on two versions and leave cli-version.txt wrong. Every `claude` the runner starts has
+# automatic updates off; a provider's runs get the same setting from PROVIDER_SETTINGS.
+NO_UPDATES = {"DISABLE_AUTOUPDATER": "1"}
+
+
 def audit_environment(round_dir: Path) -> dict[str, str]:
-    """Return the audit's environment, with no GitHub CLI login.
+    """Return the audit's environment, with no GitHub CLI login and no automatic updates.
 
     A prepared repository is not the hosted one: a rewritten history has no hosted runs, and live
     hosting state changes between rounds. With an empty `gh` configuration and no tokens, an audit
@@ -547,7 +553,7 @@ def audit_environment(round_dir: Path) -> dict[str, str]:
     config = round_dir / "gh-config"
     config.mkdir(exist_ok=True)
     clean = {name: value for name, value in os.environ.items() if name not in HOSTING_TOKENS}
-    return clean | {"GH_CONFIG_DIR": str(config)}
+    return clean | {"GH_CONFIG_DIR": str(config)} | NO_UPDATES
 
 
 # Seconds between SIGTERM and SIGKILL when a process group is stopped.
@@ -769,7 +775,7 @@ def warm_up(round_dir: Path, models: list[str], providers: dict[str, dict]) -> N
         provider = providers.get(model)
         command = ["claude", "-p", "Reply with the single word OK.", "--model", model]
         command += ["--setting-sources", "user", "--strict-mcp-config", "--no-session-persistence"]
-        environment = None
+        environment = {**os.environ, **NO_UPDATES}
         if provider:
             environment, settings = provider_launch(provider, model, round_dir / "providers" / f"warmup-{model}")
             command += ["--settings", str(settings)]
@@ -892,13 +898,16 @@ def run_audits(
     """The body of `run`, under the locks of `resources`."""
     paths = round_paths(round_dir)
     data = json.loads(paths["plan.json"].read_text(encoding="utf-8"))
+    updates_off = {**os.environ, **NO_UPDATES}
     # A round served only by other providers needs no Claude login; checking it would refuse the
     # round when the login has expired, and touch the login outside the lock of the rounds using it.
     if ANTHROPIC in resources:
-        status = subprocess.run(["claude", "auth", "status"], capture_output=True, text=True, timeout=60)
+        command = ["claude", "auth", "status"]
+        status = subprocess.run(command, env=updates_off, capture_output=True, text=True, timeout=60)
         if '"loggedIn": true' not in status.stdout:
             raise SystemExit("claude is not logged in here: run 'claude auth login' first")
-    version = subprocess.run(["claude", "--version"], capture_output=True, text=True, timeout=60)
+    command = ["claude", "--version"]
+    version = subprocess.run(command, env=updates_off, capture_output=True, text=True, timeout=60)
     (round_dir / "cli-version.txt").write_text(version.stdout, encoding="utf-8")
     providers = providers or {}
     warm_up(round_dir, sorted({job["model"] for job in data["jobs"]}), providers)
