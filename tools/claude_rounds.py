@@ -852,7 +852,8 @@ def score_job(
     return {
         "cells": cells,
         "defects": figure,
-        "hash": f"- {job['name']} run {job['run']}: `{sha256(report)}`",
+        # The hash comes first: "booking-api run 94: <hash>" reads as an API key to secret scanners.
+        "hash": f"- `{sha256(report)}` {job['name']} run {job['run']}",
         "notes": notes,
     }
 

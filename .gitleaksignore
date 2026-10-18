@@ -1,2 +1,11 @@
 # Seeded on purpose: the orders-service case expects SEC-11 to flag this realistic fake key.
 913b1c62162bdb5417b5cb5fc6fbe804b32a9ef6:evals/cases/orders-service/repo/tests/test_api.py:generic-api-key:7
+# Report SHA-256 hashes in RESULTS.md, flagged because the case name booking-api reads as an API key name.
+e25585640db5e316d872ba81d1f0f62d85232048:evals/RESULTS.md:generic-api-key:1926
+e25585640db5e316d872ba81d1f0f62d85232048:evals/RESULTS.md:generic-api-key:1927
+e25585640db5e316d872ba81d1f0f62d85232048:evals/RESULTS.md:generic-api-key:1928
+e25585640db5e316d872ba81d1f0f62d85232048:evals/RESULTS.md:generic-api-key:1929
+e25585640db5e316d872ba81d1f0f62d85232048:evals/RESULTS.md:generic-api-key:1930
+e25585640db5e316d872ba81d1f0f62d85232048:evals/RESULTS.md:generic-api-key:1931
+e25585640db5e316d872ba81d1f0f62d85232048:evals/RESULTS.md:generic-api-key:1932
+e25585640db5e316d872ba81d1f0f62d85232048:evals/RESULTS.md:generic-api-key:1933
