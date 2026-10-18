@@ -1769,7 +1769,7 @@ def main() -> int:
     run_parser.add_argument("--jobs", type=int, default=4)
     run_parser.add_argument("--stagger-seconds", type=float, default=5)
     run_parser.add_argument("--budget-usd", type=float, required=True, help="stop launching runs at this API-equivalent cost")
-    run_parser.add_argument("--token-file", type=Path, default=DEFAULT_TOKEN_FILE, help="a long-lived token from `claude setup-token`")
+    run_parser.add_argument("--oauth-token-file", type=Path, default=DEFAULT_TOKEN_FILE, help="a long-lived token from `claude setup-token`")
     run_parser.add_argument("--provider-url", action="append", default=[], metavar="MODEL=URL")
     run_parser.add_argument("--provider-key", action="append", default=[], metavar="MODEL=KEY_FILE")
     run_parser.add_argument("--lock-wait-minutes", type=float, default=0)
@@ -1788,7 +1788,7 @@ def main() -> int:
         providers = parse_providers(arguments.provider_url, arguments.provider_key)
         return run(
             arguments.round_dir, arguments.jobs, arguments.budget_usd, arguments.stagger_seconds, providers,
-            arguments.lock_wait_minutes * 60, arguments.token_file.expanduser(),
+            arguments.lock_wait_minutes * 60, arguments.oauth_token_file.expanduser(),
         )
     if arguments.command == "summarize":
         print(summarize(arguments.round_dir), end="")

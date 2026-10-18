@@ -1411,6 +1411,12 @@ class RoundRefusalTests(RoundCase):
             self.assertIn(text, printed.getvalue())
         self.assertTrue((self.root / "second" / "summary.md").is_file())
 
+    def test_the_run_command_passes_its_options_to_the_round(self):
+        command = ["run", str(self.round), "--budget-usd", "3", "--oauth-token-file", str(self.token_file), "--lock-wait-minutes", "2", "--jobs", "3"]
+        with mock.patch.object(sys, "argv", ["scenario_rounds", *command]), mock.patch.object(scenario_rounds, "run", return_value=0) as started:
+            self.assertEqual(scenario_rounds.main(), 0)
+        started.assert_called_once_with(self.round, 3, 3.0, 5.0, {}, 120.0, self.token_file)
+
 
 @unittest.skipIf(SANDBOX_PROBLEM, f"bwrap cannot create a sandbox here: {SANDBOX_PROBLEM}")
 class RoundTests(RoundCase):
