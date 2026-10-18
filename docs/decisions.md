@@ -1,5 +1,19 @@
 # Decisions
 
+## 2026-10-18 — v0.2.1 validated with Opus after one fix
+
+The release candidate (PC, K, B, and the guides' contents) was compared with v0.2.0 in runs 177 to
+185, with criteria fixed before planning. It met every effect: 28 of 32 logic defects against 22,
+counted blind; OPS-02 high and among the first five actions in 8 of 8 reports, against 5; and no
+"before release" timing in 8 of 8, against 4. It kept seeded gaps, secrets, top priorities, high
+findings, and cost. It missed one check: 12 of 18 reports passed the scorer against 17, because high
+findings carried their evidence mark with a qualifier before the colon, such as `Inferred (pytest
+not runnable):`, most likely prompted by K's rule that a conditional finding states its condition.
+The maintainer chose to fix and confirm rather than accept the miss: `b82b78a` asks for the exact
+mark with any qualifier after it, and eight Opus audits of it (runs 186 and 187) left one such mark
+where the same cases had four, with seeded gaps and defects unchanged. The self-audit (run 185) found
+no high finding; its new items are in issue #10.
+
 ## 2026-10-18 — v0.2.1: conditions, release timing, and recovery merged; findings split held back
 
 Issues #4 and #5 change the report's judgment, not its recall. K tells a finding that holds only

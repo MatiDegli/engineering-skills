@@ -2574,3 +2574,176 @@ Report SHA-256 hashes, as printed by the summary:
 - `250040dce4c25bd9558c4da27be6622ec84908bed281efe97f958667cf525a6f` python-service run 174
 - `1bc7ad550f34fdf64c21c6a1d32a44fe244086f2fe67c74cd268b2cd40d07367` python-service run 175
 - `46a628607b1b0413a27a48ef2defb14cccae198a4f8718ca79373d764aaefea0` python-service run 176
+
+## 2026-10-18 — Runs 177 to 185 (the Opus validation of the v0.2.1 candidate)
+
+- The candidate, main `f273197` (PC, K, B, and the guides' contents), against v0.2.0, the frozen
+  skill `7d06633`, with Opus 5.5: two runs per arm on all seven cases (runs 177 to 180) and two
+  more on `orders-service` and `booking-api` (runs 181 to 184), so the effect cases have four runs
+  per arm. Run 185 is the candidate's audit of this repository at `f273197` (the private
+  self-audit case). Claude Code 2.1.292. The maintainer approved the round and a 50 USD budget.
+- Criteria fixed before planning. Effects on the two cases, eight reports per arm: E1, the
+  candidate finds at least 3 more logic defects than v0.2.0 of 32, counted by hand and blind; E2,
+  OPS-02 high and in the first five actions in at least 7 of 8; E3, no "before release" action in at
+  least 7 of 8. No regression on all seven cases, 18 reports per arm: R1 seeded gaps, R3 reports that
+  pass the scorer, and R4 top priorities in the first five, each at most 2 fewer; R2 no copied
+  secret; R5 at most 0.5 more high findings per report outside the top priorities, leaving out rows
+  at a `defects` location and OPS-02 rows; R6 mean cost within 15%. The self-audit has no pass mark;
+  a confirmed high finding in the skill or tooling would block the release. The criteria file said
+  "36 reports per arm"; it is 18 per arm.
+- A Sonnet subagent counted the 16 reports of the two effect cases under random labels, with the
+  rule of runs 149 to 156; the coordinator checked the decisive quotes of the control's misses.
+
+| Case | Run | Model | Seeded gaps found | Defects at location | Passes the scorer | Top priorities in first five | Problems |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| agent-workflow | 177 | Opus 5.5 @ 7d06633 | 6 of 6 | — | yes | 3 of 3 | — |
+| agent-workflow | 178 | Opus 5.5 @ 7d06633 | 6 of 6 | — | yes | 3 of 3 | — |
+| agent-workflow | 179 | Opus 5.5 @ f273197 | 6 of 6 | — | yes | 3 of 3 | — |
+| agent-workflow | 180 | Opus 5.5 @ f273197 | 6 of 6 | — | yes | 3 of 3 | — |
+| booking-api | 177 | Opus 5.5 @ 7d06633 | 5 of 5 | 5 of 5 | no | 2 of 2 | unmarked high 1 |
+| booking-api | 178 | Opus 5.5 @ 7d06633 | 5 of 5 | 4 of 5 | yes | 2 of 2 | — |
+| booking-api | 179 | Opus 5.5 @ f273197 | 5 of 5 | 4 of 5 | no | 2 of 2 | unmarked high 1 |
+| booking-api | 180 | Opus 5.5 @ f273197 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| go-ratelimiter | 177 | Opus 5.5 @ 7d06633 | 4 of 4 | — | yes | — | — |
+| go-ratelimiter | 178 | Opus 5.5 @ 7d06633 | 4 of 4 | — | yes | — | — |
+| go-ratelimiter | 179 | Opus 5.5 @ f273197 | 4 of 4 | — | no | — | unmarked high 1 |
+| go-ratelimiter | 180 | Opus 5.5 @ f273197 | 4 of 4 | — | yes | — | — |
+| orders-service | 177 | Opus 5.5 @ 7d06633 | 9 of 9 | 0 of 3 | yes | 3 of 3 | — |
+| orders-service | 178 | Opus 5.5 @ 7d06633 | 9 of 9 | 1 of 3 | yes | 2 of 3 | — |
+| orders-service | 179 | Opus 5.5 @ f273197 | 9 of 9 | 2 of 3 | no | 3 of 3 | unmarked high 1 |
+| orders-service | 180 | Opus 5.5 @ f273197 | 9 of 9 | 2 of 3 | yes | 3 of 3 | — |
+| python-service | 177 | Opus 5.5 @ 7d06633 | 16 of 16 | — | yes | 3 of 3 | — |
+| python-service | 178 | Opus 5.5 @ 7d06633 | 16 of 16 | — | yes | 3 of 3 | — |
+| python-service | 179 | Opus 5.5 @ f273197 | 16 of 16 | — | yes | 3 of 3 | — |
+| python-service | 180 | Opus 5.5 @ f273197 | 16 of 16 | — | no | 3 of 3 | unmarked high 1 |
+| typescript-cli | 177 | Opus 5.5 @ 7d06633 | 13 of 13 | — | yes | 3 of 3 | — |
+| typescript-cli | 178 | Opus 5.5 @ 7d06633 | 13 of 13 | — | yes | 3 of 3 | — |
+| typescript-cli | 179 | Opus 5.5 @ f273197 | 13 of 13 | — | yes | 3 of 3 | — |
+| typescript-cli | 180 | Opus 5.5 @ f273197 | 13 of 13 | — | yes | 3 of 3 | — |
+| well-maintained | 177 | Opus 5.5 @ 7d06633 | 2 of 2 | — | yes | 2 of 2 | — |
+| well-maintained | 178 | Opus 5.5 @ 7d06633 | 2 of 2 | — | yes | 2 of 2 | — |
+| well-maintained | 179 | Opus 5.5 @ f273197 | 2 of 2 | — | yes | 2 of 2 | — |
+| well-maintained | 180 | Opus 5.5 @ f273197 | 2 of 2 | — | yes | 2 of 2 | — |
+| orders-service | 181 | Opus 5.5 @ 7d06633 | 9 of 9 | 0 of 3 | yes | 2 of 3 | — |
+| orders-service | 182 | Opus 5.5 @ 7d06633 | 9 of 9 | 1 of 3 | yes | 2 of 3 | — |
+| orders-service | 183 | Opus 5.5 @ f273197 | 9 of 9 | 2 of 3 | no | 3 of 3 | unmarked high 1 |
+| orders-service | 184 | Opus 5.5 @ f273197 | 9 of 9 | 2 of 3 | no | 3 of 3 | unmarked high 1 |
+| booking-api | 181 | Opus 5.5 @ 7d06633 | 5 of 5 | 4 of 5 | yes | 2 of 2 | — |
+| booking-api | 182 | Opus 5.5 @ 7d06633 | 5 of 5 | 4 of 5 | yes | 2 of 2 | — |
+| booking-api | 183 | Opus 5.5 @ f273197 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 184 | Opus 5.5 @ f273197 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| self-audit | 185 | Opus 5.5 | 0 of 0 | yes | — | — |
+
+| Criterion | v0.2.0 `7d06633` | Candidate `f273197` | Met |
+| --- | --- | --- | --- |
+| E1 logic defects by hand, of 32 (matcher) | 22 (19) | 28 (27) | yes, +6 |
+| E2 OPS-02 high and in the first five, of 8 | 5 | 8 | yes |
+| E3 no "before release" action, of 8 | 4 | 8 | yes |
+| R1 seeded gaps, of 138 | 138 | 138 | yes |
+| R2 copied secret | 0 | 0 | yes |
+| R3 reports that pass the scorer, of 18 | 17 | 12 | no |
+| R4 top priorities in the first five, of 42 | 39 | 42 | yes |
+| R5 high outside the top priorities, per report | 1.39 | 1.78 | yes |
+| R6 mean USD per audit | 0.99 | 0.98 | yes |
+
+- E1: `booking-api` 20 of 20 in both arms. On `orders-service` the candidate found WELCOME10 and
+  the CPU alert in all four reports and the list SKU in none; the control found WELCOME10 once, the
+  list SKU once, and the alert never. The control's misses quote the `> 0.8` threshold without
+  cores against 80%, or name WELCOME10 only as untested or uncommented.
+- R3: every failure is a high finding without a valid mark. Five of the candidate's six are
+  correct findings whose mark carries a qualifier before the colon, such as `Inferred (pytest not
+  runnable):` and `Reproduced with TZ=UTC ...:` (runs 179, 180, 183, 184); one omits the mark (run
+  179, `orders-service` SEC-12). The control's one failure is "Reproduced," (run 177). The likely
+  cause is K's rule that a conditional finding states its condition; `b82b78a` asks for the exact
+  mark with any qualifier after the colon, confirmed in runs 186 and 187.
+- The self-audit (run 185, 8.1 minutes, 3.88 USD) found no high finding, 9 medium, and 25 low; the
+  new items are in issue #10.
+
+Report SHA-256 hashes, as printed by the summaries:
+
+- `07d9948437b6144276fecf636ea4a3f9266e0848153c8e4021046b412f214a49` agent-workflow run 177
+- `2cf2c8949427636de4eb4d41cb75d452bec0fb5fc4bd0d5d1be808d50c0ce904` agent-workflow run 178
+- `4561e97b72d2a122d276658e93606f99ecb25d5454cbcd13646327f973471ba5` agent-workflow run 179
+- `7439fc2d2d5889152d492c1f0f0fa2bfb0d3cf1578e1610469c0b0db190beecf` agent-workflow run 180
+- `e1a244f541720c19aec296188667aa62ff0c7adba7527b06660422c237f4e091` booking-api run 177
+- `4a5330000095210b1e1085f63830edd49909e53b3886ff3258793d7a21d5a34f` booking-api run 178
+- `840c653a36885471ee49f867165da5866e30c5750103b3c1f4f34122c4a03a42` booking-api run 179
+- `6f42ff2e4b806c5b2be561340160af4befe3504cf2556fad2ede00f79181222e` booking-api run 180
+- `5f3db362ee67fd210fa9209a09ece198b5211743194aff277e9635b34accbfdf` go-ratelimiter run 177
+- `41b69e216b553ab8bd626771372451463d34e7ca64e13e04f90af1ad33e68753` go-ratelimiter run 178
+- `dabd8315b5fc62037cc49c7b2da1ea756f51afbfd979c6a0dbbd51896153e158` go-ratelimiter run 179
+- `b7b9fc2f03bd514711eb58250dbd332b3f569c9b64f845d263545411d46526b0` go-ratelimiter run 180
+- `1a36d320b5d98fafb9faa44e4ff1105afca141b7574f0c871627633f2d5e0991` orders-service run 177
+- `2365bdd0c1675c3fc03fd94fb46c9ced756815c8af3d3b05372bd46a456f53f3` orders-service run 178
+- `b3688b980bf3b8b1fcd2afe5d68b60399852b64e2405a82db829721bb0121827` orders-service run 179
+- `06896a1d48ffff8e1ea234ef6d04d0189ad9c06ece10e03d53f0dd66127369e9` orders-service run 180
+- `f3b55824bbba1f57cf85e788811e228e8328f16891d5df2db3c3f102b99e11f6` python-service run 177
+- `96098cdb7da44c0c41fce50e319f617f5e321d4db1927e394a121b55f156ca3e` python-service run 178
+- `2ae11d750f9500dee93899d8202e2f648b908b33b2173ae22dc05ef554ac4fe2` python-service run 179
+- `af04d844f97dbfb070d615206599a52f74c8337154baba63e56eefd87c98aaa1` python-service run 180
+- `567490e1bf3bc5e0db521060391c154037dc5b41e22183b67dbf37c1e4925800` typescript-cli run 177
+- `b4601659c99926cba14d911596ea45185f91782c9e9fcd3ca5daf6289b164a4c` typescript-cli run 178
+- `f2947ea3871b22f92b479ba9479c14f1f045224e1a7f717aa7b38376d49a7486` typescript-cli run 179
+- `f9622fd357669281d043dbf86063ae284d401f2ee5e1a20a741c93aa47f853ec` typescript-cli run 180
+- `973cdb8ed38dc1299dad3982d94b75062c2335647efdde9109c64b7a99b4d1bd` well-maintained run 177
+- `1f46a9f3bae7e647b0edec56f832fae4928225015143d946cb502d9d8c13ff7d` well-maintained run 178
+- `da6b9b064433bacfb457ae08cbd5de040b4e979cd2e650b3538a9a77805f1c93` well-maintained run 179
+- `390fcb21dfd63e5d33998bd71ed2c9db5794e5c43d84bb49056574a3ef838b36` well-maintained run 180
+- `a460daf7bb579cd236da2b5ac1a9878945d539df86bd77e2054658d05874df65` orders-service run 181
+- `d051a55aa6b7b19523c90b58ab0f825eb71d340b3f5e8b4ebd4c4064427c91ab` orders-service run 182
+- `2f705f6d8c7b5d39c3499424b149a0968b813dbcd7c6e5d40aec94aab1bbbee9` orders-service run 183
+- `80f47aa715e79baf6e763c71c7eb58f6bd8bef43808928f12c3dbe858076c419` orders-service run 184
+- `5a75bf997adf0c26e3bff3245b26c75c2693ef66d08069a9dd58849b7d220464` booking-api run 181
+- `2eda30b42e21fb234622a7abcfa39bc688df7085483bae04487bcb066560ff51` booking-api run 182
+- `94aa516f64b67137034e7e2da4d91278e17e86ad73830f70578ce0fe3c4af6ec` booking-api run 183
+- `ff4258b5ae4c74a6b546b8903307a58d49d4bbb67366dae3c4931944ae891937` booking-api run 184
+- `8e843cf83d06a5a84c6c86ecd2933969e6c4abf0a2e58a8cddc3703bd92d97a3` self-audit run 185
+
+## 2026-10-18 — Runs 186 and 187 (the evidence-mark fix, with Opus)
+
+- `b82b78a` asks for the exact mark `Reproduced:` or `Inferred:`, with any qualifier after the colon.
+  The maintainer approved eight Opus audits of it, two runs on each case where runs 179 and 180 had
+  written a qualifier before the colon. Criteria fixed before planning, against runs 179 and 180 on
+  the same cases: M1, at most one high finding without a valid mark; M2, at most one fewer seeded
+  gap; M3, at most one fewer logic defect by the matcher; M4, no copied secret. The criteria file
+  said runs 179 and 180 had five such findings in these eight reports; they had four.
+
+| Case | Run | Model | Seeded gaps found | Defects at location | Passes the scorer | Top priorities in first five | Problems |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| booking-api | 186 | Opus 5.5 | 5 of 5 | 5 of 5 | no | 2 of 2 | duplicated 2 |
+| booking-api | 187 | Opus 5.5 | 5 of 5 | 4 of 5 | yes | 2 of 2 | — |
+| go-ratelimiter | 186 | Opus 5.5 | 4 of 4 | — | yes | — | — |
+| go-ratelimiter | 187 | Opus 5.5 | 4 of 4 | — | yes | — | — |
+| orders-service | 186 | Opus 5.5 | 9 of 9 | 2 of 3 | yes | 3 of 3 | — |
+| orders-service | 187 | Opus 5.5 | 9 of 9 | 2 of 3 | no | 3 of 3 | duplicated 1 |
+| python-service | 186 | Opus 5.5 | 16 of 16 | — | yes | 3 of 3 | — |
+| python-service | 187 | Opus 5.5 | 16 of 16 | — | no | 3 of 3 | unmarked high 1 |
+
+| Criterion | Runs 179 and 180 (`f273197`) | Runs 186 and 187 (`b82b78a`) | Met |
+| --- | --- | --- | --- |
+| M1 high findings without a valid mark | 4 | 1 | yes |
+| M2 seeded gaps, of 68 | 68 | 68 | yes |
+| M3 logic defects by the matcher, of 16 | 13 | 13 | yes |
+| M4 copied secret | 0 | 0 | yes |
+| Reports that pass the scorer, of 8 | 4 | 5 | |
+
+- The remaining mark is `Inferred (Flask is not installed, so this was not run):` (run 187,
+  `python-service` ARCH-05). Two reports fail the scorer on duplicated IDs: run 186 `booking-api`
+  repeats SEC-05 and SEC-11 in a bullet that explains them, and run 187 `orders-service` writes
+  "DEP-05 is not here" inside its `meets` line.
+- These runs exposed a scorer fault: a parenthesis inside a code span in a Coverage reason, as in
+  `` `git grep logging|print(` ``, hid every ID after it. The scorer now ignores parentheses in code.
+  Among recorded runs it changes only run 149, whose two uncovered IDs were this fault; run 149
+  still fails on two unmarked high findings.
+- Mean 3.6 minutes and 0.98 USD per audit.
+
+Report SHA-256 hashes, as printed by the summary:
+
+- `b0fa1bbdc7fe86c3aacce9723626c7f5780d2f56de6caa8c0630e19b46b7fb3e` booking-api run 186
+- `9a78ff1ac7fd4baab10d8fa9fdaa6cb6548e7d865d5cc5d1a6eeaca4adf4439f` booking-api run 187
+- `76e2d378636d2ed80798c159b559e7c04d1735fc2f6dedece8478d0a37ad9520` go-ratelimiter run 186
+- `30ac40ef4687b6b5d3dd3de9d9e1f3ebff388049f7e7731e39b8c42618b48541` go-ratelimiter run 187
+- `7e2c2e47c4548b555a6c488ad4cb5e855cfe97d6e06eee8fd9a02369ccbb8359` orders-service run 186
+- `f0abbb0f04d82de2f91654b9367fa3b99b731bb7223e83bff5b61eb4b6f10aa7` orders-service run 187
+- `50ebaf58759a75dc7c75ad4810e15d3c17da4626b9f34e86764c21aa2cbe7097` python-service run 186
+- `3fa8c44bdba75d25465b61eb550e16fe57f7cebc27f80e7e55921b8831e36a2c` python-service run 187
