@@ -1511,6 +1511,25 @@ class StandInCase(TemporaryTestCase):
         return scenario_rounds.init_event(self.round / "streams" / f"{label}.jsonl")
 
 
+class BrokenScenarioTests(StandInCase):
+    """A scenario edited after `plan` fails before any sandbox starts; no sandbox is needed to test it."""
+
+    BROKEN = MINI_FILES | {"handoff.md": "{{nowish}}\n"}
+
+    def test_a_scenario_edited_after_the_plan_is_a_failed_run_and_leaves_no_workspace(self):
+        self.write_alpha(files=self.BROKEN)
+        made = []
+        make = scenario_rounds.new_directory
+        with mock.patch.object(scenario_rounds, "new_directory", lambda prefix: made.append(make(prefix)) or made[-1]):
+            line, record = self.run_job("claude-test-1-0", level="none")
+        self.assertEqual(line, "run1-alpha: error SystemExit: unknown template {{nowish}}")
+        self.assertIsNone(record)
+        self.assertEqual(len(made), 1)
+        self.assertFalse(Path(made[0]["path"]).exists(), "the workspace is deleted")
+        self.assertEqual(list((self.round / "runs").glob("*.workspace.json")), [])
+        self.assertEqual(list((self.round / "streams").iterdir()), [], "nothing started")
+
+
 @unittest.skipIf(SANDBOX_PROBLEM, f"bwrap cannot create a sandbox here: {SANDBOX_PROBLEM}")
 class JobTests(StandInCase):
     """Run whole jobs, in the real sandbox, with a stand-in `claude`."""
@@ -1741,6 +1760,19 @@ class RoundRefusalTests(RoundCase):
         self.assertIn("it is a symbolic link now", printed.getvalue())
         self.assertIn(f"kept {elsewhere.parent}: not a directory this round created", printed.getvalue())
 
+    def test_clean_does_not_touch_the_workspaces_of_a_round_that_is_running(self):
+        left = scenario_rounds.new_directory(scenario_rounds.WORKSPACE_PREFIX)
+        self.addCleanup(shutil.rmtree, left["path"], True)
+        pending = self.round / "runs" / "run1-alpha.workspace.json"
+        write(pending, json.dumps(left))
+        self.plan()
+        with claude_rounds.round_lock("scenario_rounds run /somewhere/round"):
+            with self.assertRaisesRegex(SystemExit, "another round holds .*scenario_rounds run /somewhere/round"):
+                scenario_rounds.clean(self.round)
+        self.assertTrue(Path(left["path"]).exists() and pending.exists())
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(scenario_rounds.clean(self.round), [left["path"]])
+
     def test_the_command_line_plans_summarizes_and_cleans(self):
         arguments = ["plan", str(self.root / "second"), "--run", "1=claude-test-1-0+none", "--scenario", "alpha"]
         for command, text in ((arguments, "planned 1 runs of skill none"), (["summarize", arguments[1]], "no record"), (["clean", arguments[1]], "")):
@@ -1811,6 +1843,15 @@ class RoundTests(RoundCase):
         self.assertFalse((self.round / "streams" / "run3-alpha.jsonl").exists(), "the third run never started")
         self.assertIn("stopped", (self.round / "log.txt").read_text())
         self.assertIs(signal.getsignal(signal.SIGTERM), previous)
+
+    def test_a_scenario_that_cannot_be_prepared_fails_its_run_and_the_round_goes_on(self):
+        write_scenario(self.scenarios / "beta", expected=JOB_EXPECTED, task=JOB_TASK, files=BrokenScenarioTests.BROKEN)
+        broken = {**self.job("claude-test-1-0", "none", "1"), "scenario": "beta", "label": "run1-beta"}
+        self.plan(broken, self.job("claude-test-1-0", "none", "2"))
+        code, printed = self.run_round(jobs=1)
+        self.assertEqual(code, 1)
+        self.assertEqual(printed.splitlines(), ["run1-beta: error SystemExit: unknown template {{nowish}}", "run2-alpha: ok"])
+        self.assertIn("run1-beta: error SystemExit", (self.round / "log.txt").read_text())
 
     def test_a_round_that_has_used_its_budget_starts_no_more_runs_and_says_so(self):
         self.plan(self.job("claude-test-1-0", "none", "1"), self.job("claude-test-1-0", "none", "2"))

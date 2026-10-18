@@ -185,8 +185,10 @@ The runner therefore works as follows:
   oracle are invisible, that a pattern kill misses a canary process on the host, and that Docker
   and interop fail. It refuses the round otherwise.
 - **Round:** the whole round holds the same round lock as the audit runner, so one round at a time
-  runs on the machine. SIGTERM or SIGINT stops every sandbox, and the order of the levels
-  alternates between scenarios, so that neither level always pays the first cache writes.
+  runs on the machine; `clean` takes the lock too, so it cannot remove the workspaces of a round
+  that is running. A scenario that fails to prepare is a failed run, and the round goes on.
+  SIGTERM or SIGINT stops every sandbox, and the order of the levels alternates between scenarios,
+  so that neither level always pays the first cache writes.
 
 Tests that need `bwrap` skip when it cannot create a namespace, as on CI runners without it. The
 fixtures, the oracle, and the scoring are tested everywhere, including a null run: an untouched

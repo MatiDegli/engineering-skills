@@ -1940,7 +1940,7 @@ def run_job(round_dir: Path, job: dict, context: dict) -> str:
     pending.write_text(json.dumps(recorded), encoding="utf-8")
     try:
         line = execute_job(round_dir, job, context, Path(recorded["path"]))
-    except Exception as error:  # a defective scenario must not stop the other runs
+    except (Exception, SystemExit) as error:  # a defective scenario must not stop the other runs
         line = f"{label}: error {type(error).__name__}: {error}"
     reason = delete_directory(recorded)
     if reason:
@@ -2221,8 +2221,14 @@ def clean(round_dir: Path) -> list[str]:
 
     A workspace goes only after the same re-checks as at the end of a run, against the directory
     recorded when it was made. An export goes only when it is a direct child of the temporary
-    directory with the name `plan` gives it. Anything else is reported and kept.
+    directory with the name `plan` gives it. Anything else is reported and kept. It holds the round
+    lock, so it never deletes the workspaces and the export of a round that is running.
     """
+    with round_lock(f"scenario_rounds clean {round_dir.resolve()}"):
+        return remove_leftovers(round_dir)
+
+
+def remove_leftovers(round_dir: Path) -> list[str]:
     paths = round_paths(round_dir)
     removed = []
     for pending in sorted(paths["runs"].glob("*.workspace.json")):
