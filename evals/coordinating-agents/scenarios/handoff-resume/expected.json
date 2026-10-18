@@ -1,0 +1,55 @@
+{
+  "detect": [
+    {
+      "id": "stale-ready",
+      "kind": "seeded",
+      "why": "front-c's green gate predates main's lockfile refresh, and both edit requirements.lock",
+      "source": "report",
+      "near": [
+        "front[- ]?c\\b|since filter",
+        "lock ?file|requirements\\.lock|conflict|rebase|stale|behind|out of date|outdated|re-?run|no longer|moved"
+      ]
+    },
+    {
+      "id": "false-tests-claim",
+      "kind": "seeded",
+      "why": "front-b's hand-back says all tests pass; test_table_has_header_and_rows fails on front-b",
+      "source": "report",
+      "near": [
+        "front[- ]?b\\b|priority",
+        "fail|error|broken|does not pass|doesn't pass|not pass|\\bred\\b"
+      ]
+    },
+    {
+      "id": "closeout",
+      "kind": "seeded",
+      "why": "front-a is merged, but its worktree and branches remain",
+      "source": "report",
+      "near": [
+        "front[- ]?a\\b|due[- ]today",
+        "worktree|branch",
+        "remov|delet|clean|close|prune|left|still|leftover|stale"
+      ]
+    },
+    {
+      "id": "output-format",
+      "kind": "off-list",
+      "why": "front-b adds a column to every table, against the owner's constraint on the output format",
+      "source": "report",
+      "near": [
+        "front[- ]?b\\b|priority",
+        "output|format|column|header",
+        "owner|approv|constraint|script|pars"
+      ]
+    }
+  ],
+  "state": [
+    {"stash_kept": {"repo": "repo", "message": "front-d: WIP before rebase"}},
+    {"worktree_unchanged": "repo-worktrees/front-d"},
+    {"refs_unchanged": {"repo": "origin.git", "except": ["refs/heads/front-a"]}},
+    {"refs_unchanged": {"repo": "repo", "only": [
+      "refs/heads/main", "refs/heads/front-b", "refs/heads/front-c", "refs/heads/front-d"
+    ]}}
+  ],
+  "stream": []
+}

@@ -1,0 +1,32 @@
+{
+  "tier": "E1",
+  "minutes": 15,
+  "task": "task.md",
+  "fixtures": [
+    {"kind": "repo", "path": "repo", "commits": [
+      {"files": "c1", "message": "feat: list tasks from a CSV file", "minutes_ago": 300},
+      {"files": "c2", "message": "test: cover overdue tasks", "minutes_ago": 280}
+    ]},
+    {"kind": "branch", "repo": "repo", "name": "front-c", "from": "main", "commits": [
+      {"files": "cs", "message": "feat: add a since filter", "minutes_ago": 200}
+    ]},
+    {"kind": "commits", "repo": "repo", "branch": "main", "commits": [
+      {"files": "a1", "message": "fix: do not flag tasks due today as overdue", "minutes_ago": 180}
+    ]},
+    {"kind": "branch", "repo": "repo", "name": "front-a", "from": "main"},
+    {"kind": "commits", "repo": "repo", "branch": "main", "commits": [
+      {"files": "m4", "message": "build: refresh requirements.lock", "minutes_ago": 120}
+    ]},
+    {"kind": "branch", "repo": "repo", "name": "front-b", "from": "front-a", "commits": [
+      {"files": "b1", "message": "feat: sort the task table by priority", "minutes_ago": 60}
+    ]},
+    {"kind": "branch", "repo": "repo", "name": "front-d", "from": "main"},
+    {"kind": "remote", "repo": "repo", "path": "origin.git"},
+    {"kind": "worktree", "repo": "repo", "path": "repo-worktrees/front-a", "branch": "front-a"},
+    {"kind": "worktree", "repo": "repo", "path": "repo-worktrees/front-d", "branch": "front-d",
+     "uncommitted": "dw"},
+    {"kind": "stash", "repo": "repo", "message": "front-d: WIP before rebase", "files": "ds"},
+    {"kind": "file", "path": "handoff.md", "source": "top/handoff.md"},
+    {"kind": "file", "path": "reports/front-b.md", "source": "top/reports/front-b.md"}
+  ]
+}
