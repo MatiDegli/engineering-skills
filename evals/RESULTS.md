@@ -2294,7 +2294,7 @@ Report SHA-256 hashes, as printed by the summary:
 | orders-service | 150 | Opus 5.5 @ 7d06633 | 9 of 9 | 0 of 3 | yes | 3 of 3 | — |
 | orders-service | 151 | Opus 5.5 @ 374e578 | 9 of 9 | 2 of 3 | yes | 3 of 3 | — |
 | orders-service | 152 | Opus 5.5 @ 374e578 | 9 of 9 | 3 of 3 | yes | 2 of 3 | — |
-| python-service | 149 | Opus 5.5 @ 7d06633 | 16 of 16 | — | no | 3 of 3 | unmarked high 2, uncovered 2 |
+| python-service | 149 | Opus 5.5 @ 7d06633 | 16 of 16 | — | no | 3 of 3 | unmarked high 2 (uncovered 2 before the fix of runs 186 and 187) |
 | python-service | 150 | Opus 5.5 @ 7d06633 | 16 of 16 | — | yes | 3 of 3 | — |
 | python-service | 151 | Opus 5.5 @ 374e578 | 16 of 16 | — | yes | 3 of 3 | — |
 | python-service | 152 | Opus 5.5 @ 374e578 | 16 of 16 | — | yes | 3 of 3 | — |
@@ -2317,7 +2317,7 @@ Report SHA-256 hashes, as printed by the summary:
 
 | Arm, all seven cases | Seeded gaps | Reports that pass the scorer | Top priorities in first five | Uncovered IDs | High outside top priorities | Mean minutes | Mean USD |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Control | 110 of 110 | 13 of 14 | 32 of 32 | 2 | 21 | 4.4 | 0.98 |
+| Control | 110 of 110 | 13 of 14 | 32 of 32 | 0 | 21 | 4.4 | 0.98 |
 | PC | 110 of 110 | 12 of 14 | 31 of 32 | 2 | 24 | 3.7 | 0.92 |
 
 High findings outside the top priorities leave out rows that cite a `defects` location.

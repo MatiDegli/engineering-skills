@@ -84,6 +84,16 @@ class ScoringTests(unittest.TestCase):
             },
         )
 
+    def test_a_parenthesis_inside_code_does_not_hide_later_ids(self):
+        report = (
+            "## Coverage\n- not-applicable:\n"
+            "  - SEC-10 (no logging; `git grep 'logging|print('`), SEC-11 (no keys), `SEC-12` (no data)\n"
+        )
+        self.assertEqual(
+            report_statuses(report),
+            {identifier: ["not-applicable"] for identifier in ("SEC-10", "SEC-11", "SEC-12")},
+        )
+
     def test_emphasis_around_labels_ids_and_statuses_is_presentation(self):
         report = (
             "| **ID** | **Status** | Priority | Evidence |\n| --- | --- | --- | --- |\n"

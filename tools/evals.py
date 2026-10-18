@@ -349,7 +349,8 @@ def catalog(references: Path = REFERENCES) -> tuple[list[str], dict[str, list[st
 
 
 def without_reasons(text: str) -> str:
-    """Remove parenthesized reasons, nested ones included."""
+    """Remove parenthesized reasons, nested ones included; a parenthesis in code is not one."""
+    text = re.sub(r"`[^`]*`", lambda span: span[0].replace("(", "").replace(")", ""), text)
     previous = None
     while previous != text:
         previous, text = text, re.sub(r"\([^()]*\)", "", text)
