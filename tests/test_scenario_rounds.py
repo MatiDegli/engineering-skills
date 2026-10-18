@@ -637,6 +637,159 @@ class ScoreTests(WorkspaceTestCase):
         self.assertEqual([d["found"] for d in result["detect"]], [True, True])
 
 
+EXPECTED = {
+    "detect": [{"id": "stale", "kind": "seeded", "source": "report", "near": ["front-a", "{{sha:repo:main}}|stale"]}],
+    "state": [
+        {"refs_unchanged": {"repo": "origin.git", "except": ["refs/heads/old"]}},
+        {"process_alive": "live"},
+        {"file_changed": "repo/app.py"},
+    ],
+    "stream": [{"id": "wait", "pattern": r"wait\.sh", "unless": r"timeout", "background": True}],
+}
+MINI = [
+    {"kind": "repo", "path": "repo", "commits": [{"files": "one", "message": "feat: first"}]},
+    {"kind": "remote", "repo": "repo", "path": "origin.git"},
+    {"kind": "file", "path": "handoff.md", "source": "handoff.md"},
+    {"kind": "process", "name": "live", "label": "sh wait.sh gate front-c", "seconds": 4000},
+]
+MINI_FILES = {"one/app.py": "print(1)\n", "handoff.md": "{{now}} {{short:repo:main}}\n"}
+
+
+def write_scenario(directory, fixtures=MINI, files=MINI_FILES, expected=EXPECTED, minutes=15):
+    """Write a valid scenario into `directory`, which a test then breaks on purpose."""
+    spec = {"tier": "E1", "minutes": minutes, "task": "task.md", "fixtures": fixtures}
+    write(directory / "scenario.json", json.dumps(spec))
+    write(directory / "expected.json", json.dumps(expected))
+    write(directory / "task.md", "Do the task.\n")
+    for name, text in files.items():
+        write(directory / "files" / name, text)
+    return directory
+
+
+class ScenarioValidationTests(TemporaryTestCase):
+    def problems(self, **changes):
+        arguments = {"fixtures": MINI, "files": MINI_FILES, "expected": EXPECTED, "minutes": 15} | changes
+        directory = self.root / f"scenario{len(list(self.root.glob('scenario*')))}"
+        return scenario_rounds.scenario_problems(write_scenario(directory, **arguments))
+
+    def test_a_valid_scenario_and_the_real_one_have_no_problems(self):
+        self.assertEqual(self.problems(), [])
+        self.assertEqual(scenario_rounds.scenario_problems(scenario_rounds.SCENARIOS / "handoff-resume"), [])
+
+    def test_fixture_mistakes_are_named(self):
+        broken = [
+            ({"kind": "teleport"}, "unknown kind 'teleport'"),
+            ({"kind": "remote", "repo": "repo"}, "missing path"),
+            ({"kind": "remote", "repo": "repo", "path": "o.git", "colour": "red"}, "unknown field colour"),
+            ({"kind": "branch", "repo": "other", "name": "x", "from": "main"}, "'other' is not defined before it"),
+            ({"kind": "file", "path": "../x", "source": "handoff.md"}, "must be relative"),
+            ({"kind": "file", "path": "x.md", "source": "absent.md"}, "no file files/absent.md"),
+            ({"kind": "stash", "repo": "repo", "message": "m", "files": "absent"}, "no directory files/absent"),
+            ({"kind": "repo", "path": "two", "commits": [{"files": "one"}]}, "a commit needs message"),
+            ({"kind": "repo", "path": "two", "commits": [{"message": "m", "colour": 1}]}, "unknown field colour"),
+            ({"kind": "process", "name": "live", "label": "x", "seconds": 4000}, "defined twice"),
+            ({"kind": "process", "name": "short", "label": "x", "seconds": 900}, "seconds must exceed the time limit (900) by 120"),
+        ]
+        for fixture, expected in broken:
+            with self.subTest(fixture=fixture):
+                self.assertTrue(any(expected in p for p in self.problems(fixtures=[*MINI, fixture])), self.problems(fixtures=[*MINI, fixture]))
+
+    def test_a_file_with_an_unknown_template_is_named(self):
+        problems = self.problems(files=MINI_FILES | {"handoff.md": "{{later}} {{sha:other:main}}\n"})
+        self.assertEqual(problems, ["fixture 3: unknown template {{later}}", "fixture 3: unknown template {{sha:other:main}}"])
+
+    def test_oracle_mistakes_are_named(self):
+        seed = EXPECTED["detect"][0]
+        broken = [
+            ({"detect": [seed, seed]}, "the id is empty or repeated"),
+            ({"detect": [seed | {"id": "b", "kind": "maybe"}]}, "kind must be seeded or off-list"),
+            ({"detect": [seed | {"near": []}]}, "non-empty near list"),
+            ({"detect": [seed | {"near": ["(unclosed"]}]}, "bad expression '(unclosed'"),
+            ({"detect": [seed | {"near": ["{{sha:other:main}}"]}]}, "cannot resolve {{sha:other:main}}"),
+            ({"state": [{"process_alve": "live"}]}, "is not one known check"),
+            ({"state": [{"process_alive": "dead"}]}, "unknown process 'dead'"),
+            ({"state": [{"refs_unchanged": "nowhere"}]}, "unknown repository 'nowhere'"),
+            ({"state": [{"commits_added": {"repo": "nowhere", "branch": "main", "count": 1}}]}, "unknown repository 'nowhere'"),
+            ({"stream": [{"id": "kill-by-pattern", "pattern": "x"}]}, "the id is empty or repeated"),
+            ({"stream": [{"id": "bad", "pattern": "("}]}, "bad expression '('"),
+        ]
+        for change, expected in broken:
+            with self.subTest(change=change):
+                problems = self.problems(expected=EXPECTED | change)
+                self.assertTrue(any(expected in p for p in problems), problems)
+
+    def test_a_scenario_that_fails_its_own_null_run_is_refused(self):
+        wrong_stash = {"stash_kept": {"repo": "repo", "message": "never made"}}
+        problems = self.problems(expected=EXPECTED | {"state": [wrong_stash, {"process_alive": "live"}]})
+        self.assertEqual(problems, ["a null run breaks stash_kept: the prepared workspace has no such stash entry"])
+        held = {"id": "held", "kind": "seeded", "source": "handoff.md", "near": [r"20\d\d-\d\d-\d\d"]}
+        self.assertEqual(self.problems(expected=EXPECTED | {"detect": [held]}), [], "fixture words never match")
+
+
+class DeletionTests(TemporaryTestCase):
+    def workspace(self, parent=None):
+        """Make a directory the way the runner does, with some content, and return its record."""
+        with mock.patch.object(scenario_rounds.tempfile, "tempdir", str(parent) if parent else None):
+            recorded = scenario_rounds.new_directory("scenario.")
+        write(Path(recorded["path"]) / "repo" / "file.txt", "content\n")
+        self.addCleanup(shutil.rmtree, recorded["path"], True)
+        return recorded
+
+    def test_a_workspace_the_runner_made_is_deleted_even_when_the_agent_removed_permissions(self):
+        recorded = self.workspace()
+        path = Path(recorded["path"])
+        write(path / "locked" / "inner" / "file.txt", "x\n")
+        (path / "locked" / "inner" / "file.txt").chmod(0o400)
+        (path / "locked" / "inner").chmod(0o500)
+        (path / "locked").chmod(0)
+        (path / "repo").chmod(0o555)
+        self.assertIsNone(scenario_rounds.delete_directory(recorded))
+        self.assertFalse(path.exists())
+
+    def test_a_symbolic_link_in_its_place_is_not_followed_or_deleted(self):
+        recorded = self.workspace()
+        path = Path(recorded["path"])
+        decoy = self.root / "decoy"
+        write(decoy / "keep.txt", "keep\n")
+        path.rename(path.with_name(path.name + ".moved"))
+        path.symlink_to(decoy)
+        self.addCleanup(path.unlink)
+        self.assertEqual(scenario_rounds.delete_directory(recorded), "it is a symbolic link now")
+        self.assertTrue((decoy / "keep.txt").exists())
+        self.addCleanup(shutil.rmtree, str(path) + ".moved", True)
+
+    def test_another_directory_with_the_recorded_name_is_not_deleted(self):
+        recorded = self.workspace()
+        path = Path(recorded["path"])
+        moved = path.with_name(path.name + ".moved")
+        path.rename(moved)
+        self.addCleanup(shutil.rmtree, moved, True)
+        write(path / "other.txt", "other\n")
+        self.assertEqual(scenario_rounds.delete_directory(recorded), "it is not the directory that was recorded")
+        self.assertTrue((path / "other.txt").exists())
+
+    def test_a_name_the_runner_does_not_give_is_not_deleted(self):
+        recorded = self.workspace()
+        path = Path(recorded["path"])
+        renamed = path.with_name("not-a-workspace")
+        path.rename(renamed)
+        self.addCleanup(shutil.rmtree, renamed, True)
+        self.assertEqual(scenario_rounds.delete_directory(recorded | {"path": str(renamed)}), "its name is not one the runner gives")
+        self.assertTrue((renamed / "repo" / "file.txt").exists())
+
+    def test_a_directory_that_is_not_a_child_of_the_temporary_directory_is_not_deleted(self):
+        nested = self.root / "nested"
+        nested.mkdir()
+        recorded = self.workspace(nested)
+        self.assertEqual(scenario_rounds.delete_directory(recorded), "it is not a direct child of the temporary directory")
+        self.assertTrue((Path(recorded["path"]) / "repo" / "file.txt").exists())
+
+    def test_a_directory_that_is_already_gone_is_fine(self):
+        recorded = self.workspace()
+        self.assertIsNone(scenario_rounds.delete_directory(recorded))
+        self.assertIsNone(scenario_rounds.delete_directory(recorded))
+
+
 SANDBOX_PROBLEM = scenario_rounds.sandbox_problem()
 
 

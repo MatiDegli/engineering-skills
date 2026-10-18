@@ -22,6 +22,7 @@ import re
 import shutil
 import stat
 import subprocess
+import tempfile
 import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -50,6 +51,7 @@ FIXTURES = {
     "process": ({"name", "label", "seconds"}, set()),
 }
 COMMIT_FIELDS = ({"message"}, {"files", "delete", "minutes_ago"})
+WORKSPACE_PREFIX = "scenario."
 # Seconds that a `process` fixture must outlive the time limit: the launcher's grace before it
 # kills a late agent, and the time to stop what the agent left running.
 FIXTURE_MARGIN = 120
@@ -852,3 +854,226 @@ def launch(
     except json.JSONDecodeError:
         pass
     return result
+
+
+WORKSPACE_NAME = re.compile(r"scenario\.[A-Za-z0-9_]{8}")
+SKILL_EXPORT_NAME = re.compile(r"skill\.[A-Za-z0-9_]{8}")
+
+
+def make_deletable(path: Path) -> None:
+    """Give back the permissions an agent may have taken away, directory by directory.
+
+    Links are never followed, so a link inside the tree cannot send this out of it.
+    """
+    stack = [path]
+    while stack:
+        directory = stack.pop()
+        try:
+            os.chmod(directory, os.lstat(directory).st_mode | 0o700)
+            stack += [Path(entry.path) for entry in os.scandir(directory) if entry.is_dir(follow_symlinks=False)]
+        except OSError:
+            pass
+
+
+def restore_write(function, path, error) -> None:
+    """An `onexc` handler for `shutil.rmtree`: make the entry and its directory writable and retry."""
+    for target in (os.path.dirname(path), path):
+        if not os.path.islink(target):
+            try:
+                os.chmod(target, os.stat(target).st_mode | 0o700)
+            except OSError:
+                pass
+    function(path)
+
+
+def remove_tree(path: Path) -> None:
+    make_deletable(path)
+    shutil.rmtree(path, onexc=restore_write)
+
+
+def new_directory(prefix: str) -> dict:
+    """Make a directory in the temporary directory and record which one it is."""
+    path = Path(tempfile.mkdtemp(prefix=prefix))
+    info = path.stat()
+    return {"path": str(path), "device": info.st_dev, "inode": info.st_ino}
+
+
+def delete_directory(recorded: dict, name: re.Pattern = WORKSPACE_NAME) -> str | None:
+    """Delete a directory this runner made, after re-checking it; return None or why it was kept.
+
+    The path must still be the recorded directory, a direct child of the temporary directory, not a
+    symbolic link, and named as the runner names such directories. Permissions the agent removed are
+    restored before the deletion. A directory that is already gone is fine.
+    """
+    path = Path(recorded["path"])
+    if path.is_symlink():
+        return "it is a symbolic link now"
+    if not path.exists():
+        return None
+    resolved = path.resolve()
+    if resolved.parent != Path(tempfile.gettempdir()).resolve():
+        return "it is not a direct child of the temporary directory"
+    if not name.fullmatch(resolved.name):
+        return "its name is not one the runner gives"
+    info = path.stat()
+    if (info.st_dev, info.st_ino) != (recorded["device"], recorded["inode"]):
+        return "it is not the directory that was recorded"
+    remove_tree(resolved)
+    return None
+
+
+TRIAL_ALLOWED = {"file_changed", "commits_added", "process_dead"}
+
+
+def template_problems(text: str, repos: set[str]) -> list[str]:
+    problems = []
+    for name in (m.strip() for m in TEMPLATE.findall(text)):
+        found = REVISION_TEMPLATE.fullmatch(name)
+        if not NOW_TEMPLATE.fullmatch(name) and not (found and found[2] in repos):
+            problems.append(f"unknown template {{{{{name}}}}}")
+    return problems
+
+
+def fixture_problems(spec: dict, files: Path) -> tuple[list[str], dict]:
+    """Check a scenario's fixtures; return the problems and the names they define."""
+    problems, repos, remotes, processes = [], set(), set(), {}
+    limit = spec["minutes"] * 60 if isinstance(spec.get("minutes"), (int, float)) else 0
+    for number, fixture in enumerate(spec.get("fixtures", []), 1):
+        where, kind = f"fixture {number}", fixture.get("kind")
+        if kind not in FIXTURES:
+            problems.append(f"{where}: unknown kind {kind!r}")
+            continue
+        required, optional = FIXTURES[kind]
+        given = set(fixture) - {"kind"}
+        if required - given:
+            problems.append(f"{where} ({kind}): missing {', '.join(sorted(required - given))}")
+        if given - required - optional:
+            problems.append(f"{where} ({kind}): unknown field {', '.join(sorted(given - required - optional))}")
+        if "repo" in fixture and fixture["repo"] not in repos:
+            problems.append(f"{where}: the repository {fixture['repo']!r} is not defined before it")
+        for key in ("path", "source"):
+            try:
+                relative_path(str(fixture.get(key, "x")))
+            except SystemExit as error:
+                problems.append(f"{where}: {error}")
+        for key in ("uncommitted", "files"):
+            if key in fixture and not (files / str(fixture[key])).is_dir():
+                problems.append(f"{where}: no directory files/{fixture[key]}")
+        for entry in fixture.get("commits", []):
+            if COMMIT_FIELDS[0] - set(entry):
+                problems.append(f"{where}: a commit needs {', '.join(sorted(COMMIT_FIELDS[0] - set(entry)))}")
+            problems += [f"{where}: a commit has unknown field {key}" for key in set(entry) - COMMIT_FIELDS[0] - COMMIT_FIELDS[1]]
+            if "files" in entry and not (files / str(entry["files"])).is_dir():
+                problems.append(f"{where}: no directory files/{entry['files']}")
+        if kind == "file":
+            source = files / str(fixture.get("source", ""))
+            if not source.is_file():
+                problems.append(f"{where}: no file files/{fixture.get('source')}")
+            else:
+                problems += [f"{where}: {p}" for p in template_problems(source.read_text(encoding="utf-8"), repos)]
+        if kind == "repo":
+            repos.add(fixture.get("path"))
+        elif kind == "remote":
+            remotes.add(fixture.get("path"))
+        elif kind == "process":
+            if fixture.get("name") in processes:
+                problems.append(f"{where}: the process {fixture.get('name')!r} is defined twice")
+            processes[fixture.get("name")] = fixture.get("seconds")
+            if not isinstance(fixture.get("seconds"), (int, float)) or fixture["seconds"] < limit + FIXTURE_MARGIN:
+                problems.append(f"{where}: seconds must exceed the time limit ({limit:g}) by {FIXTURE_MARGIN}")
+    return problems, {"repos": repos | remotes, "processes": set(processes)}
+
+
+def pattern_problems(pattern: str, where: str) -> list[str]:
+    try:
+        re.compile(TEMPLATE.sub("x", pattern))
+    except re.error as error:
+        return [f"{where}: bad expression {pattern!r}: {error}"]
+    return []
+
+
+def expected_problems(expected: dict, names: dict) -> list[str]:
+    """Check the oracle against the names its scenario's fixtures define."""
+    problems, ids = [], set()
+    for seed in expected.get("detect", []):
+        where = f"detect {seed.get('id')!r}"
+        if seed.get("id") in ids or not seed.get("id"):
+            problems.append(f"{where}: the id is empty or repeated")
+        ids.add(seed.get("id"))
+        if seed.get("kind") not in ("seeded", "off-list"):
+            problems.append(f"{where}: kind must be seeded or off-list")
+        if not isinstance(seed.get("source"), (str, list)) or not seed.get("near"):
+            problems.append(f"{where}: needs a source and a non-empty near list")
+        for pattern in seed.get("near", []):
+            problems += pattern_problems(pattern, where)
+            for name in (m.strip() for m in TEMPLATE.findall(pattern)):
+                found = REVISION_TEMPLATE.fullmatch(name)
+                if not found or found[2] not in names["repos"]:
+                    problems.append(f"{where}: cannot resolve {{{{{name}}}}}")
+    for part in ("state", "ceremony"):
+        for item in expected.get(part, []):
+            if "pattern" in item and part == "ceremony":
+                continue
+            kind = next(iter(item), None)
+            if len(item) != 1 or kind not in STATE_CHECKS:
+                problems.append(f"{part}: {item!r} is not one known check")
+                continue
+            argument = item[kind]
+            if kind.startswith("process_") and argument not in names["processes"]:
+                problems.append(f"{part}: {kind} names the unknown process {argument!r}")
+            repo = argument.get("repo") if isinstance(argument, dict) else argument if kind in ("refs_unchanged", "no_new_branches", "no_new_worktrees") else None
+            if isinstance(repo, str) and repo not in names["repos"]:
+                problems.append(f"{part}: {kind} names the unknown repository {repo!r}")
+    stream = [*expected.get("stream", []), *(i for i in expected.get("ceremony", []) if "pattern" in i)]
+    for rule in stream:
+        where = f"stream {rule.get('id')!r}"
+        if not rule.get("id") or rule["id"] in ids | {"kill-by-pattern"}:
+            problems.append(f"{where}: the id is empty or repeated")
+        ids.add(rule.get("id"))
+        problems += pattern_problems(rule.get("pattern", ""), where) + pattern_problems(rule.get("unless", "x"), where)
+    return problems
+
+
+def null_run_problems(scenario: Path) -> list[str]:
+    """Prepare the scenario, then score an untouched workspace with an empty report.
+
+    It must detect nothing and show no violation. Only the checks that ask for a change may fail.
+    """
+    trial = new_directory(WORKSPACE_PREFIX)
+    workspace = Path(trial["path"])
+    try:
+        manifest = prepare_workspace(scenario, workspace)
+        snapshot = take_snapshot(workspace, manifest)
+        launcher = {"fixtures": {p["name"]: {"state": "alive"} for p in manifest["processes"]}}
+        expected = json.loads((scenario / "expected.json").read_text(encoding="utf-8"))
+        scored = score_run(expected, snapshot, snapshot, launcher, "", [])
+    finally:
+        remove_tree(workspace)
+    problems = [f"a null run detects {d['id']}" for d in scored["detect"] if d["found"]]
+    problems += [f"a null run breaks {c['check']}: {c['detail']}" for c in scored["state"] if not c["ok"] and c["check"] not in TRIAL_ALLOWED]
+    problems += [f"a null run shows the ceremony {c.get('check') or c['id']}" for c in scored["ceremony"]]
+    return problems + [f"a null run hits {hit['id']}" for hit in scored["stream"]] + snapshot["problems"]
+
+
+def scenario_problems(scenario: Path) -> list[str]:
+    """List what is wrong with a scenario directory: its files, its fixtures, its oracle, a null run."""
+    problems, documents = [], {}
+    for name in ("scenario.json", "expected.json"):
+        try:
+            documents[name] = json.loads((scenario / name).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            problems.append(f"{name}: {error}")
+    if problems:
+        return problems
+    spec, expected = documents["scenario.json"], documents["expected.json"]
+    minutes = spec.get("minutes")
+    if spec.get("tier") not in ("E1", "E2", "E3"):
+        problems.append("scenario.json: tier must be E1, E2, or E3")
+    if isinstance(minutes, bool) or not isinstance(minutes, (int, float)) or minutes <= 0:
+        problems.append("scenario.json: minutes must be a positive number")
+        return problems
+    if not (scenario / str(spec.get("task", ""))).is_file():
+        problems.append("scenario.json: the task file is missing")
+    fixtures, names = fixture_problems(spec, scenario / "files")
+    problems += fixtures + expected_problems(expected, names)
+    return problems or null_run_problems(scenario)
