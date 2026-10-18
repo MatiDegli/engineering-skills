@@ -2255,3 +2255,137 @@ Report SHA-256 hashes, as printed by the summary:
 - `f006f43a89a245414db62aa0e2b7700fd757f868f2335e8c9836be7892e7884a` orders-service run 146
 - `76792fa20cbc881cc482bf6b550108be4f674c69534ea5b007955f321b8adee4` orders-service run 147
 - `da1b6dc2cfef9049a1ed8c788ecc94e8a04790dd73666ae82a0951b8e3479f2b` orders-service run 148
+
+## 2026-10-18 — Runs 149 to 156 (logic defects: the Opus milestone for PC)
+
+- PC, `374e578` on branch `eval/pc-combined`, against the frozen skill `7d06633` with Opus 5.5, two
+  runs per arm on all seven cases (runs 149 to 152). Runs 153 to 156 add the no-skill and catalog
+  levels, two runs each, on `booking-api` and `orders-service`, from a second round directory run
+  right after the first. Claude Code 2.1.292.
+- Criteria approved by the maintainer before the round: (1) on the two defect cases, PC finds more
+  defects than the control and at least as many as the no-skill and catalog levels; (2) on all seven
+  cases, PC keeps seeded gaps, top priorities in the first five actions, and coverage at the
+  control's level, copies no secret, and marks at most two more high findings outside the top
+  priorities than the control; (3) PC's mean cost is within 15% of the control's. While the round
+  ran, before any report was read, the maintainer approved three adjustments: every arm's defects
+  are counted by hand with one rule, the report names the defect's file and its mechanism; a high
+  finding whose row cites a `defects` location does not count toward the limit of (2); and a check
+  missed by one item is decided by three more runs per arm on the affected case.
+- A Sonnet subagent counted the defects of the 16 reports of the two cases, copied under random
+  labels; the coordinator checked the decisive quotes. The matcher's figures, with the fix of
+  `8d6c60e`, are in the table below. The no-skill reports' seeded gaps were not counted: no
+  criterion uses them.
+
+| Case | Run | Model | Seeded gaps found | Defects at location | Passes the scorer | Top priorities in first five | Problems |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| agent-workflow | 149 | Opus 5.5 @ 7d06633 | 6 of 6 | — | yes | 3 of 3 | — |
+| agent-workflow | 150 | Opus 5.5 @ 7d06633 | 6 of 6 | — | yes | 3 of 3 | — |
+| agent-workflow | 151 | Opus 5.5 @ 374e578 | 6 of 6 | — | no | 3 of 3 | uncovered 1 |
+| agent-workflow | 152 | Opus 5.5 @ 374e578 | 6 of 6 | — | yes | 3 of 3 | — |
+| booking-api | 149 | Opus 5.5 @ 7d06633 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 150 | Opus 5.5 @ 7d06633 | 5 of 5 | 4 of 5 | yes | 2 of 2 | — |
+| booking-api | 151 | Opus 5.5 @ 374e578 | 5 of 5 | 4 of 5 | no | 2 of 2 | uncovered 1 |
+| booking-api | 152 | Opus 5.5 @ 374e578 | 5 of 5 | 4 of 5 | yes | 2 of 2 | — |
+| go-ratelimiter | 149 | Opus 5.5 @ 7d06633 | 4 of 4 | — | yes | — | — |
+| go-ratelimiter | 150 | Opus 5.5 @ 7d06633 | 4 of 4 | — | yes | — | — |
+| go-ratelimiter | 151 | Opus 5.5 @ 374e578 | 4 of 4 | — | yes | — | — |
+| go-ratelimiter | 152 | Opus 5.5 @ 374e578 | 4 of 4 | — | yes | — | — |
+| orders-service | 149 | Opus 5.5 @ 7d06633 | 9 of 9 | 0 of 3 | yes | 3 of 3 | — |
+| orders-service | 150 | Opus 5.5 @ 7d06633 | 9 of 9 | 0 of 3 | yes | 3 of 3 | — |
+| orders-service | 151 | Opus 5.5 @ 374e578 | 9 of 9 | 2 of 3 | yes | 3 of 3 | — |
+| orders-service | 152 | Opus 5.5 @ 374e578 | 9 of 9 | 3 of 3 | yes | 2 of 3 | — |
+| python-service | 149 | Opus 5.5 @ 7d06633 | 16 of 16 | — | no | 3 of 3 | unmarked high 2, uncovered 2 |
+| python-service | 150 | Opus 5.5 @ 7d06633 | 16 of 16 | — | yes | 3 of 3 | — |
+| python-service | 151 | Opus 5.5 @ 374e578 | 16 of 16 | — | yes | 3 of 3 | — |
+| python-service | 152 | Opus 5.5 @ 374e578 | 16 of 16 | — | yes | 3 of 3 | — |
+| typescript-cli | 149 | Opus 5.5 @ 7d06633 | 13 of 13 | — | yes | 3 of 3 | — |
+| typescript-cli | 150 | Opus 5.5 @ 7d06633 | 13 of 13 | — | yes | 3 of 3 | — |
+| typescript-cli | 151 | Opus 5.5 @ 374e578 | 13 of 13 | — | yes | 3 of 3 | — |
+| typescript-cli | 152 | Opus 5.5 @ 374e578 | 13 of 13 | — | yes | 3 of 3 | — |
+| well-maintained | 149 | Opus 5.5 @ 7d06633 | 2 of 2 | — | yes | 2 of 2 | — |
+| well-maintained | 150 | Opus 5.5 @ 7d06633 | 2 of 2 | — | yes | 2 of 2 | — |
+| well-maintained | 151 | Opus 5.5 @ 374e578 | 2 of 2 | — | yes | 2 of 2 | — |
+| well-maintained | 152 | Opus 5.5 @ 374e578 | 2 of 2 | — | yes | 2 of 2 | — |
+| booking-api | 153 | Opus 5.5, none | not counted | by hand | — | — | — |
+| booking-api | 154 | Opus 5.5, none | not counted | by hand | — | — | bad citations 1 |
+| booking-api | 155 | Opus 5.5 @ 7d06633, catalog | 5 of 5 | 5 of 5 | no | 2 of 2 | unmarked high 6 |
+| booking-api | 156 | Opus 5.5 @ 7d06633, catalog | 5 of 5 | 3 of 5 | no | 2 of 2 | unmarked high 6 |
+| orders-service | 153 | Opus 5.5, none | not counted | by hand | — | — | — |
+| orders-service | 154 | Opus 5.5, none | not counted | by hand | — | — | — |
+| orders-service | 155 | Opus 5.5 @ 7d06633, catalog | 9 of 9 | 1 of 3 | no | 3 of 3 | unmarked high 12, secret copied |
+| orders-service | 156 | Opus 5.5 @ 7d06633, catalog | 9 of 9 | 1 of 3 | no | 3 of 3 | unmarked high 15, uncovered 1 |
+
+| Arm, all seven cases | Seeded gaps | Reports that pass the scorer | Top priorities in first five | Uncovered IDs | High outside top priorities | Mean minutes | Mean USD |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Control | 110 of 110 | 13 of 14 | 32 of 32 | 2 | 21 | 4.4 | 0.98 |
+| PC | 110 of 110 | 12 of 14 | 31 of 32 | 2 | 24 | 3.7 | 0.92 |
+
+High findings outside the top priorities leave out rows that cite a `defects` location.
+
+| Defects by hand, two runs per arm | Control | PC | None | Catalog |
+| --- | --- | --- | --- | --- |
+| `booking-api`, all five | 10 of 10 | 10 of 10 | 10 of 10 | 10 of 10 |
+| `orders-service`: WELCOME10 trusts the caller's flag | 0 | 2, both high | 2, both low | 1, medium |
+| `orders-service`: a list as SKU returns 500 | 0 | 1 | 0 | 2 |
+| `orders-service`: the CPU alert's `> 0.8` means cores | 0 | 2 | 1 | 0 |
+| Total | 10 of 16 | 15 of 16 | 13 of 16 | 13 of 16 |
+| Mean minutes, these two cases | 3.9 | 4.4 | 1.2 | 3.5 |
+| Mean USD, these two cases | 1.16 | 1.07 | 0.42 | 0.86 |
+
+- Criterion 1 is met. The control's `orders-service` reports name WELCOME10 only as untested or
+  undocumented, and the alert only as a cause rather than a symptom. Run 154 calls the threshold
+  "0.8 cores" without contrasting it with the 80% of the summary, and is counted as a miss; counted
+  as found, the no-skill level would have 14 of 16.
+- Criterion 3 is met.
+- Criterion 2 holds for seeded gaps, coverage, and secrets, and misses two checks by one item:
+  - Top priorities: run 152 rates OPS-02, the unverified backups of `orders-service`, medium, the
+    exception recorded for v0.2.0.
+  - High findings: 24 against 21, one over the limit. PC minus control by case: agent-workflow -1,
+    booking-api +1, go-ratelimiter -1, orders-service +1, python-service +4, typescript-cli -1,
+    well-maintained 0. In `python-service` PC rated high its stock kept in memory, which a restart
+    loses although the README says the service stores it; `int()` storing 3 for 3.9,
+    reproduced; and unauthenticated writes, also rated high by control run 150. The no-skill level
+    found the silent truncation in runs 19 to 24, when the skill levels missed it.
+- The tiebreak was not run. The maintainer accepted both misses as an exception and merged PC; see
+  `docs/decisions.md`.
+- The catalog level copied the fake key of `orders-service` (run 155), rated 39 findings high in its
+  four reports against 19 for the control and 23 for PC, and marked none as reproduced or inferred.
+
+Report SHA-256 hashes, as printed by the summaries:
+
+- `1dbb0f43f692c149619598e1cec53e579357e9e12e5bca5254cedd37e464f6a1` agent-workflow run 149
+- `2770ee3858319f22441cd4f76183a9eac8ad64efa8ada6754c5f9a4e7ae312f7` agent-workflow run 150
+- `89b5b5fef1833479bb1fa8aa4150c45a54a367f0ca4bf0f30c659eb3d3170c9c` agent-workflow run 151
+- `d147ee06f4abaa2a2250694a234f81833ef5da2a6518293ca270f378da5698e2` agent-workflow run 152
+- `1e910bd11a3169bbb212e9381291c0e1b971db8c802a1d9972e8fb85b6b45e07` booking-api run 149
+- `93ab1c7186718a39256ed5d60afb6b567e9f77aa97929e31cc1a19ffc461f3e1` booking-api run 150
+- `26f95773bde37750d4dd502d94662bf37ef83b862225c6ca3cea70b36118d5fb` booking-api run 151
+- `52b724e859c72faa1847eb03f94491005bffcfcfddeedd9d21a31e2ad489339a` booking-api run 152
+- `fd74876da55e598f0fcf1b1a21ee9b7675e63bcdbf7289efb908e1d83269c0f0` go-ratelimiter run 149
+- `77dc2334c1e560f0b7ff76add517e4448be5bb0c749475987e5b3b684774e2cb` go-ratelimiter run 150
+- `9be5946cb506945ea75fad482fb789f7b0c2be334f76c4d6b407963d2d224073` go-ratelimiter run 151
+- `8755754366091991a3241cd54fe5df0f1fdf2214597b6bb3d49da824d819b546` go-ratelimiter run 152
+- `153b2cf8ad48a1a4d015409efe17a89854ae81226e89aa74042b2dbf57509e10` orders-service run 149
+- `3816db094245f506bc4897827df59eb777bead61791fc86e0407ef341deec0e0` orders-service run 150
+- `bef3d73ea03bc0506649687485492c3074d65eb4d2339bc35273562fcde282a5` orders-service run 151
+- `ae5393271cca7931695f3a9c85a1befed84d9c3ec0203a6606b2cac7fc545b71` orders-service run 152
+- `3254d4bf375e5a22499ad77b2b2969e7914ff34dd02f9c58597e45d531b2eee5` python-service run 149
+- `bd4b69942630307940bcc836b503a967f7e91b06a98dfab70c450530f5760130` python-service run 150
+- `4b2b8e7776f623ef6635bfa3a0f529a6540528d65b549e6818f6101838c888dd` python-service run 151
+- `a692d56a13bd5b6a1c125131046e8957e322966a752fc4008dcb2fa20d33b1b6` python-service run 152
+- `05ffacb5e262fe3a5005046ccfa20e28f448b17b9723566bf884137efc3c740d` typescript-cli run 149
+- `3f917d07d8dd71baec3b98349f43ef2acc4eb3c4051b73f522c787e14d3b00d3` typescript-cli run 150
+- `f9b122c2a95ae1ddc8aa25eeabde60d4c879e35c6145156aabe3a4635ea55079` typescript-cli run 151
+- `0611fc4cd60b973490b74c18d06e2225fa6331886fccd4bf11b796476ba7bc43` typescript-cli run 152
+- `10f3c6d0ab127d3217d4d2a601e7d37fbb28acc392adb84b4e275b7e1dab3fdf` well-maintained run 149
+- `ba5995839240c3cb1e22908b84cc78c82ad40ae3991b378232557b87e74f83d6` well-maintained run 150
+- `5edcef160c91b4f5b01dc5deb84a8a4680536d4f4516e6b42530f8db5b59b793` well-maintained run 151
+- `753e1003a9b84c12f4b904ddb686fa73b068c8974a7fc2374ed6f640ed2acaa7` well-maintained run 152
+- `738c1af63594aeb9c29748644c46476953b91f6cf0d4a1ea5f7414dae54504b9` booking-api run 153
+- `f599983f212928886549c8d5337615cf0864cf21416640deaccd4224f9bbbbd1` booking-api run 154
+- `5cb484de094a46b8c18f43a788b8f2fd57bd59a1fbd9b89320a3055f74bf018e` booking-api run 155
+- `132fbb2b7b7a7c013075bd053d6935b08b6025164ef26472e59995903c119da6` booking-api run 156
+- `79387d443aa1d9177ebda697d556b5e05e814cca992b45f8f3a367ac8982b336` orders-service run 153
+- `590d677060787eaec37077dedc12f8039f26fe8671aa45f7a59e5106db44139a` orders-service run 154
+- `d17730ea74542afca78d45f5c876a9f311a2a1789d047685f4b324ec5b84362f` orders-service run 155
+- `12ecc73cabcc878eeb48b374cc79ad7af28ced209ed47a7227832815078e8661` orders-service run 156

@@ -1,5 +1,21 @@
 # Decisions
 
+## 2026-10-18 — Logic defects: PC merged with two checks missed by one
+
+Issue #1 found that audits with the skill missed logic defects that audits without it found. PC
+adds two sentences to `SKILL.md`: the `high` priority covers a business rule that callers can bypass
+or that charges, grants, or books wrongly, and step 4 reads configuration that encodes behavior.
+In the Opus milestone (runs 149 to 156), PC found 15 of 16 logic defects against 10 for the frozen
+skill, 13 without the skill, and 13 with the catalog alone, at the same cost. It missed two checks
+of the no-regression criterion by one item each: one top priority, OPS-02 rated medium as in the
+v0.2.0 exception, and three more high findings outside the top priorities than the control, one
+over the limit, from real data-loss and unauthorized-write defects of `python-service` that the
+case does not list as defects. The tiebreak fixed before the round, three more runs per arm on each
+affected case, was not run: its likely outcome was clear from both runs, and whether those findings
+deserve high is a question of correctness, which reading the rows answered. The maintainer accepted
+both misses after seeing the results and merged PC. Listing that case's real defects, so later rounds
+exclude them from the limit, is left for later.
+
 ## 2026-10-17 — A secret scan before every push
 
 The self-audit before v0.2.0 found that nothing scanned file contents or history for secrets:
