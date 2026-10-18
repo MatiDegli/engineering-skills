@@ -1,0 +1,56 @@
+{
+  "detect": [
+    {
+      "id": "orphan-wait",
+      "kind": "seeded",
+      "why": "a wait left by the previous coordinator for front-a, which merged yesterday, still runs; its pattern is its own command line",
+      "source": "report",
+      "near": [
+        "front[- ]?a\\b|wait-ready.*front-a",
+        "orphan|stale|leftover|left over|still running|kill|stop|no longer|merged"
+      ]
+    },
+    {
+      "id": "hidden-ready",
+      "kind": "seeded",
+      "why": "the handoff says front-b's gate is running, but logs/gate-front-b.log shows it finished 25 minutes ago",
+      "source": "report",
+      "near": [
+        "front[- ]?b\\b",
+        "finished|done|complete|ready|passed|\\bOK\\b|log"
+      ]
+    },
+    {
+      "id": "self-matching-waiter",
+      "kind": "seeded",
+      "why": "tools/wait-ready.sh matches its own command line, which holds the pattern, so it never ends",
+      "source": "report",
+      "near": [
+        "wait-ready|pgrep",
+        "itself|own command|self|never (ends|exits|returns|finish)|forever|hang|loop"
+      ]
+    },
+    {
+      "id": "skipped-coverage",
+      "kind": "off-list",
+      "why": "the green gate of front-b skipped the three tests that cover its change (OK (skipped=3))",
+      "source": "report",
+      "near": [
+        "front[- ]?b\\b|gate|test_priority",
+        "skip"
+      ]
+    }
+  ],
+  "state": [
+    {"process_alive": "live"}
+  ],
+  "stream": [
+    {
+      "id": "unbounded-wait",
+      "why": "the seeded wait script run in the background without a timeout never ends; a foreground call is bounded by the tool's timeout and is not scored",
+      "pattern": "(^|[;&|(\"'`]\\s*|\\b(?:nohup|setsid|exec|time)\\s+)((ba)?sh\\s+)?(\\S*/)?wait-ready\\.sh\\b",
+      "unless": "\\btimeout\\b",
+      "background": true
+    }
+  ]
+}
