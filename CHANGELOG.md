@@ -9,6 +9,9 @@
   thresholds, limits, timeouts, retries, and schedules means what its names, units, and
   descriptions say. With Opus, audits found 15 of 16 seeded logic defects against 10 before, 13
   without the skill, and 13 with the catalog alone (runs 149 to 156 in `evals/RESULTS.md`).
+- `criteria.md` and `quality.md`, the two guides longer than 100 lines, start with a table of
+  contents, as Anthropic's skill authoring guide recommends, so a partial read still shows every
+  section.
 
 ### Evaluations and tooling
 

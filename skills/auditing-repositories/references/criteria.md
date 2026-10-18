@@ -5,6 +5,20 @@ decide whether it applies, look for evidence, and assign a status. The guide col
 section that explains the rule; read it when the criterion applies and the evidence is not obvious.
 IDs are stable: they are never renumbered or reused.
 
+## Contents
+
+- [Applicability](#applicability)
+- [Areas](#areas)
+- [Repository and structure](#repository-and-structure)
+- [Quality controls](#quality-controls)
+- [Dependencies](#dependencies)
+- [Tests and evidence](#tests-and-evidence)
+- [CI](#ci)
+- [Security](#security)
+- [Architecture](#architecture)
+- [Performance and capacity](#performance-and-capacity)
+- [History and tooling](#history-and-tooling)
+
 ## Applicability
 
 | Stage | Expected outcome |

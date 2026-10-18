@@ -4,6 +4,15 @@ Choose controls that detect problems in the project. Each control needs a scope,
 local command, CI execution, and an invalid case that demonstrates rejection. The following
 guidance complements the [standard](standard.md); implementation belongs to the project.
 
+## Contents
+
+- [Controls by stack](#controls-by-stack)
+- [Starting limits](#starting-limits)
+- [Scope and exceptions](#scope-and-exceptions)
+- [Guards and hooks](#guards-and-hooks)
+- [Rules for changes and agents](#rules-for-changes-and-agents)
+- [Dependency maintenance](#dependency-maintenance)
+
 ## Controls by stack
 
 | Stack | Starting point |
