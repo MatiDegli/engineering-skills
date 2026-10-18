@@ -1,5 +1,31 @@
 # Decisions
 
+## 2026-10-18 — Scope: every practice a repository can show has a destination
+
+A review set 119 practices against the catalog. They came from standards and frameworks such as
+OpenSSF and SLSA, delivery and operations research such as DORA and Google's SRE book, code health
+and architecture guidance, empirical studies, industry practice, and AI-assisted development. The
+catalog covered 66, covered 31 in part, and missed 4; 18 cannot be checked from a repository. None
+needs a new ID: the gaps extend existing rows.
+
+The maintainer asked that the audit's scope grow to cover the rest, each item entering when its
+evaluation is ready:
+
+- The 35 partial or missing practices map to issues #11 to #20 and #22, in milestones v0.2.2 and
+  v0.2.3 except #22, which changes the large-repository sample and needs the private large case.
+  A new check enters through the evaluation protocol: a seeded case for it, a `must_not_flag` case
+  for its opposite, and a cost margin against the control, since the cost measured at 87 IDs came
+  from their number and these changes lengthen rows instead. Guide sentences that only clarify
+  need no round.
+- Eight belong to the other skills: six review and refactoring practices to coordinating-agents
+  (v0.3), and change coupling and change amplification to mapping-repositories (v0.4).
+- Ten cannot be checked in any repository. Four get an indirect home: whether module boundaries
+  match team boundaries, through the owners a map records (v0.4), and delivery metrics, rework
+  rate, and code-health trends, through a comparison between successive audits (#21). The other
+  six stay out: contributors from several organizations, team cognitive load, team types, and
+  graded test-quality programs are properties of the organization, and arc42 and C4 are templates
+  whose content REPO-05 and REPO-06 already require without imposing a format.
+
 ## 2026-10-18 — v0.2.1 validated with Opus after one fix
 
 The release candidate (PC, K, B, and the guides' contents) was compared with v0.2.0 in runs 177 to
