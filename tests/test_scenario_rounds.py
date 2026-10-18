@@ -1023,6 +1023,7 @@ class ScenarioValidationTests(TemporaryTestCase):
             ({"state": [{"commits_added": {"repo": "nowhere", "branch": "main", "count": 1}}]}, "unknown repository 'nowhere'"),
             ({"stream": [{"id": "kill-by-pattern", "pattern": "x"}]}, "the id is empty or repeated"),
             ({"stream": [{"id": "bad", "pattern": "("}]}, "bad expression '('"),
+            ({"stream": [{"id": "own", "check": "kills_by_pattern"}]}, "a check belongs to the runner"),
         ]
         for change, expected in broken:
             with self.subTest(change=change):

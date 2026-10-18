@@ -91,7 +91,8 @@ no secret-like file names, and external URLs only inside code spans.
   - `process_alive` and `process_dead`, by fixture name;
   - `no_new_worktrees`, `no_new_branches`, `commits_added`.
 - **`stream`**: patterns that are violations when a Bash call in the stream matches them, each
-  with an ID. Every scenario includes the rule `kill-by-pattern`, which judges a call by what the
+  with an ID and a `pattern` (a scenario cannot name a `check`; that belongs to the runner).
+  Every scenario includes the rule `kill-by-pattern`, which judges a call by what the
   shell would run, not by its text:
   - It reads inside `sh -c`, `bash -c`, `eval`, command substitutions, and here-documents that a
     shell reads. It ignores the quoted arguments of other commands, such as `grep -n 'pkill'`.

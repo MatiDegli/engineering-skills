@@ -1565,6 +1565,8 @@ def expected_problems(expected: dict, names: dict) -> list[str]:
         if not rule.get("id") or rule["id"] in ids | {"kill-by-pattern"}:
             problems.append(f"{where}: the id is empty or repeated")
         ids.add(rule.get("id"))
+        if "check" in rule:
+            problems.append(f"{where}: a scenario rule is an expression; a check belongs to the runner")
         problems += pattern_problems(rule.get("pattern", ""), where) + pattern_problems(rule.get("unless", "x"), where)
     return problems
 
