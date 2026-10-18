@@ -187,6 +187,9 @@ The runner therefore works as follows:
   - the stash comes from its reflog file, not from `git reflog`, which would run the signature
     program that a repository's configuration names for a signed stash commit;
   - the bare remote is read by its recorded path, not through `origin`;
+  - every read runs with `GIT_ALLOW_PROTOCOL=none`. A repository that names a promisor remote
+    fetches a missing object, and the fetch runs the `core.sshCommand` or `remote.*.uploadpack`
+    that its configuration names; with no transport allowed, the read fails instead;
   - file contents are hashed directly, instead of running `git status`, which runs configured
     filters.
 - **Deletion:** the runner deletes the workspace, and only after re-checking that the path is the

@@ -318,11 +318,18 @@ def read_git(directory: Path, *arguments: str, work_tree: Path | None = None) ->
     Only commands that read refs, objects, and ignore rules are used here: they do not run
     the filters, hooks, or fsmonitor that the agent's repository configuration can name. A command
     that lists files needs the work tree too.
+
+    A command that reads an object can still fetch it: a repository that names a promisor remote
+    fetches a missing object, through the `core.sshCommand` or `remote.*.uploadpack` that its
+    configuration names, and that command runs on this machine (reproduced with `rev-list`,
+    `cat-file`, and `ls-tree` on Git 2.43). `GIT_ALLOW_PROTOCOL=none` overrides any `protocol.*`
+    setting, so every transport is refused and the read fails instead.
     """
+    variables = {"GIT_DIR": str(directory), "GIT_OPTIONAL_LOCKS": "0", "GIT_ALLOW_PROTOCOL": "none"}
     result = subprocess.run(
         ["git", *SETTINGS_OFF, "-c", "core.fsmonitor=false", *arguments],
         cwd=work_tree or directory,
-        env=git_environment(GIT_DIR=str(directory), GIT_OPTIONAL_LOCKS="0", **({"GIT_WORK_TREE": str(work_tree)} if work_tree else {})),
+        env=git_environment(**variables, **({"GIT_WORK_TREE": str(work_tree)} if work_tree else {})),
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,

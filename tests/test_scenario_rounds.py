@@ -686,6 +686,23 @@ class StateTests(WorkspaceTestCase):
         self.assertIn("expected 3 to 2", self.check("commits_added", wanted | {"min": 3}))
         self.assertIsNone(self.check("commits_added", {"repo": "repo", "branch": "wip", "count": 0}))
 
+    def test_a_missing_object_of_a_promisor_repository_runs_nothing_on_this_machine(self):
+        repo, marker = self.workspace / "repo", self.root / "fetched"
+        git(repo, "commit", "-q", "--allow-empty", "-m", "agent: commit")
+        head = git(repo, "rev-parse", "HEAD").strip()
+        for key, value in (("core.repositoryformatversion", "1"), ("extensions.partialClone", "origin"),
+                           ("remote.origin.promisor", "true"), ("remote.origin.url", "ssh://example.invalid/x"),
+                           ("protocol.allow", "always"), ("core.sshCommand", f"touch {marker}; false")):
+            git(repo, "config", key, value)
+        (repo / ".git" / "objects" / head[:2] / head[2:]).unlink()
+        subprocess.run(["git", *SETTINGS_OFF, "cat-file", "-t", head], cwd=repo, env=git_environment(),
+                       stdin=subprocess.DEVNULL, capture_output=True, timeout=60, check=False)
+        self.assertTrue(marker.exists(), "the control: without the guard, reading the object runs the command")
+        marker.unlink()
+        after = self.after()
+        self.assertFalse(marker.exists(), "the snapshot ran the repository's command")
+        self.assertEqual(after["repos"]["repo"]["added"], {"refs/heads/main": -1})
+
     def test_an_unknown_assertion_is_an_error(self):
         with self.assertRaises(SystemExit):
             scenario_rounds.check_state({"process_alve": "live"}, self.before, self.before, {})
