@@ -19,6 +19,9 @@
 - Unverified recovery of production data, such as backups that nothing shows to exist or to have
   been restored, is `high`. With Sonnet, reports rated it high and acted on it among the first five
   actions in 10 of 10, against 1 of 10 before (runs 157 to 176).
+- A `high` finding's evidence starts with exactly `Reproduced:` or `Inferred:`, and anything that
+  qualifies it follows the colon. With the condition rule above, Opus had written marks such as
+  `Inferred (pytest not runnable):` (runs 177 to 184).
 
 ### Evaluations and tooling
 

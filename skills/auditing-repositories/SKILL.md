@@ -80,9 +80,10 @@ Copy this checklist into your working notes and complete every step:
    when it is safe. Check whether CI actually ran and passed on the audited revision.
    Reproduce each `high` finding when it is safe: run the command that shows the failure, or apply
    a mutation in memory or in a scratch copy outside the repository and show that no control rejects
-   it. Start that finding's evidence with `Reproduced:` or `Inferred:`. A finding is reproduced only
-   when the repository's own code, configuration, or command ran and showed the failure; showing how
-   a shell operator or a library behaves in general supports an inferred finding.
+   it. Start that finding's evidence with exactly `Reproduced:` or `Inferred:`, and put anything
+   that qualifies it, such as why a check could not run, after the colon. A finding is reproduced
+   only when the repository's own code, configuration, or command ran and showed the failure;
+   showing how a shell operator or a library behaves in general supports an inferred finding.
 7. **Performance and capacity.** Accept only measurements with a defined load, environment, and
    result. Claims without measurements are a `PERF-01` gap. Do not infer scalability from reading
    code; state what to measure instead, following
@@ -201,7 +202,8 @@ Self-check before answering:
 - Every priority action names the IDs of the findings it closes.
 - Every `not-applicable` entry has a reason taken from the repository.
 - No finding relies on the mere presence of a file, tool, or workflow.
-- Every `high` finding's evidence starts with `Reproduced:` or `Inferred:`.
+- Every `high` finding's evidence starts with exactly `Reproduced:` or `Inferred:`, with nothing
+  between the word and the colon.
 - Every `path:line` points to a line you read that holds what the finding states.
 - Every claim that something is missing comes from a search, and every count names its command.
 - Each Deeper checks entry names a `high` finding whose unverified premise could change it; there
