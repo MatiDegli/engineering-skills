@@ -16,12 +16,16 @@ import fnmatch
 import functools
 import glob
 import hashlib
+import io
 import json
 import os
 import re
+import secrets
 import shutil
 import stat
 import subprocess
+import sys
+import tarfile
 import tempfile
 import threading
 from datetime import datetime, timedelta, timezone
@@ -730,6 +734,8 @@ LAUNCHER_INSIDE = "/run/scenario-launcher.py"
 # Directories that the sandbox replaces with empty private ones; only what is bound back is there.
 MASKED = ("/tmp", "/run", "/mnt", "/var/tmp", "/dev/shm")
 SANDBOX_PATH = "/usr/local/bin:/usr/bin:/bin"
+# The interpreter that starts the launcher inside; the runner's own may live where the sandbox hides it.
+INTERPRETER = shutil.which("python3", path=SANDBOX_PATH) or sys.executable
 # The runner's backstop waits this long beyond the time limit and the launcher's own grace.
 LAUNCHER_GRACE = 20
 BACKSTOP_MARGIN = 60
@@ -1077,3 +1083,171 @@ def scenario_problems(scenario: Path) -> list[str]:
     fixtures, names = fixture_problems(spec, scenario / "files")
     problems += fixtures + expected_problems(expected, names)
     return problems or null_run_problems(scenario)
+
+
+SKILL = "skills/coordinating-agents"
+LEVELS = ("none", "full")
+# The one line the full level adds before the task; "where it applies" leaves the proportion to the skill.
+SKILL_LINE = "The coordinating-agents skill is in {path}. Read its SKILL.md and follow it where it applies."
+
+
+def prompt_for(level: str, task: str, skill: Path | None) -> str:
+    return f"{SKILL_LINE.format(path=skill)}\n\n{task}" if level == "full" else task
+
+
+def repository_git(*arguments: str) -> bytes:
+    return subprocess.run(
+        ["git", *arguments], cwd=ROOT, env=git_environment(), stdin=subprocess.DEVNULL,
+        capture_output=True, check=True, timeout=60,
+    ).stdout
+
+
+def export_skill(revision: str) -> Path:
+    """Extract the skill at a revision into a new temporary directory, away from the reports."""
+    try:
+        archive = repository_git("archive", "--format=tar", f"{revision}:{SKILL}")
+    except subprocess.CalledProcessError:
+        raise SystemExit(f"the revision {revision} has no {SKILL}") from None
+    skill = Path(tempfile.mkdtemp(prefix="skill.")) / "coordinating-agents"
+    with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
+        tar.extractall(skill, filter="data")
+    return skill
+
+
+def parse_runs(values: list[str]) -> list[tuple[str, str, str | None, str]]:
+    """Read NUMBER=MODEL[@REVISION][+LEVEL] specifications; the level is `full` unless named."""
+    runs = []
+    for value in values:
+        number, _, rest = value.partition("=")
+        rest, _, level = rest.partition("+")
+        model, _, revision = rest.partition("@")
+        if not number.isdigit() or not model or (level or "full") not in LEVELS:
+            raise SystemExit(f"--run takes NUMBER=MODEL[@REVISION][+LEVEL] with a level of {'/'.join(LEVELS)}, not {value!r}")
+        runs.append((number, model, revision or None, level or "full"))
+    if len({run[0] for run in runs}) != len(runs):
+        raise SystemExit("each --run needs its own number")
+    return runs
+
+
+def round_paths(round_dir: Path) -> dict[str, Path]:
+    names = ("plan.json", "streams", "reports", "runs", "log.txt", "summary.md")
+    return {name: round_dir / name for name in names}
+
+
+def check_round_dir(round_dir: Path) -> None:
+    resolved = round_dir.resolve()
+    if resolved == ROOT or ROOT in resolved.parents:
+        raise SystemExit("Keep the round directory outside this repository")
+    if Path(tempfile.gettempdir()).resolve() in resolved.parents:
+        print(f"warning: {round_dir} is under the temporary directory, which a restart may clear")
+
+
+def job_order(scenarios: list[str], specs: list[tuple]) -> list[tuple[str, tuple]]:
+    """List (scenario, run) pairs scenario by scenario, so that the arms run side by side in time.
+
+    The level that launches first alternates between scenarios, so that neither always pays for the
+    first writes of the prompt cache.
+    """
+    ordered = []
+    for index, scenario in enumerate(scenarios):
+        for level in LEVELS if index % 2 == 0 else reversed(LEVELS):
+            ordered += [(scenario, spec) for spec in specs if spec[3] == level]
+    return ordered
+
+
+def plan(round_dir: Path, runs: list[tuple], scenarios: list[str], revision: str) -> dict:
+    """Validate the scenarios, export the skill for the full-level runs, and write the round's plan.
+
+    Workspaces are not prepared here: each is prepared just before its launch, so that relative
+    times do not drift with the order of the runs.
+    """
+    check_round_dir(round_dir)
+    paths = round_paths(round_dir)
+    if paths["plan.json"].exists():
+        raise SystemExit(f"{round_dir} already has a plan")
+    for name in scenarios:
+        problems = scenario_problems(SCENARIOS / name) if (SCENARIOS / name / "scenario.json").is_file() else [f"unknown scenario {name}"]
+        if problems:
+            raise SystemExit(f"scenario {name} is not valid:\n- " + "\n- ".join(problems))
+    specs = []
+    for number, model, wanted, level in runs:
+        commit = repository_git("rev-parse", "--short", wanted or revision).decode().strip() if level == "full" else None
+        specs.append((number, model, commit, level))
+    for name in ("streams", "reports", "runs"):
+        paths[name].mkdir(parents=True, exist_ok=True)
+    skills = {commit: str(export_skill(commit)) for commit in dict.fromkeys(s[2] for s in specs if s[2])}
+    jobs = []
+    for scenario, (number, model, commit, level) in job_order(scenarios, specs):
+        job = {"run": number, "model": model, "scenario": scenario, "level": level, "revision": commit}
+        jobs.append(job | {"label": f"run{number}-{scenario}", "skill": skills.get(commit)})
+    data = {"created": now(), "skill_commit": ", ".join(skills) or "none", "skills": skills, "jobs": jobs}
+    paths["plan.json"].write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    return data
+
+
+def now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# Run inside the sandbox before a round; it prints what it found as one JSON object.
+PREFLIGHT = r"""
+import json, os, subprocess, sys
+spec = json.load(sys.stdin)
+found = {"pid": os.getpid(), "hidden": [p for p in spec["hidden"] if os.path.exists(p)]}
+found["home"] = sorted(set(os.listdir(spec["home"])) - set(spec["home_allowed"]))
+found["channels"] = [p for p in ("/var/run/docker.sock", "/run/docker.sock", "/run/user", "/run/WSL") if os.path.exists(p)]
+found["drives"] = [name for name in os.listdir("/mnt") if len(name) == 1]
+found["variables"] = [n for n in ("WSL_INTEROP", "DOCKER_HOST", "SSH_AUTH_SOCK") if n in os.environ]
+try:
+    found["canary_reached"] = subprocess.run(["pkill", "-f", spec["canary"]], capture_output=True).returncode == 0
+except OSError as error:
+    found["pkill_missing"] = str(error)
+print(json.dumps(found))
+"""
+
+
+def preflight(hidden: list[Path], read_only: list[Path]) -> list[str]:
+    """Check from inside a sandbox that it hides what it must; return what fails.
+
+    A host canary process, started with a unique command line, must survive a pattern kill from the
+    sandbox. The paths in `hidden` (the repository, the oracle, the round directory, and the like)
+    must not exist inside, and neither may the home directory's contents, the Docker and WSL
+    channels, or the Windows drives.
+    """
+    home = Path.home()
+    marker = f"scenario-canary-{secrets.token_hex(6)}"
+    canary = subprocess.Popen(
+        [marker, "600"], executable="/bin/sleep", stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL, start_new_session=True,
+    )
+    trial = new_directory(WORKSPACE_PREFIX)
+    workspace = Path(trial["path"])
+    try:
+        allowed = sorted({p.relative_to(home).parts[0] for p in read_only if p.is_relative_to(home)})
+        spec = {"hidden": [str(p) for p in hidden], "home": str(home), "home_allowed": allowed, "canary": marker}
+        command = [INTERPRETER, "-I", "-c", PREFLIGHT]
+        result = subprocess.run(
+            sandbox_arguments(home, workspace, read_only, [workspace], command), capture_output=True,
+            text=True, timeout=120, input=json.dumps(spec), env={"PATH": SANDBOX_PATH},
+        )
+        survived = canary.poll() is None
+    finally:
+        canary.kill()
+        canary.wait()
+        remove_tree(workspace)
+    try:
+        found = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return [f"the check did not run in the sandbox: {result.stderr.strip()[-300:]}"]
+    problems = []
+    if found["pid"] != 1:
+        problems.append(f"the first process is PID {found['pid']}, not 1")
+    for key, text in (("hidden", "visible inside"), ("home", "left in the home directory"), ("channels", "reachable"),
+                      ("drives", "Windows drive visible"), ("variables", "variable set")):
+        if found[key]:
+            problems.append(f"{text}: {', '.join(found[key])}")
+    if found.get("pkill_missing"):
+        problems.append(f"pkill is missing, so a pattern kill cannot be checked: {found['pkill_missing']}")
+    if found.get("canary_reached") or not survived:
+        problems.append("a pattern kill inside the sandbox reached a process of the host")
+    return problems

@@ -790,6 +790,102 @@ class DeletionTests(TemporaryTestCase):
         self.assertIsNone(scenario_rounds.delete_directory(recorded))
 
 
+class PlanTests(TemporaryTestCase):
+    def setUp(self):
+        super().setUp()
+        self.repository = self.root / "repository"
+        for name in ("SKILL.md", "references/waits.md"):
+            write(self.repository / scenario_rounds.SKILL / name, f"# {name}\n")
+        git(self.repository, "init", "-q", "-b", "main")
+        git(self.repository, "add", "-A")
+        git(self.repository, "commit", "-qm", "skill")
+        self.scenarios = self.root / "scenarios"
+        for name in ("alpha", "beta", "gamma"):
+            write_scenario(self.scenarios / name)
+        for patch in (mock.patch.object(scenario_rounds, "ROOT", self.repository),
+                      mock.patch.object(scenario_rounds, "SCENARIOS", self.scenarios),
+                      mock.patch("builtins.print")):
+            patch.start()
+            self.addCleanup(patch.stop)
+        self.addCleanup(self.clean_exports)
+        self.plans = []
+
+    def clean_exports(self):
+        for data in self.plans:
+            for skill in data["skills"].values():
+                shutil.rmtree(Path(skill).parent, ignore_errors=True)
+
+    def plan(self, runs, scenarios=("alpha", "beta", "gamma"), name="round", revision="HEAD"):
+        data = scenario_rounds.plan(self.root / name, scenario_rounds.parse_runs(runs), list(scenarios), revision)
+        self.plans.append(data)
+        return data
+
+    def test_runs_parse_with_their_model_revision_and_level(self):
+        self.assertEqual(
+            scenario_rounds.parse_runs(["1=claude-a", "2=claude-b@abc123+none", "3=claude-a+full"]),
+            [("1", "claude-a", None, "full"), ("2", "claude-b", "abc123", "none"), ("3", "claude-a", None, "full")],
+        )
+        for bad in (["x=claude-a"], ["1="], ["1=claude-a+catalog"], ["1=claude-a", "1=claude-b"]):
+            with self.subTest(bad=bad), self.assertRaises(SystemExit):
+                scenario_rounds.parse_runs(bad)
+
+    def test_a_plan_orders_jobs_by_scenario_and_alternates_which_level_launches_first(self):
+        data = self.plan(["1=claude-a+none", "2=claude-a", "3=claude-a+none", "4=claude-a"])
+        order = [(job["scenario"], job["run"], job["level"]) for job in data["jobs"]]
+        self.assertEqual(order, [
+            ("alpha", "1", "none"), ("alpha", "3", "none"), ("alpha", "2", "full"), ("alpha", "4", "full"),
+            ("beta", "2", "full"), ("beta", "4", "full"), ("beta", "1", "none"), ("beta", "3", "none"),
+            ("gamma", "1", "none"), ("gamma", "3", "none"), ("gamma", "2", "full"), ("gamma", "4", "full"),
+        ])
+        saved = json.loads((self.root / "round" / "plan.json").read_text())
+        self.assertEqual(saved, data)
+        self.assertEqual(saved["jobs"][0]["label"], "run1-alpha")
+
+    def test_the_skill_is_exported_only_for_full_level_runs_at_their_revisions(self):
+        first = git(self.repository, "rev-parse", "--short", "HEAD").strip()
+        write(self.repository / scenario_rounds.SKILL / "SKILL.md", "# second revision\n")
+        git(self.repository, "commit", "-aqm", "second")
+        second = git(self.repository, "rev-parse", "--short", "HEAD").strip()
+        data = self.plan(["1=claude-a@" + first, "2=claude-a+none", "3=claude-a"], scenarios=["alpha"])
+        self.assertEqual(sorted(data["skills"]), sorted([first, second]))
+        by_run = {job["run"]: job for job in data["jobs"]}
+        self.assertIsNone(by_run["2"]["skill"])
+        self.assertEqual((Path(by_run["1"]["skill"]) / "SKILL.md").read_text(), "# SKILL.md\n")
+        self.assertEqual((Path(by_run["3"]["skill"]) / "SKILL.md").read_text(), "# second revision\n")
+        self.assertTrue((Path(by_run["1"]["skill"]) / "references" / "waits.md").is_file())
+        self.assertEqual(data["skill_commit"], ", ".join(data["skills"]))
+
+    def test_a_round_of_no_skill_runs_needs_no_skill_in_the_repository(self):
+        shutil.rmtree(self.repository / "skills")
+        git(self.repository, "commit", "-aqm", "remove the skill")
+        data = self.plan(["1=claude-a+none"], scenarios=["alpha"])
+        self.assertEqual((data["skills"], data["skill_commit"]), ({}, "none"))
+        with self.assertRaisesRegex(SystemExit, "has no skills/coordinating-agents"):
+            self.plan(["1=claude-a"], scenarios=["alpha"], name="other")
+
+    def test_a_plan_refuses_an_invalid_or_unknown_scenario_and_an_existing_plan(self):
+        write(self.scenarios / "beta" / "expected.json", json.dumps(EXPECTED | {"state": [{"nothing": 1}]}))
+        with self.assertRaisesRegex(SystemExit, "scenario beta is not valid:\n- state: .* is not one known check"):
+            self.plan(["1=claude-a+none"])
+        with self.assertRaisesRegex(SystemExit, "unknown scenario nope"):
+            self.plan(["1=claude-a+none"], scenarios=["nope"], name="second")
+        self.plan(["1=claude-a+none"], scenarios=["alpha"], name="third")
+        with self.assertRaisesRegex(SystemExit, "already has a plan"):
+            self.plan(["1=claude-a+none"], scenarios=["alpha"], name="third")
+
+    def test_the_round_directory_stays_outside_the_repository(self):
+        with self.assertRaisesRegex(SystemExit, "outside this repository"):
+            scenario_rounds.plan(self.repository / "round", [("1", "claude-a", None, "none")], ["alpha"], "HEAD")
+
+    def test_the_full_level_adds_one_line_before_the_task(self):
+        skill = Path("/tmp/skill.x/coordinating-agents")
+        self.assertEqual(scenario_rounds.prompt_for("none", "Do it.\n", None), "Do it.\n")
+        self.assertEqual(
+            scenario_rounds.prompt_for("full", "Do it.\n", skill),
+            f"The coordinating-agents skill is in {skill}. Read its SKILL.md and follow it where it applies.\n\nDo it.\n",
+        )
+
+
 SANDBOX_PROBLEM = scenario_rounds.sandbox_problem()
 
 
@@ -804,6 +900,22 @@ def processes_named(marker):
             except OSError:
                 pass
     return found
+
+
+class SandboxArgumentTests(unittest.TestCase):
+    def test_the_allow_list_masks_first_and_binds_back_only_what_is_named(self):
+        home, workspace, skill = Path("/home/someone"), Path("/tmp/scenario.AbCdEfGh"), Path("/tmp/skill.x/coordinating-agents")
+        arguments = scenario_rounds.sandbox_arguments(home, workspace, [skill], [workspace], ["agent", "--flag"])
+        self.assertEqual(arguments[:4], ["setpriv", "--pdeathsig", "KILL", "bwrap"])
+        for flag in ("--unshare-pid", "--as-pid-1", "--die-with-parent", "--clearenv"):
+            self.assertIn(flag, arguments)
+        masks = [arguments[i + 1] for i, a in enumerate(arguments) if a == "--tmpfs"]
+        self.assertEqual(masks, ["/tmp", "/run", "/mnt", "/var/tmp", "/dev/shm", "/home/someone"])
+        binds = [(a, arguments[i + 1]) for i, a in enumerate(arguments) if a in ("--bind", "--ro-bind") and arguments[i + 1] != "/"]
+        self.assertTrue({("--ro-bind", str(skill)), ("--bind", str(workspace))} <= set(binds))
+        self.assertEqual(arguments[-4:], ["--chdir", str(workspace), "agent", "--flag"])
+        last_mask = max(i for i, a in enumerate(arguments) if a == "--tmpfs")
+        self.assertTrue(all(i > last_mask for i, a in enumerate(arguments) if a in ("--bind", "--ro-bind") and arguments[i + 1] != "/"))
 
 
 @unittest.skipIf(SANDBOX_PROBLEM, f"bwrap cannot create a sandbox here: {SANDBOX_PROBLEM}")
@@ -896,6 +1008,11 @@ class SandboxTests(unittest.TestCase):
         self.assertEqual((self.workspace / "env.txt").read_text().strip(), "x")
         self.assertIn("Read-only", (self.workspace / "blocked.txt").read_text())
         self.assertFalse(Path(f"/tmp/scenario-private-{os.getpid()}").exists())
+
+    def test_the_preflight_passes_here_and_names_what_it_finds_visible(self):
+        hidden = [scenario_rounds.ROOT, scenario_rounds.SCENARIOS / "handoff-resume" / "expected.json", self.root]
+        self.assertEqual(scenario_rounds.preflight(hidden, []), [])
+        self.assertEqual(scenario_rounds.preflight([Path("/etc")], []), ["visible inside: /etc"])
 
     def test_stopping_the_sandboxes_ends_the_agent_and_every_fixture(self):
         marker = f"scenario-stop-{os.getpid()}"
