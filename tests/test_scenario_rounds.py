@@ -1468,6 +1468,7 @@ def bash(command):
 
 emit(type="system", subtype="init", argv=arguments, prompt=prompt, cwd=os.getcwd(), home=os.environ.get("HOME"),
      variables=sorted(os.environ), token_length=len(token), git_config=os.environ.get("GIT_CONFIG_GLOBAL"),
+     tools=arguments[arguments.index("--tools") + 1].split(",") + (["Workflow"] if "listed" in model else []),
      **({"skills": ["update-config"], "plugins": [], "mcp_servers": [{"name": "docs"}]} if "listed" in model else {}))
 if "skill" in model:
     bash("cat " + re.search(r"skill is in (\S+)\. Read", prompt)[1] + "/SKILL.md")
@@ -1507,6 +1508,7 @@ class AgentCommandTests(unittest.TestCase):
         tools = command[command.index("--allowedTools") + 1: command.index("--disallowedTools")]
         refused = command[command.index("--disallowedTools") + 1: command.index("--safe-mode")]
         self.assertEqual(tools, ["Bash", "Read", "Grep", "Glob", "Edit", "Write"])
+        self.assertEqual(command[command.index("--tools") + 1], "Bash,Read,Grep,Glob,Edit,Write", "approving is not limiting")
         self.assertEqual(refused, ["Agent", "Task", "Monitor", "WebFetch", "WebSearch", "NotebookEdit"])
         for flag in ("--safe-mode", "--disable-slash-commands", "--strict-mcp-config", "--no-session-persistence", "--verbose"):
             self.assertIn(flag, command)
@@ -1747,17 +1749,28 @@ class JobTests(StandInCase):
         line, record = self.run_job("claude-listed-1-0", level="none")
         self.assertIn("failed: the init event lists skills under --safe-mode: ['update-config']", line)
         self.assertIn("the init event lists mcp_servers under --safe-mode: [{'name': 'docs'}]", line)
+        self.assertIn("the init event's tools differ from --tools: extra ['Workflow'], missing []", line)
         self.assertNotIn("plugins", line, "an empty list is no list")
-        self.assertEqual(len(record["failures"]), 2)
+        self.assertEqual(len(record["failures"]), 3)
         self.assertEqual(record["notes"], [])
+
+    def test_an_init_event_with_other_tools_than_the_command_gives_fails_the_run(self):
+        given = list(scenario_rounds.ALLOWED_TOOLS)
+        self.assertEqual(scenario_rounds.init_failures({"tools": list(reversed(given))}), [], "the order does not count")
+        self.assertEqual(scenario_rounds.init_failures({"tools": given + ["SendMessage"]}), [
+            "the init event's tools differ from --tools: extra ['SendMessage'], missing []"])
+        self.assertEqual(scenario_rounds.init_failures({"tools": given[1:]}), [
+            "the init event's tools differ from --tools: extra [], missing ['Bash']"])
+        self.assertEqual(scenario_rounds.init_failures({}), [], "no init event is a failure of its own")
 
     def test_plugins_built_into_the_cli_do_not_fail_a_run_but_any_other_plugin_does(self):
         builtin = {"name": "cc-plugin-agents-md", "path": "builtin", "source": "cc-plugin-agents-md@builtin"}
         installed = {"name": "mine", "path": "/home/u/.claude/plugins/mine", "source": "mine@market"}
-        self.assertEqual(scenario_rounds.init_failures({"plugins": [builtin], "skills": [], "mcp_servers": []}), [])
-        self.assertEqual(scenario_rounds.init_failures({"plugins": [builtin, installed]}), [
+        given = {"tools": list(scenario_rounds.ALLOWED_TOOLS)}
+        self.assertEqual(scenario_rounds.init_failures({"plugins": [builtin], "skills": [], "mcp_servers": []} | given), [])
+        self.assertEqual(scenario_rounds.init_failures({"plugins": [builtin, installed]} | given), [
             f"the init event lists plugins under --safe-mode: {[installed]}"])
-        self.assertEqual(len(scenario_rounds.init_failures({"skills": ["deep-research"]})), 1)
+        self.assertEqual(len(scenario_rounds.init_failures({"skills": ["deep-research"]} | given)), 1)
 
     def test_a_stream_that_shows_another_model_fails_the_run(self):
         line, _ = self.run_job("claude-mismatch-1-0", level="none")

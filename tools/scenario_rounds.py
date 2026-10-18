@@ -1837,11 +1837,14 @@ def agent_command(executable: Path, model: str, skill: Path | None, settings: st
     CLAUDE.md, skills, plugins, hooks, and MCP servers, so neither level inherits any customization.
     It keeps the skills built into the CLI (16 in 2.1.292, seen in the first live run), so
     `--disable-slash-commands` turns those off too; the `full` level reads its skill by path.
-    Agents, monitors, and the web are disallowed.
+    `--allowedTools` only approves tools without asking: the first live runs also had Workflow,
+    SendMessage, CronCreate, and others, so `--tools` limits the set. Agents, monitors, and the web
+    are disallowed as well.
     """
     return [
         *(str(executable), "-p", "--model", model, "--effort", "high"),
         *(["--add-dir", str(skill)] if skill else []),
+        *("--tools", ",".join(ALLOWED_TOOLS)),
         *("--allowedTools", *ALLOWED_TOOLS, "--disallowedTools", *DISALLOWED_TOOLS),
         *("--safe-mode", "--disable-slash-commands", "--setting-sources", "user", "--settings", settings),
         *("--output-format", "stream-json", "--verbose", "--no-session-persistence", "--strict-mcp-config"),
@@ -1947,11 +1950,17 @@ def init_failures(init: dict) -> list[str]:
 
     The command loads no skill and no MCP server, so any listed means the run was customized and
     its level is not what it says. Plugins built into the CLI (`"path": "builtin"`) stay under
-    `--safe-mode` for both levels alike; only another plugin fails the run.
+    `--safe-mode` for both levels alike; only another plugin fails the run. The tools must be those
+    of `--tools`, no more and no fewer.
     """
     listed = {key: init.get(key) or [] for key in INIT_LISTS}
     listed["plugins"] = [p for p in listed["plugins"] if not (isinstance(p, dict) and p.get("path") == "builtin")]
-    return [f"the init event lists {key} under --safe-mode: {str(value)[:200]}" for key, value in listed.items() if value]
+    failures = [f"the init event lists {key} under --safe-mode: {str(value)[:200]}" for key, value in listed.items() if value]
+    tools = set(init.get("tools") or [])
+    if init and tools != set(ALLOWED_TOOLS):
+        extra, missing = sorted(tools - set(ALLOWED_TOOLS)), sorted(set(ALLOWED_TOOLS) - tools)
+        failures.append(f"the init event's tools differ from --tools: extra {extra}, missing {missing}")
+    return failures
 
 
 def run_failures(outcome: dict, results: list[dict], model: str, minutes: float) -> list[str]:

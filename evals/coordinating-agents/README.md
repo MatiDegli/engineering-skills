@@ -158,10 +158,13 @@ The runner therefore works as follows:
   - The first live run showed that `--safe-mode` keeps the CLI's own skills (16 in version
     2.1.292) and two built-in plugins. `--disable-slash-commands` turns those skills off too; the
     built-in plugins stay, the same for both levels.
+  - `--tools` limits the agent to Bash, Read, Grep, Glob, Edit, and Write. `--allowedTools` only
+    approves those six without asking: the first two live runs also had Workflow, SendMessage,
+    CronCreate, and other tools. Agent, Task, Monitor, WebFetch, WebSearch, and NotebookEdit are
+    disallowed as well.
   - The stream's init event is checked. A run fails, because its level is not what it says, when
-    the event lists any skill, any MCP server, or a plugin that is not built in.
-  - Bash, Read, Grep, Glob, Edit, and Write are allowed. Agent, Task, Monitor, WebFetch, WebSearch,
-    and NotebookEdit are disallowed.
+    the event lists any skill, any MCP server, a plugin that is not built in, or other tools than
+    the six.
   - The prompt arrives on standard input, not in the command line, so a pattern kill that uses a
     word of the task does not match the agent's own process.
 - **Launcher:** a launcher runs as the sandbox's PID 1, so signals from inside cannot kill it. It
