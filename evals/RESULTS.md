@@ -2049,3 +2049,102 @@ Report SHA-256 hashes, as printed by the summaries:
 - `7b43f743797a78a84db331734d3f5a43847a899c8907495b998b08c3eb12c1b9` orders-service run 115
 - `4b6481e49ad10e7a9a66ade809af1d360972229539731aca7af650dd656c5367` orders-service run 116
 - `f57305e7c70e006bc2969461730505098255012cde6db4d614b47d2ca1813bc4` orders-service run 117
+
+## 2026-10-18 — Runs 118 to 132 (logic defects: the two parts of V1, and configuration)
+
+- V1 changed two things at once. This round separates them and adds a third change, each against
+  the frozen skill `7d06633`, with five Sonnet 5.5 runs per arm on both cases, Claude Code 2.1.292:
+  - P, `1518bbe` on branch `eval/p-priority-rules`: only V1's `high` row, which adds a business rule
+    that callers can bypass or that charges, grants, or books wrongly.
+  - C, `ce777e4` on branch `eval/c-config-behavior`: step 4 also reads configuration that encodes
+    behavior. Alert thresholds, limits, timeouts, retries, and schedules must mean what their names,
+    units, and descriptions say.
+
+| Case | Run | Model | Seeded gaps found | Defects at location | Passes the scorer | Top priorities in first five | Problems |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| booking-api | 118 | Sonnet 5.5 @ 7d06633 | 5 of 5 | 5 of 5 | no | 2 of 2 | duplicated 1 |
+| booking-api | 119 | Sonnet 5.5 @ 7d06633 | 5 of 5 | 4 of 5 | no | 1 of 2 | duplicated 1 |
+| booking-api | 120 | Sonnet 5.5 @ 7d06633 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 121 | Sonnet 5.5 @ 7d06633 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 122 | Sonnet 5.5 @ 7d06633 | 5 of 5 | 5 of 5 | no | 2 of 2 | duplicated 1 |
+| booking-api | 123 | Sonnet 5.5 @ 1518bbe | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 124 | Sonnet 5.5 @ 1518bbe | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 125 | Sonnet 5.5 @ 1518bbe | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 126 | Sonnet 5.5 @ 1518bbe | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 127 | Sonnet 5.5 @ 1518bbe | 5 of 5 | 4 of 5 | yes | 2 of 2 | — |
+| booking-api | 128 | Sonnet 5.5 @ ce777e4 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 129 | Sonnet 5.5 @ ce777e4 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 130 | Sonnet 5.5 @ ce777e4 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 131 | Sonnet 5.5 @ ce777e4 | 5 of 5 | 4 of 5 | yes | 2 of 2 | — |
+| booking-api | 132 | Sonnet 5.5 @ ce777e4 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| orders-service | 118 | Sonnet 5.5 @ 7d06633 | 9 of 9 | 1 of 3 | yes | 3 of 3 | — |
+| orders-service | 119 | Sonnet 5.5 @ 7d06633 | 9 of 9 | 1 of 3 | yes | 3 of 3 | — |
+| orders-service | 120 | Sonnet 5.5 @ 7d06633 | 9 of 9 | 2 of 3 | yes | 3 of 3 | — |
+| orders-service | 121 | Sonnet 5.5 @ 7d06633 | 9 of 9 | 2 of 3 | no | 2 of 3 | uncovered 1, duplicated 1 |
+| orders-service | 122 | Sonnet 5.5 @ 7d06633 | 9 of 9 | 2 of 3 | yes | 3 of 3 | — |
+| orders-service | 123 | Sonnet 5.5 @ 1518bbe | 9 of 9 | 2 of 3 | yes | 2 of 3 | — |
+| orders-service | 124 | Sonnet 5.5 @ 1518bbe | 9 of 9 | 2 of 3 | yes | 3 of 3 | — |
+| orders-service | 125 | Sonnet 5.5 @ 1518bbe | 8 of 9 (missed QUAL-06) | 1 of 3 | no | 2 of 3 | duplicated 2, false flag CI-03 |
+| orders-service | 126 | Sonnet 5.5 @ 1518bbe | 9 of 9 | 3 of 3 | yes | 3 of 3 | — |
+| orders-service | 127 | Sonnet 5.5 @ 1518bbe | 9 of 9 | 1 of 3 | no | 3 of 3 | uncovered 1 |
+| orders-service | 128 | Sonnet 5.5 @ ce777e4 | 9 of 9 | 2 of 3 | no | 3 of 3 | duplicated 1 |
+| orders-service | 129 | Sonnet 5.5 @ ce777e4 | 9 of 9 | 3 of 3 | yes | 3 of 3 | — |
+| orders-service | 130 | Sonnet 5.5 @ ce777e4 | 9 of 9 | 1 of 3 | yes | 3 of 3 | — |
+| orders-service | 131 | Sonnet 5.5 @ ce777e4 | 9 of 9 | 2 of 3 | yes | 3 of 3 | — |
+| orders-service | 132 | Sonnet 5.5 @ ce777e4 | 9 of 9 | 2 of 3 | yes | 3 of 3 | — |
+
+| Defect, five runs per arm, priority given when found | Control | P | C |
+| --- | --- | --- | --- |
+| `orders-service`: WELCOME10 trusts the caller's flag | 4: low, low, low, medium | 4: all high | 2: low, medium |
+| `orders-service`: a list as SKU returns 500 | 4 | 4 | 3 |
+| `orders-service`: the CPU alert's `> 0.8` means cores | 0 | 1 | 5 |
+| `orders-service`, all three | 8 of 15 | 9 of 15 | 10 of 15 |
+| `booking-api`, all five | 24 of 25 | 24 of 25 | 24 of 25 |
+
+| Arm | Seeded gaps | Reports that pass the scorer | Top priorities in first five | Mean minutes | Mean USD |
+| --- | --- | --- | --- | --- | --- |
+| Control | 70 of 70 | 6 of 10 | 23 of 25 | 2.4 | 0.51 |
+| P | 69 of 70 | 8 of 10 | 23 of 25 | 2.4 | 0.51 |
+| C | 70 of 70 | 9 of 10 | 25 of 25 | 2.3 | 0.50 |
+
+- C found the CPU alert's unit error in all five runs, rated medium; before it, one skill report in
+  18 had. The clause names no case and no unit: it sends step 4 to configuration, where OPS-03 had
+  only asked what an alert measures. It found WELCOME10 twice, against four times for the control,
+  which five runs cannot tell from noise.
+- P rated WELCOME10 high every time it found it. The control found it as often but rated it low
+  three times out of four, so a caller who claims a discount was ranked with documentation gaps.
+- Neither change cost time or money, and P missed one seeded gap in ten reports. The next round
+  combines P and C.
+
+Report SHA-256 hashes, as printed by the summary:
+
+- `d91b829f878cbb3c38586f3531320bb98b3c195afd1180fa032a33e71ede175b` booking-api run 118
+- `c007a8ce84a1f1587def6ecde00bc3c077fdfa7e17bbff3139e5dbd73ea08168` booking-api run 119
+- `68f716005cb59f5d55a2e292cfa5076dd020c2e0725f2251e7ed04a3731eec48` booking-api run 120
+- `73ba858a636b6de7b48ed32e244f03fe9da5550eeb2dfb20e5604e5bfde9cd30` booking-api run 121
+- `1f54e2746ae130c9581168faa00cff3641758d96a32f6a0619ebeb24702a0c3a` booking-api run 122
+- `6342e98534bb799404f01a7703408964f25dd29834ea9fd1b6c6f5ac71dea092` booking-api run 123
+- `d3f54b34c41c252f8e5b5c861b12a04a5ac7f70df4aceeb1d1d6d104d60bb400` booking-api run 124
+- `a47b4a191287dfdfe91a81144cdf893a54ce375d1656da857bfe23acd5a5ab40` booking-api run 125
+- `758a71a1b4950d9bc79a05f67356eed276414a43d1f35b52b0b62e99e2099a19` booking-api run 126
+- `6eb51c7e38f7a5eb7aa5a6dfe4c013f3f0acf13542282cf42bb25eadcfcc8af6` booking-api run 127
+- `1c02164d1131b368c5d48b5f0da46df772b953bef338c7e732e4d1ed07d0a8cf` booking-api run 128
+- `0faa5996fc2d01c698f9e110549a7a02ad0de578c05650f76185e33e59c3e9f6` booking-api run 129
+- `a8d6102ff3c4c7df35c20d664e14d3ca20a779e13f72216e00e98c516bf19ec4` booking-api run 130
+- `5b8643dcd6cd6abc979b69c3beb6e13d68d78af8f2ea4167aad2edccc4126fa4` booking-api run 131
+- `d1642f2e8c6aea47b955243687f3ba1a465cb8ae0bd79af3a236dcad41e0d75e` booking-api run 132
+- `ad2e2f5746c37762f6854e3d85695831961065cf05460dc78c26871ea5958beb` orders-service run 118
+- `4947a7f5472b08b4b01bcd83782383b3b84ee2a5c01560b878cbea05e00a7981` orders-service run 119
+- `7a8036515e2a93c3ee6e0665f5d73e73fd25242f3c8c08cfb3709e2bd6da6b9a` orders-service run 120
+- `7bad121fb017e10021aacb8d0136737184a5e649a43486089f44ab4463704ba5` orders-service run 121
+- `df3a7c43b50459536be9e1a7a4e748d83d7c74fbd40ad4d49457dc1f3dcd2a39` orders-service run 122
+- `8d93a5852209536506ddd6af6d95639ac6223b4762c42771ccb86d17af22ed66` orders-service run 123
+- `0075693b3c6568aa17625ae3367c9b2750f97037119a748300dbbde4bd716621` orders-service run 124
+- `edb6e4e834f738c46274b897ca659bb7977f336354d97d8710750188ce72a733` orders-service run 125
+- `42421de0d25532d6a665e64589185de1ca5e05c3ee48d37faccaa6cf68522309` orders-service run 126
+- `5654c47f26e82b80072165b2bd2c90bc8216491ff6650c7385c87d4cb03a8180` orders-service run 127
+- `eef62cb0a18773652a195dd879fc6ab14908ae0d815a2f38035eec623082b77d` orders-service run 128
+- `6d996d60a1b813307fd385e7da11ff2c11bb803ca1ff2fdcc8f9059fc40d7171` orders-service run 129
+- `05c7688259d14bcb4e3fb24cbc4e7e871eea41fcb514f3ebfb19b7c159f368f0` orders-service run 130
+- `9f97b36e606e6dffa5fd5c7d83b72345b83c1634cfd393e801059197bdb3528a` orders-service run 131
+- `b113537d48b58492fd47f46f59fc3944dda004af4de24e06ef6f0c1a2c9c3b82` orders-service run 132
