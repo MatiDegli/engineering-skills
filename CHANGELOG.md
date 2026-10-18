@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Evaluations and tooling
+
+- `tools/claude_rounds.py` takes one round lock per provider instead of one per machine, so rounds
+  on different providers, such as Claude and GLM, run at once, and rounds on one provider still run
+  one at a time. A round takes all its locks or none, and checks the Claude login only when it uses
+  it. Its log records the other rounds' locks at its start and end, and its summary marks a round
+  that overlapped another, whose minutes are then not comparable.
+
 ## v0.2.1 — 2026-10-18
 
 ### auditing-repositories

@@ -46,8 +46,9 @@ The evaluation runner's mechanisms, each with its incident, are listed under
   workflow runs, but the required checks are two check runs of one workflow run, so it never
   finished. *Follow-up:* an integration script that polls the commit's check runs by name.
 - **One scheduler per shared resource.** Parallel runs that found an expired login raced to refresh
-  it, and all failed. *Mechanism:* the runner warms each model up once and holds a machine-wide round
-  lock; a second round queues with `--lock-wait-minutes` instead of being started by hand
+  it, and all failed. *Mechanism:* the runner warms each model up once and holds a round lock per
+  provider; a second round on the same provider queues with `--lock-wait-minutes` instead of being
+  started by hand, and a round that overlapped one on another provider is marked in its summary
   ([Headless rounds](../evals/README.md#headless-rounds-with-claude-code)).
 - **Git on a repository an agent touched runs that repository's configuration.** Verified on
   2026-10-18: `git status` runs `core.fsmonitor` and clean filters, `.git/commondir` redirects the
