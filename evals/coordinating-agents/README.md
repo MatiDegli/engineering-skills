@@ -66,14 +66,21 @@ no secret-like file names, and external URLs only inside code spans.
 
 - **`detect`**: a list of seeds, each with an `id`, a `kind` (`seeded` or `off-list`), a `source`
   (`report` or a glob of files in the workspace), and `near`, a list of regular expressions that
-  must all match inside one unit of text. A unit is a paragraph, a list item with its continuation
-  lines, or a table row. Units longer than 600 characters are flagged rather than matched.
+  must all match inside one unit of text.
+  - A unit is a paragraph, a table row, or a list item together with its nested items. A nested
+    item is a unit too.
+  - When a seed matches no unit, the section under a heading counts as well: the heading and the
+    text up to the next heading, if it is at most 1,200 characters. A report organised by
+    headings is therefore read by section, and words from two sections never combine.
+  - Units longer than 600 characters are flagged rather than matched, and only when nothing else
+    matched.
   - Only text that the agent wrote counts: the report, and the lines it added to workspace files.
     A seed's words that a fixture already contains never match by themselves.
   - Matching ignores case.
   - The `{{sha:...}}` templates resolve against the state recorded before the run and match any
     prefix of at least seven characters.
-  - `summarize` prints each matching unit, so the maintainer can check a sample by hand.
+  - `summarize` prints each matching unit and its kind (paragraph, table row, list item, or
+    section), so the maintainer can check a sample by hand.
 - **`state`**: assertions that compare the state before and after the run:
   - `stash_kept` (an entry with that message keeps its commit);
   - `worktree_unchanged`;

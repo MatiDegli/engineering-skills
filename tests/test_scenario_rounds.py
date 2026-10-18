@@ -333,20 +333,41 @@ class DetectTests(unittest.TestCase):
         before = before or snapshot()
         return {r["id"]: r for r in scenario_rounds.detect(seeds, report, before, after or before)}
 
-    def test_text_splits_into_paragraphs_list_items_with_continuations_and_table_rows(self):
+    def units(self, text):
+        return [(unit.kind, unit.text) for unit in scenario_rounds.split_units(text)]
+
+    def test_text_splits_into_paragraphs_table_rows_and_list_items_with_what_is_nested_under_them(self):
         text = (
-            "# Heading\nFirst line\nof one paragraph.\n\n- item one\n  continues here\n- item two\n"
-            "1. numbered\n\n| a | b |\n| --- | :-: |\n| row | two |\nafter the table\n"
+            "# Heading\nFirst line\nof one paragraph.\n\n- item one\n  continues here\n  - nested a\n    - deeper\n  - nested b\n"
+            "- item two\n1. numbered\n\n    indented, so under 'numbered'\n\n| a | b |\n| --- | :-: |\n| row | two |\nafter the table\n"
         )
-        self.assertEqual(scenario_rounds.split_units(text), [
-            "# Heading", "First line of one paragraph.", "- item one continues here", "- item two",
-            "1. numbered", "| a | b |", "| row | two |", "after the table",
+        self.assertEqual(self.units(text), [
+            ("paragraph", "First line of one paragraph."),
+            ("list item", "- item one continues here - nested a - deeper - nested b"),
+            ("list item", "- nested a - deeper"),
+            ("list item", "- deeper"),
+            ("list item", "- nested b"),
+            ("list item", "- item two"),
+            ("list item", "1. numbered indented, so under 'numbered'"),
+            ("table row", "| a | b |"),
+            ("table row", "| row | two |"),
+            ("paragraph", "after the table"),
         ])
+        self.assertEqual(self.units("- item\n\nnot indented, so a new paragraph\n"), [("list item", "- item"), ("paragraph", "not indented, so a new paragraph")])
+        self.assertEqual(self.units("- item\n## heading ends it\nlazy"), [("list item", "- item"), ("paragraph", "lazy")])
+
+    def test_text_splits_into_sections_at_every_heading_and_text_before_the_first_is_in_none(self):
+        text = "before\n\n# One\ntext one\n| a | b |\n| --- | --- |\n\n## Two\n- item\n\n### Three\n"
+        self.assertEqual(
+            [(s.kind, s.text) for s in scenario_rounds.split_sections(text)],
+            [("section", "# One text one | a | b |"), ("section", "## Two - item"), ("section", "### Three")],
+        )
+        self.assertEqual(scenario_rounds.split_sections("no heading\n#nospace\n"), [])
 
     def test_every_pattern_must_match_inside_one_unit_and_case_is_ignored(self):
         report = "Front C is READY.\n\nThe lockfile conflicts with main.\n\n- front c: the LOCKFILE moved\n"
         found = self.detect([seed("one", r"front[- ]?c\b", "lock ?file|conflict")], report)["one"]
-        self.assertEqual([u["unit"] for u in found["units"]], ["- front c: the LOCKFILE moved"])
+        self.assertEqual([(u["kind"], u["unit"]) for u in found["units"]], [("list item", "- front c: the LOCKFILE moved")])
         apart = self.detect([seed("one", r"ready", "lockfile")], report)["one"]
         self.assertFalse(apart["found"])
 
@@ -361,6 +382,61 @@ class DetectTests(unittest.TestCase):
         self.assertFalse(result["found"])
         self.assertEqual(len(result["flagged"]), 1)
         self.assertEqual(result["flagged"][0]["origin"], "report")
+
+    HEADED = (
+        "## Front B (priority sort)\n\n"
+        "- The hand-back says all tests pass, but `test_table_has_header_and_rows` fails on the branch.\n"
+        "- It adds a column to every table; the owner's scripts parse that output, so it needs the owner.\n\n"
+        "## Front C (since filter)\n\n- The green gate predates main's requirements.lock refresh; it must be rebased and re-run.\n\n"
+        "## Front A (due-today fix)\n\n- Merged; its worktree and branch are still there and can be removed.\n"
+    )
+
+    def handoff_seeds(self):
+        return json.loads((scenario_rounds.SCENARIOS / "handoff-resume" / "expected.json").read_text())["detect"]
+
+    def test_a_report_organised_by_headings_matches_all_four_seeds_through_its_sections(self):
+        results = self.detect(self.handoff_seeds(), self.HEADED)
+        self.assertEqual({name: r["found"] for name, r in results.items()}, dict.fromkeys(
+            ["stale-ready", "false-tests-claim", "closeout", "output-format"], True))
+        self.assertEqual({r["units"][0]["kind"] for r in results.values()}, {"section"})
+        self.assertTrue(results["closeout"]["units"][0]["unit"].startswith("## Front A (due-today fix) - Merged;"))
+
+    def test_the_words_of_a_seed_cannot_come_from_two_sections(self):
+        stale = self.handoff_seeds()[:1]
+        apart = "## Front C (since filter)\n\nReady to merge.\n\n## Notes\n\nThe lockfile moved on main.\n"
+        self.assertFalse(self.detect(stale, apart)["stale-ready"]["found"])
+        together = "## Front C (since filter)\n\nReady to merge.\n\nThe lockfile moved on main.\n\n## Notes\n\nNothing.\n"
+        self.assertEqual([u["kind"] for u in self.detect(stale, together)["stale-ready"]["units"]], ["section"])
+
+    def test_a_report_that_names_the_fronts_under_headings_but_no_problem_detects_nothing(self):
+        report = "".join(f"## {name}\n\nLooked at it.\n\n" for name in ("Front B (priority sort)", "Front C (since filter)", "Front A (due-today fix)"))
+        self.assertFalse(any(r["found"] for r in self.detect(self.handoff_seeds(), report).values()))
+
+    def test_a_parent_item_gives_its_nested_items_the_context_of_its_name(self):
+        report = (
+            "- Front B (priority sort)\n  - The hand-back says all tests pass, but a test fails.\n"
+            "  - It adds a column; the owner's scripts parse that output.\n- Front C (since filter)\n  - The gate predates the lockfile refresh.\n"
+        )
+        results = self.detect(self.handoff_seeds(), report)
+        self.assertEqual({name: r["found"] for name, r in results.items()}, {
+            "stale-ready": True, "false-tests-claim": True, "closeout": False, "output-format": True})
+        self.assertEqual({r["units"][0]["kind"] for name, r in results.items() if r["found"]}, {"list item"})
+
+    def test_a_section_counts_only_when_it_is_short_and_a_unit_that_matches_wins_over_it(self):
+        seeds = [seed("a", "front-b", "fail")]
+        shorter = "## Front-b\n\n" + "x " * 100 + "\n\nIt fails.\n"
+        longer = "## Front-b\n\n" + "x " * 400 + "\n\n" + "y " * 400 + "\n\nIt fails.\n"
+        self.assertEqual([u["kind"] for u in self.detect(seeds, shorter)["a"]["units"]], ["section"])
+        self.assertFalse(self.detect(seeds, longer)["a"]["found"])
+        self.assertEqual([u["kind"] for u in self.detect(seeds, "## Front-b\n\nfront-b fails\n\nIt fails.\n")["a"]["units"]], ["paragraph"])
+
+    def test_a_unit_over_the_cap_is_flagged_only_when_nothing_else_matched(self):
+        seeds = [seed("a", "front-b", "fail")]
+        long = "front-b fails " + "x " * 400
+        self.assertTrue(self.detect(seeds, long)["a"]["flagged"])
+        result = self.detect(seeds, long + "\n\nfront-b fails again\n")["a"]
+        self.assertTrue(result["found"])
+        self.assertNotIn("flagged", result)
 
     def test_revision_templates_match_the_sha_or_any_prefix_of_seven_characters_or_more(self):
         before = snapshot(refs={"refs/heads/front-b": SHA})
@@ -1604,7 +1680,7 @@ class RoundTests(RoundCase):
         self.assertIn("| alpha | 2 | claude-test-1-0 none | 1 of 1 | 0 of 0 | 1 | 0 | 0 | 0 | 17 | 0.0 | 0.25 | ok |", summary)
         self.assertIn("| claude-test-1-0 none | 1 | 0 | 1 of 1 | 0 of 0 | 1 | 0 | 0 | 0 | 17 | 0.0 | 0.25 |", summary)
         self.assertIn("- run2-alpha: state check file_changed repo/app.py failed", summary)
-        self.assertIn("- run1-alpha: stale matched in report: 'front-a is stale.'", summary)
+        self.assertIn("- run1-alpha: stale matched in report (paragraph): 'front-a is stale.'", summary)
         stricter = json.loads((self.scenarios / "alpha" / "expected.json").read_text())
         stricter["detect"][0]["near"].append("never written")
         write(self.scenarios / "alpha" / "expected.json", json.dumps(stricter))

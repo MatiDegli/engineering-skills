@@ -388,38 +388,83 @@ def take_snapshot(workspace: Path, manifest: dict, before: dict | None = None) -
 
 LIST_ITEM = re.compile(r"\s*(?:[-*+]|\d+[.)])\s+")
 TABLE_RULE = re.compile(r"[|\s:-]+")
-# A longer unit is flagged for a person to read, not matched.
+HEADING = re.compile(r"#{1,6}(?:\s|$)")
+# A longer unit is flagged for a person to read, not matched; a section may be a little longer.
 MAX_UNIT = 600
+MAX_SECTION = 1200
 MIN_SHA = 7
 
 
-def split_units(text: str) -> list[str]:
-    """Split text into paragraphs, list items with their continuation lines, and table rows."""
-    units: list[str] = []
-    lines: list[str] = []
+class Unit(NamedTuple):
+    """A stretch of text inside which all of a seed's patterns must match."""
 
-    def close() -> None:
-        if lines:
-            units.append(" ".join(lines))
-            lines.clear()
+    text: str
+    kind: str  # paragraph, table row, list item, or section
 
+
+def line_kind(line: str) -> str:
+    stripped = line.strip()
+    if not stripped:
+        return "blank"
+    if HEADING.match(stripped):
+        return "heading"
+    if stripped.startswith("|"):
+        return "rule" if TABLE_RULE.fullmatch(stripped) else "table"
+    return "item" if LIST_ITEM.match(line) else "text"
+
+
+def item_end(lines: list[str], kinds: list[str], start: int) -> int:
+    """Return the line after a list item: its continuation lines and everything nested under it."""
+    depth, end, blank = len(lines[start]) - len(lines[start].lstrip()), start + 1, False
+    for number in range(start + 1, len(lines)):
+        if kinds[number] == "blank":
+            blank = True
+        elif kinds[number] in ("heading", "table", "rule"):
+            break
+        elif (kinds[number] == "item" or blank) and len(lines[number]) - len(lines[number].lstrip()) <= depth:
+            break
+        else:
+            end, blank = number + 1, False
+    return end
+
+
+def split_units(text: str) -> list[Unit]:
+    """Split text into paragraphs, table rows, and list items, each item with its nested items.
+
+    A nested item is a unit too, so a short item can match inside a long parent. Headings belong to
+    no unit; `split_sections` reads them.
+    """
+    lines = [raw.expandtabs(4).rstrip() for raw in text.splitlines()]
+    kinds = [line_kind(line) for line in lines]
+    found: list[tuple[int, Unit]] = []
+    covered: set[int] = set()
+    for start, kind in enumerate(kinds):
+        if kind == "item":
+            end = item_end(lines, kinds, start)
+            covered.update(range(start, end))
+            found.append((start, Unit(" ".join(line.strip() for line in lines[start:end] if line.strip()), "list item")))
+        elif kind == "table":
+            found.append((start, Unit(lines[start].strip(), "table row")))
+    paragraph: list[int] = []
+    for number in range(len(lines) + 1):
+        if number < len(lines) and kinds[number] == "text" and number not in covered:
+            paragraph.append(number)
+        elif paragraph:
+            found.append((paragraph[0], Unit(" ".join(lines[n].strip() for n in paragraph), "paragraph")))
+            paragraph = []
+    return [unit for _, unit in sorted(found, key=lambda entry: entry[0])]
+
+
+def split_sections(text: str) -> list[Unit]:
+    """Split text at its headings: each heading and the text under it, up to the next heading."""
+    sections: list[list[str]] = []
     for raw in text.splitlines():
         line = raw.strip()
-        if not line:
-            close()
-        elif line.startswith("|"):
-            close()
-            if not TABLE_RULE.fullmatch(line):
-                units.append(line)
-        elif line.startswith("#"):
-            close()
-            units.append(line)
-        else:
-            if LIST_ITEM.match(raw):
-                close()
-            lines.append(line)
-    close()
-    return units
+        if HEADING.match(line):
+            sections.append([line])
+        elif sections and line and not TABLE_RULE.fullmatch(line):
+            sections[-1].append(line)
+    return [Unit(" ".join(parts), "section") for parts in sections]
 
 
 def added_blocks(old: str, new: str) -> list[str]:
@@ -490,17 +535,28 @@ def written_texts(source: list[str] | str, report: str, before: dict, after: dic
 
 
 def detect(seeds: list[dict], report: str, before: dict, after: dict) -> list[dict]:
-    """Say which seeds the agent's text names: all `near` patterns must match inside one unit."""
+    """Say which seeds the agent's text names: all `near` patterns must match inside one unit.
+
+    A unit is a paragraph, a table row, or a list item with its nested items. When a seed matches no
+    unit, the section under a heading counts too, if it is short. A unit over `MAX_UNIT` characters
+    is flagged, not matched, and only when nothing else matched. Each match says which kind it was.
+    """
     results = []
     for seed in seeds:
         patterns = [compile_near(pattern, before) for pattern in seed["near"]]
+        texts = written_texts(seed["source"], report, before, after)
         found, flagged = [], []
-        for origin, text in written_texts(seed["source"], report, before, after):
+        for origin, text in texts:
             for unit in split_units(text):
-                if all(pattern.search(unit) for pattern in patterns):
-                    (flagged if len(unit) > MAX_UNIT else found).append({"origin": origin, "unit": unit})
+                if all(pattern.search(unit.text) for pattern in patterns):
+                    (flagged if len(unit.text) > MAX_UNIT else found).append({"origin": origin, "unit": unit.text, "kind": unit.kind})
+        if not found:
+            for origin, text in texts:
+                for unit in split_sections(text):
+                    if len(unit.text) <= MAX_SECTION and all(pattern.search(unit.text) for pattern in patterns):
+                        found.append({"origin": origin, "unit": unit.text, "kind": unit.kind})
         results.append({"id": seed["id"], "kind": seed["kind"], "found": bool(found), "units": found[:3]})
-        if flagged:
+        if flagged and not found:
             results[-1]["flagged"] = flagged[:3]
     return results
 
@@ -2066,7 +2122,7 @@ def summarize(round_dir: Path) -> str:
             details.append(f"{label}: ceremony {check.get('check') or check.get('id')}: {check.get('detail') or check.get('command')}")
         for seed in scored["detect"]:
             for unit in seed["units"][:1]:
-                details.append(f"{label}: {seed['id']} matched in {unit['origin']}: {unit['unit'][:200]!r}")
+                details.append(f"{label}: {seed['id']} matched in {unit['origin']} ({unit['kind']}): {unit['unit'][:200]!r}")
             for unit in seed.get("flagged", [])[:1]:
                 details.append(f"{label}: {seed['id']} matched a unit over {MAX_UNIT} characters, check by hand: {unit['origin']}")
         details += [f"{label}: loop without a visible bound, check by hand: {loop!r}" for loop in scored["loops"]]
