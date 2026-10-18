@@ -2148,3 +2148,104 @@ Report SHA-256 hashes, as printed by the summary:
 - `05c7688259d14bcb4e3fb24cbc4e7e871eea41fcb514f3ebfb19b7c159f368f0` orders-service run 130
 - `9f97b36e606e6dffa5fd5c7d83b72345b83c1634cfd393e801059197bdb3528a` orders-service run 131
 - `b113537d48b58492fd47f46f59fc3944dda004af4de24e06ef6f0c1a2c9c3b82` orders-service run 132
+
+## 2026-10-18 — Runs 133 to 148 (logic defects: P and C together)
+
+- PC, `374e578` on branch `eval/pc-combined`, is P and C of runs 118 to 132 together. It ran
+  against the frozen skill `7d06633` five times per arm with Sonnet 5.5, and three times with GLM
+  5.3, on both cases, Claude Code 2.1.292. GLM's cost is the CLI's estimate at Claude prices.
+
+| Case | Run | Model | Seeded gaps found | Defects at location | Passes the scorer | Top priorities in first five | Problems |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| booking-api | 133 | Sonnet 5.5 @ 7d06633 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 134 | Sonnet 5.5 @ 7d06633 | 5 of 5 | 4 of 5 | yes | 2 of 2 | — |
+| booking-api | 135 | Sonnet 5.5 @ 7d06633 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 136 | Sonnet 5.5 @ 7d06633 | 5 of 5 | 4 of 5 | no | 2 of 2 | duplicated 1 |
+| booking-api | 137 | Sonnet 5.5 @ 7d06633 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 138 | Sonnet 5.5 @ 374e578 | 5 of 5 | 5 of 5 | no | 2 of 2 | uncovered 1 |
+| booking-api | 139 | Sonnet 5.5 @ 374e578 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 140 | Sonnet 5.5 @ 374e578 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 141 | Sonnet 5.5 @ 374e578 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 142 | Sonnet 5.5 @ 374e578 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 143 | glm-5.3 @ 7d06633 | 5 of 5 | 5 of 5 | no | 1 of 2 | uncovered 2 |
+| booking-api | 144 | glm-5.3 @ 7d06633 | 5 of 5 | 3 of 5 | yes | 2 of 2 | — |
+| booking-api | 145 | glm-5.3 @ 7d06633 | 5 of 5 | 4 of 5 | yes | 1 of 2 | — |
+| booking-api | 146 | glm-5.3 @ 374e578 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 147 | glm-5.3 @ 374e578 | 5 of 5 | 4 of 5 | yes | 2 of 2 | — |
+| booking-api | 148 | glm-5.3 @ 374e578 | 5 of 5 | 3 of 5 | no | 2 of 2 | uncovered 2 |
+| orders-service | 133 | Sonnet 5.5 @ 7d06633 | 9 of 9 | 1 of 3 | yes | 2 of 3 | — |
+| orders-service | 134 | Sonnet 5.5 @ 7d06633 | 9 of 9 | 3 of 3 | no | 3 of 3 | unmarked high 1 |
+| orders-service | 135 | Sonnet 5.5 @ 7d06633 | 9 of 9 | 0 of 3 | yes | 3 of 3 | — |
+| orders-service | 136 | Sonnet 5.5 @ 7d06633 | 8 of 9 (missed QUAL-06) | 0 of 3 | no | 2 of 3 | — |
+| orders-service | 137 | Sonnet 5.5 @ 7d06633 | 9 of 9 | 0 of 3 | yes | 3 of 3 | — |
+| orders-service | 138 | Sonnet 5.5 @ 374e578 | 9 of 9 | 3 of 3 | yes | 2 of 3 | — |
+| orders-service | 139 | Sonnet 5.5 @ 374e578 | 9 of 9 | 2 of 3 | no | 3 of 3 | uncovered 1 |
+| orders-service | 140 | Sonnet 5.5 @ 374e578 | 9 of 9 | 2 of 3 | no | 3 of 3 | unmarked high 1 |
+| orders-service | 141 | Sonnet 5.5 @ 374e578 | 9 of 9 | 3 of 3 | yes | 3 of 3 | — |
+| orders-service | 142 | Sonnet 5.5 @ 374e578 | 9 of 9 | 2 of 3 | yes | 2 of 3 | — |
+| orders-service | 143 | glm-5.3 @ 7d06633 | 9 of 9 | 1 of 3 | yes | 2 of 3 | — |
+| orders-service | 144 | glm-5.3 @ 7d06633 | 9 of 9 | 0 of 3 | yes | 3 of 3 | — |
+| orders-service | 145 | glm-5.3 @ 7d06633 | 9 of 9 | 0 of 3 | no | 3 of 3 | uncovered 1 |
+| orders-service | 146 | glm-5.3 @ 374e578 | 9 of 9 | 2 of 3 | yes | 2 of 3 | — |
+| orders-service | 147 | glm-5.3 @ 374e578 | 9 of 9 | 3 of 3 | no | 2 of 3 | uncovered 1 |
+| orders-service | 148 | glm-5.3 @ 374e578 | 9 of 9 | 1 of 3 | yes | 2 of 3 | — |
+
+| Defect, runs per arm, priority given when found | Sonnet control (5) | Sonnet PC (5) | GLM control (3) | GLM PC (3) |
+| --- | --- | --- | --- | --- |
+| `orders-service`: WELCOME10 trusts the caller's flag | 1: medium | 5: all high | 0 | 2: low, medium |
+| `orders-service`: a list as SKU returns 500 | 2 | 2 | 1 | 3 |
+| `orders-service`: the CPU alert's `> 0.8` means cores | 1 | 5 | 0 | 1 |
+| `orders-service`, all three | 4 of 15 | 12 of 15 | 1 of 9 | 6 of 9 |
+| `booking-api`, all five | 23 of 25 | 25 of 25 | 12 of 15 | 12 of 15 |
+
+| Arm | Seeded gaps | Reports that pass the scorer | Top priorities in first five | Mean minutes | Mean USD |
+| --- | --- | --- | --- | --- | --- |
+| Sonnet control | 69 of 70 | 7 of 10 | 23 of 25 | 2.1 | 0.49 |
+| Sonnet PC | 70 of 70 | 7 of 10 | 23 of 25 | 2.6 | 0.52 |
+| GLM control | 42 of 42 | 4 of 6 | 12 of 15 | 9.8 | 1.65 |
+| GLM PC | 42 of 42 | 4 of 6 | 12 of 15 | 9.9 | 1.66 |
+
+- With Sonnet, PC found 12 of the 15 `orders-service` defects against 4, rated the discount bypass
+  high in every run, and found the CPU alert's unit error in every run; with C alone in runs 128 to
+  132 it had too, so ten of ten. With GLM, PC found 6 of 9 against 1. Seeded coverage, top
+  priorities, and `booking-api` held, at about half a minute and three cents more per Sonnet audit.
+- This round's Sonnet control found 4 of 15, against 8 of 15 in runs 118 to 122: the control moves
+  between rounds, which is why each round carries its own.
+- Without the skill, Sonnet and Haiku found 10 of 12 of these defects in runs 94 to 101. PC with
+  Sonnet now finds 12 of 15 while keeping every seeded gap. Issue #1 asks for an Opus round before
+  PC changes the skill.
+
+Report SHA-256 hashes, as printed by the summary:
+
+- `2e435afa84d8f23752c9406fedecec59e439df5c2f3883cb3dff826d4e9f84c6` booking-api run 133
+- `489af88cc6888a88f34d67fe06f81f01625508e3f410c310406c1d77ef74fd15` booking-api run 134
+- `20b3d68bda19ac27be9e6fef45f2f1feef8ece64e77ef080299680eff1941a25` booking-api run 135
+- `075b86de535c34e56de48d00413f47e0e8d26f5aadca583789e545608986a143` booking-api run 136
+- `35e0b976a227a58d4d4a7989bd31ffaad404821c854415c1e7b72f9cf4f5130f` booking-api run 137
+- `34df42c8253eec75613703635588597d41dded0dbf1dd18373b8a1b222cdbcbc` booking-api run 138
+- `3288a7313a31c516ac157e4cd17766787a1a6c4fa0abc8b20a0c36b50074ca64` booking-api run 139
+- `23db2384e452382cc97c104802567b476dc8de3e3c274765109534412653a84a` booking-api run 140
+- `1632b7458f2a969a0ee4af3a9fe1c6afed419932ea852a70daa25a991b796f25` booking-api run 141
+- `d547036fc33ccb5e6eb05c65f9e00889b8dc1db56b47f7b7eb8c2bf7b58e5455` booking-api run 142
+- `665608ee6b228dac23b5cf87579aca2cce47e87c53fcd6fac2b7da64f24f5ac6` booking-api run 143
+- `af09218d4661328f74150bc93b35fa25bf2c76d455f4096abdc9be0148731303` booking-api run 144
+- `4fc9ea4c5740c195995a3af01edeb35b98ab787c66304ee9a2077d78634705e8` booking-api run 145
+- `89f66ed9b6929cf3a5eaf81a864fa18f95c5133be0d5a77d5dddd95a1144aabf` booking-api run 146
+- `701dcf9aa6072d19b7af2aa18e438fd2ea9e4822f27f296a7698ec24b27d89e6` booking-api run 147
+- `cb042d5daa721a9e22cb53913d466ff903ab5cf501bcdb54a5ea2759d8acf300` booking-api run 148
+- `73a8ea9f3209ad5287d5871881688b2b8c2f7db79b58ecb2132241ce5750e829` orders-service run 133
+- `2c4733924739b72df54d5f82dac2fabb6dd515508924130ed328f19acd03ae8a` orders-service run 134
+- `1c912f40115ef8d4a85fbc7113b2573e317fd361deecfd1756b3d12dffd517e4` orders-service run 135
+- `3610de4136927bddab4c71d5a96645abe175c0d0cd5bdfb9def14708b82cd8bf` orders-service run 136
+- `eb5c3d4da916f42bdf0bad35fd7291b213318d552b8bb1985443d1bf51cd249c` orders-service run 137
+- `c67887ca845f9267d99bb988a9023e2434440456dc967c6536627caa4ffec300` orders-service run 138
+- `a6a9bbbf2f5b8b21bab4d9a95dc3200836a1f78c06f909ee47399b72c267d0af` orders-service run 139
+- `e5905991c91312ad9d44ca0740d28e16395f1af7f019450a01ad65c6a8024b17` orders-service run 140
+- `e05ae881bf0cd3230f8548861dff7879565a69844e175e96a1df9554eb42fa66` orders-service run 141
+- `e7bceafe40f7d02cc5007ab7cea8dc4c8006d6abd17c3132c44072563ddbd31f` orders-service run 142
+- `02eb2320a80c4d5a5b9765713a16c30c02ca095f7dfa1fa90529b191433ddbfb` orders-service run 143
+- `79e028e32b4404211b189cf3295b5dc73f9c93ec4a8c1a595d57798f68b37e6b` orders-service run 144
+- `6cf7fb16c87291ad61fd044262fd5568ec498f88dffc6925aae53dbac48ba73c` orders-service run 145
+- `f006f43a89a245414db62aa0e2b7700fd757f868f2335e8c9836be7892e7884a` orders-service run 146
+- `76792fa20cbc881cc482bf6b550108be4f674c69534ea5b007955f321b8adee4` orders-service run 147
+- `da1b6dc2cfef9049a1ed8c788ecc94e8a04790dd73666ae82a0951b8e3479f2b` orders-service run 148
