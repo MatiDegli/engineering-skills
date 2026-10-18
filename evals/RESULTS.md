@@ -2389,3 +2389,188 @@ Report SHA-256 hashes, as printed by the summaries:
 - `590d677060787eaec37077dedc12f8039f26fe8671aa45f7a59e5106db44139a` orders-service run 154
 - `d17730ea74542afca78d45f5c876a9f311a2a1789d047685f4b324ec5b84362f` orders-service run 155
 - `12ecc73cabcc878eeb48b374cc79ad7af28ced209ed47a7227832815078e8661` orders-service run 156
+
+## 2026-10-18 — Runs 157 to 176 (the v0.2.1 batch: findings split, conditions, recovery)
+
+- Three variants of main `c8029a6` against it as the control, with Sonnet 5.5, five runs per arm on
+  `orders-service` and `booking-api`, where the effects can show, and `python-service` as the
+  regression case. F `8e91fa0` (issue #3) moves `low` findings to a Minor findings table. K
+  `22ec346` (issue #4) has a finding that holds only under a condition state it, and gives software
+  already in production or distributed no "before release" timing. B `527d463` (issue #5) rates
+  unverified recovery of production data `high`. Claude Code 2.1.292.
+- Criteria fixed before the round, under the protocol by kind of change that the maintainer approved
+  the same day. Against the control, each arm finds at most one fewer seeded gap of 150 and one
+  fewer logic defect of 40, copies no secret, passes the scorer in at most one fewer report, and
+  marks at most 0.5 more high findings per report outside the top priorities, leaving out rows that
+  cite a `defects` location and, for B, OPS-02 rows. Own goals: for F, a median number of rows in
+  the first findings table at most 60% of the control's, and a blind reviewer who prefers F in two
+  of three case pairs; for K, no "before release" action in at least 9 of the 10 reports of the two
+  production cases, and the request-body log of `orders-service` stated with its INFO condition in
+  at least 4 of 5; for B, OPS-02 rated high and named in the first five actions in at least 9 of
+  those 10.
+- The matcher missed 18 defects. The coordinator read each, not blind, with the rule of runs 149 to
+  156: the report names the defect's file and states its mechanism. Eight are correct rows under a
+  criterion the case does not list: ARCH-01 (runs 167, 171, 173 twice, and 175), ARCH-05 (165),
+  TEST-03 (160), and ARCH-02 (164). One more (162) states the SKU `TypeError` but cites another
+  line of the same file.
+
+| Case | Run | Model | Seeded gaps found | Defects at location | Passes the scorer | Top priorities in first five | Problems |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| orders-service | 157 | Sonnet 5.5 @ c8029a6 | 9 of 9 | 3 of 3 | yes | 3 of 3 | — |
+| orders-service | 158 | Sonnet 5.5 @ c8029a6 | 9 of 9 | 3 of 3 | no | 2 of 3 | uncovered 1 |
+| orders-service | 159 | Sonnet 5.5 @ c8029a6 | 9 of 9 | 3 of 3 | yes | 3 of 3 | — |
+| orders-service | 160 | Sonnet 5.5 @ c8029a6 | 9 of 9 | 3 of 3 | no | 3 of 3 | duplicated 1 |
+| orders-service | 161 | Sonnet 5.5 @ c8029a6 | 9 of 9 | 2 of 3 | yes | 3 of 3 | — |
+| orders-service | 162 | Sonnet 5.5 @ 8e91fa0 | 9 of 9 | 2 of 3 | no | 3 of 3 | uncovered 1, duplicated 1 |
+| orders-service | 163 | Sonnet 5.5 @ 8e91fa0 | 8 of 9 (missed QUAL-06) | 2 of 3 | no | 3 of 3 | unmarked high 1, uncovered 1, duplicated 4 |
+| orders-service | 164 | Sonnet 5.5 @ 8e91fa0 | 9 of 9 | 3 of 3 | yes | 3 of 3 | — |
+| orders-service | 165 | Sonnet 5.5 @ 8e91fa0 | 8 of 9 (missed SEC-12) | 1 of 3 | no | 2 of 3 | duplicated 1 |
+| orders-service | 166 | Sonnet 5.5 @ 8e91fa0 | 8 of 9 (missed QUAL-06) | 2 of 3 | no | 3 of 3 | uncovered 1 |
+| orders-service | 167 | Sonnet 5.5 @ 22ec346 | 9 of 9 | 2 of 3 | no | 2 of 3 | duplicated 1 |
+| orders-service | 168 | Sonnet 5.5 @ 22ec346 | 8 of 9 (missed QUAL-06) | 1 of 3 | no | 3 of 3 | duplicated 1 |
+| orders-service | 169 | Sonnet 5.5 @ 22ec346 | 9 of 9 | 3 of 3 | no | 3 of 3 | uncovered 1, duplicated 1 |
+| orders-service | 170 | Sonnet 5.5 @ 22ec346 | 9 of 9 | 3 of 3 | yes | 2 of 3 | — |
+| orders-service | 171 | Sonnet 5.5 @ 22ec346 | 9 of 9 | 2 of 3 | yes | 3 of 3 | — |
+| orders-service | 172 | Sonnet 5.5 @ 527d463 | 9 of 9 | 3 of 3 | yes | 3 of 3 | — |
+| orders-service | 173 | Sonnet 5.5 @ 527d463 | 9 of 9 | 2 of 3 | no | 3 of 3 | uncovered 1 |
+| orders-service | 174 | Sonnet 5.5 @ 527d463 | 9 of 9 | 2 of 3 | yes | 3 of 3 | — |
+| orders-service | 175 | Sonnet 5.5 @ 527d463 | 8 of 9 (missed QUAL-06) | 3 of 3 | no | 3 of 3 | uncovered 3 |
+| orders-service | 176 | Sonnet 5.5 @ 527d463 | 9 of 9 | 2 of 3 | no | 3 of 3 | uncovered 8 |
+| booking-api | 157 | Sonnet 5.5 @ c8029a6 | 5 of 5 | 5 of 5 | no | 2 of 2 | uncovered 2 |
+| booking-api | 158 | Sonnet 5.5 @ c8029a6 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 159 | Sonnet 5.5 @ c8029a6 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 160 | Sonnet 5.5 @ c8029a6 | 5 of 5 | 4 of 5 | no | 2 of 2 | uncovered 1, duplicated 1 |
+| booking-api | 161 | Sonnet 5.5 @ c8029a6 | 5 of 5 | 5 of 5 | no | 2 of 2 | uncovered 1, duplicated 2 |
+| booking-api | 162 | Sonnet 5.5 @ 8e91fa0 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 163 | Sonnet 5.5 @ 8e91fa0 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 164 | Sonnet 5.5 @ 8e91fa0 | 5 of 5 | 4 of 5 | no | 2 of 2 | uncovered 1 |
+| booking-api | 165 | Sonnet 5.5 @ 8e91fa0 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 166 | Sonnet 5.5 @ 8e91fa0 | 5 of 5 | 5 of 5 | no | 2 of 2 | uncovered 1 |
+| booking-api | 167 | Sonnet 5.5 @ 22ec346 | 5 of 5 | 4 of 5 | yes | 2 of 2 | — |
+| booking-api | 168 | Sonnet 5.5 @ 22ec346 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 169 | Sonnet 5.5 @ 22ec346 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 170 | Sonnet 5.5 @ 22ec346 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 171 | Sonnet 5.5 @ 22ec346 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 172 | Sonnet 5.5 @ 527d463 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 173 | Sonnet 5.5 @ 527d463 | 5 of 5 | 4 of 5 | yes | 2 of 2 | — |
+| booking-api | 174 | Sonnet 5.5 @ 527d463 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 175 | Sonnet 5.5 @ 527d463 | 5 of 5 | 4 of 5 | yes | 2 of 2 | — |
+| booking-api | 176 | Sonnet 5.5 @ 527d463 | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| python-service | 157 | Sonnet 5.5 @ c8029a6 | 16 of 16 | — | no | 3 of 3 | unmarked high 2, uncovered 27 |
+| python-service | 158 | Sonnet 5.5 @ c8029a6 | 16 of 16 | — | yes | 3 of 3 | — |
+| python-service | 159 | Sonnet 5.5 @ c8029a6 | 16 of 16 | — | yes | 3 of 3 | — |
+| python-service | 160 | Sonnet 5.5 @ c8029a6 | 16 of 16 | — | yes | 3 of 3 | — |
+| python-service | 161 | Sonnet 5.5 @ c8029a6 | 16 of 16 | — | yes | 3 of 3 | — |
+| python-service | 162 | Sonnet 5.5 @ 8e91fa0 | 16 of 16 | — | yes | 3 of 3 | — |
+| python-service | 163 | Sonnet 5.5 @ 8e91fa0 | 16 of 16 | — | no | 3 of 3 | unmarked high 2 |
+| python-service | 164 | Sonnet 5.5 @ 8e91fa0 | 16 of 16 | — | yes | 3 of 3 | — |
+| python-service | 165 | Sonnet 5.5 @ 8e91fa0 | 16 of 16 | — | yes | 3 of 3 | — |
+| python-service | 166 | Sonnet 5.5 @ 8e91fa0 | 16 of 16 | — | yes | 3 of 3 | — |
+| python-service | 167 | Sonnet 5.5 @ 22ec346 | 16 of 16 | — | yes | 3 of 3 | — |
+| python-service | 168 | Sonnet 5.5 @ 22ec346 | 16 of 16 | — | yes | 3 of 3 | — |
+| python-service | 169 | Sonnet 5.5 @ 22ec346 | 16 of 16 | — | yes | 3 of 3 | — |
+| python-service | 170 | Sonnet 5.5 @ 22ec346 | 16 of 16 | — | yes | 3 of 3 | — |
+| python-service | 171 | Sonnet 5.5 @ 22ec346 | 16 of 16 | — | yes | 3 of 3 | — |
+| python-service | 172 | Sonnet 5.5 @ 527d463 | 16 of 16 | — | yes | 3 of 3 | — |
+| python-service | 173 | Sonnet 5.5 @ 527d463 | 16 of 16 | — | yes | 3 of 3 | — |
+| python-service | 174 | Sonnet 5.5 @ 527d463 | 16 of 16 | — | yes | 3 of 3 | — |
+| python-service | 175 | Sonnet 5.5 @ 527d463 | 16 of 16 | — | yes | 3 of 3 | — |
+| python-service | 176 | Sonnet 5.5 @ 527d463 | 16 of 16 | — | no | 3 of 3 | unmarked high 3 |
+
+| Arm | Seeded gaps | Defects, matcher | Defects by hand | Reports that pass the scorer | Top priorities in first five | High outside top priorities, per report | Mean minutes | Mean USD |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Control `c8029a6` | 150 of 150 | 38 of 40 | 39 of 40 | 9 of 15 | 39 of 40 | 1.67 | 2.3 | 0.46 |
+| F `8e91fa0` | 147 of 150 | 34 of 40 | 37 of 40 | 8 of 15 | 39 of 40 | 1.53 | 2.0 | 0.42 |
+| K `22ec346` | 149 of 150 | 35 of 40 | 37 of 40 | 12 of 15 | 38 of 40 | 1.73 | 2.4 | 0.47 |
+| B `527d463` | 149 of 150 | 35 of 40 | 38 of 40 | 11 of 15 | 40 of 40 | 1.47 | 2.2 | 0.45 |
+
+| Own goals and defects by hand, five runs per arm | Control | F | K | B |
+| --- | --- | --- | --- | --- |
+| Median rows in the first findings table | 31 | 17 | 32 | 31 |
+| Production-case reports with no "before release" action, of 10 | 4 | 2 | 10 | 3 |
+| `orders-service` reports that state the INFO condition of the request-body log | 5 of 5 | 5 of 5 | 5 of 5 | 5 of 5 |
+| OPS-02 high and in the first five actions, of 10 | 1 | 0 | 3 | 10 |
+| `booking-api`, all five defects | 25 of 25 | 25 of 25 | 25 of 25 | 25 of 25 |
+| `orders-service`: WELCOME10 trusts the caller's flag | 5 | 4 | 4 | 4 |
+| `orders-service`: a list as SKU returns 500 | 4 | 3 | 3 | 4 |
+| `orders-service`: the CPU alert's `> 0.8` means cores | 5 | 5 | 5 | 5 |
+
+- B meets every criterion with the defects counted by hand, 38 against 39, and misses the defect
+  criterion with the matcher, 35 against 38. It rates OPS-02 high and names it in the first five
+  actions in 10 of 10 reports, against 1 for the control.
+- K meets its goals: no production-case report times an action "before release", against 4 of 10
+  for the control. The INFO condition does not separate the arms: the control states it in every
+  report. K misses the defect criterion by one beyond the margin with either count, 37 against 39 by
+  hand: the SKU defect in 3 of 5 against 4, and one report that names WELCOME10 only as untested.
+  The same skill text found the SKU defect in 2 of 5 Sonnet runs in runs 138 to 142, so the
+  difference lies within the control's own spread between rounds; the margin was smaller than that
+  spread.
+- F meets its size goal, 17 rows against 31 (55%), and misses seeded gaps, 147 against 150, and
+  defects, 37 against 39 by hand. Two reports leave QUAL-06, usually a `low` finding, out of every
+  table and of Coverage, and one leaves SEC-12 to Limitations. The blind comparison was not run: it
+  could not change F's outcome.
+- The maintainer merged K and B, K as a departure from the fixed margin, and kept F out; see
+  `docs/decisions.md`. The 60 audits cost about 27 USD of quota.
+
+Report SHA-256 hashes, as printed by the summary:
+
+- orders-service run 157: `885adb784e072ac02159a63cd35fbeecbdca1ed0c03a78cab67a99f91248ea58`
+- orders-service run 158: `da056b86c3027ab01699df1c21844e5833f600c2402c1637108fb92963ecaadb`
+- orders-service run 159: `fc27a8379da4b3b7ee6b60b6bc34bf1fb17835172d83714aad1a21d7056f33f7`
+- orders-service run 160: `f666a3f855ed1bb5c590361696c556e435c693bb37b8479a96a33b9fe2db428e`
+- orders-service run 161: `3fbde2b8b65db7a6a9acb44ca640d32cbd58b48984ac3992c5bd2df36c05c4bc`
+- orders-service run 162: `124faa41e487142bb16e977e7b224941156d1c46dfc1fe7ce6eb4cdc06acff3c`
+- orders-service run 163: `9ee521b55d8f60b5e1b4212c736943f6e93e60cd0d2d6bfa1fa57c0b2f6f70d9`
+- orders-service run 164: `10dc7bb59aefc231345aeec399fcafd822a51ea8271e2f1b0ef92f08fe72ab7a`
+- orders-service run 165: `cf06bb2bd0f16f30086f177fedb585706081287cb16530321a63c980b77a189a`
+- orders-service run 166: `709dd753b1a952ac83a2815e0316e61828f3237121a2e0d68fbe7c93b24b6460`
+- orders-service run 167: `9ee1a48961483ad7102ab7649f5b33515499164bbf1388b92a7b82ef0060bfbd`
+- orders-service run 168: `4d10de1d2d4de70a2f8c6643123a1eb2eb76fd8e35a4af5a8631bf0ce66ec492`
+- orders-service run 169: `b7f96975ef0c02bc956a01aec2980c448cb3b5ad312172167d3eb4d3cfa645cd`
+- orders-service run 170: `ed5783a3c8329dcf52454a8d328844f6afdf47450a49e778b25f4877e67139b7`
+- orders-service run 171: `0e793788a89e1c08cdc6559f3d2ffe362465eb93eed17b977a639697003e2e26`
+- orders-service run 172: `2046b09c6f476ba7ed3b84de1718417fca4bddc7a436c0dfa2ca04172525df24`
+- orders-service run 173: `d215ca2f8c8fb3bf60e6696f7096f5aeaf0ffd6c62d9e52d4f028d11875bef87`
+- orders-service run 174: `beca7b829d588e6562426b0a643524eefd2898178542fda867eebae7d7ae13cd`
+- orders-service run 175: `2aaeec02bc2702ea20f93ef08183c838aa5776997ee3096ecfd8c7182da987b2`
+- orders-service run 176: `655375492df97f7c2e90dcbf5df51774c9ba878eb1150c3dc9f630edac64a7d4`
+- booking-api run 157: `28c8ea51ed16be72701c35f82b70d2a2d7b4bfcfa0065edf09cb4eb9a7a0d14b`
+- booking-api run 158: `d815e033a6e72939489339669913c7eb8583cb39985af4791410ed43ddfd0a00`
+- booking-api run 159: `fb31b1b38557505f5ec303262edb3a19177c31a57661da660fe5025dfc771639`
+- booking-api run 160: `09c80176a3b5443a45cd85d8588943ff5c5c09d75c5db90e8038dfb83c88cb47`
+- booking-api run 161: `786fb5ed89511b36201c200cff30095eaa055e2e3fb116ab46ceff03c059a194`
+- booking-api run 162: `4e5951edc69c31a956d35e3f25e715d8bd71d48b1074ee659b1ab2760124c5df`
+- booking-api run 163: `ffc328ea1975ad769e4a5c04542624a69b87851464c2dcf8f26a0bc07df6cc5f`
+- booking-api run 164: `88cbb8d116242e4cb1ef9ec6de20b4014a8d8e2acad07a041f39d92b271b2ec1`
+- booking-api run 165: `3fe3c9aa80abc848f0310c1ae46f74dec5965491fb61eb9c8f46c325c2ea3c13`
+- booking-api run 166: `d8c3886b38773e424110ab2ef1bf13b82483a9fa8b22b3f2f2f4a8c1d7499c05`
+- booking-api run 167: `75ff9a5705df46f7d8b710f34d9dfd6c36d7bc8f6baf3537946934f2ee30a13a`
+- booking-api run 168: `849ca7a68c953991d4ce34985a227e9052992b6c5bf43d3ed29bfc1a124bdf50`
+- booking-api run 169: `7cc85bfd0c715838bf62001d275b45baecd350f6b5420e79449cc06cf681fa15`
+- booking-api run 170: `2551d24c04c25da9b34d878d35b7d7ce0bc2ac9351ea4c5782c9031e5ea3ccf7`
+- booking-api run 171: `267e7f3a4dced345f5ea8a9a9b7c1b64993c10a8bb6dbc7112b9518a87a39c2d`
+- booking-api run 172: `d300bb675ee3054f143a0d0c421b6769a6a43b31da5cb35667fac5fb2db0b691`
+- booking-api run 173: `8fe806b5ca9d1bf0f6e653e130de3f3b4ef4a2af31b9bef695f6b6854e9029f1`
+- booking-api run 174: `bbcb02a73ca05d70640251a2c9f17699a37eb71bfcffacfce361071bf24c487c`
+- booking-api run 175: `7416c79548390c464352be3309d3ec4aa44b81ef1be5d86a9bbf3c279f46d779`
+- booking-api run 176: `43d678537f950c59ff1c02e6708fce641cfd40a55c55f746e155d4b770b5428f`
+- python-service run 157: `825fc93b66ceef71c77f168210069ca28172db93269bbda1ca380faba025df35`
+- python-service run 158: `0a81fd4e564a9e518a5ec69b0acea3306f693899693dd175a73f1903c1d38c70`
+- python-service run 159: `682e10eaa4d5ef1dfdc9d513b3f75356366994c7912cba105630947e3db7d362`
+- python-service run 160: `f6c4f7abae1aa576b2e3e1b55226902376e757fbe0f0556168a41a02ccb6763d`
+- python-service run 161: `c0a444fc849522c72ec7c5acb7c70079e3a594aef0b38d5d988e0828f9e88f68`
+- python-service run 162: `199a00bc2a4c65480aa976f290015a0b23072142ac65d800fa26523ed795e348`
+- python-service run 163: `6e4d2d287f8b7658693e97e3bf11551b35d103c72abb95fb3e59787adddf2587`
+- python-service run 164: `c05c42d2ebc2f66da41569c04f9425d64c4a431f4e863a7cca46a05af9a14ab3`
+- python-service run 165: `f261212a824b1360fecd69c5326db3a6becd3055b00975c2a3ef977f1ba6ed17`
+- python-service run 166: `af72aeac8937778e8266e27a161b0fb1e55ed20d6d74a6bcfc4e40297364f4e7`
+- python-service run 167: `995531cadebb07e9ce1e8bc940773442d0a8a7689f7c98461718436000b3e989`
+- python-service run 168: `114b5ed77d0b1ea6766b1a94eeb0e54ac4144f793c8db48d4689ee879f94e973`
+- python-service run 169: `fdee050f0bd9afc36370fb50acc8913350ce5e005cebb5bbb99b1e38744229ab`
+- python-service run 170: `24db720000cd0e7023691f46b653d0262c2b1a2975ec8a61129845db62c7a186`
+- python-service run 171: `d6937dfeaa70d042ec27c32ba3700ad237b526acd33a1dcfc2e48a83d8d41139`
+- python-service run 172: `e2ae0ddc3d80278ca326baffb26c451ba6c1271a66f6de22ce2f510b2773f619`
+- python-service run 173: `75d99bd87973782ae02f86a4a56d39498ebd0e4df138a73a166e2263aa20403e`
+- python-service run 174: `250040dce4c25bd9558c4da27be6622ec84908bed281efe97f958667cf525a6f`
+- python-service run 175: `1bc7ad550f34fdf64c21c6a1d32a44fe244086f2fe67c74cd268b2cd40d07367`
+- python-service run 176: `46a628607b1b0413a27a48ef2defb14cccae198a4f8718ca79373d764aaefea0`

@@ -1,5 +1,26 @@
 # Decisions
 
+## 2026-10-18 — v0.2.1: conditions, release timing, and recovery merged; findings split held back
+
+Issues #4 and #5 change the report's judgment, not its recall. K tells a finding that holds only
+under a condition to state it, and gives software already in production or distributed no "before
+release" timing; B rates unverified recovery of production data `high`. In runs 157 to 176, with
+Sonnet and five runs per arm, K removed "before release" from every production-case report, against
+4 of 10 for the control, and B put OPS-02 at high and in the first five actions in 10 of 10, against
+1. B met every fixed criterion with the defects counted by hand. K missed the defect margin, one
+fewer of 40, by one more: it lost the SKU defect once more than the control and named WELCOME10
+only as untested once. Neither text bears on how code is read, and the same skill text found the
+SKU defect in 2 of 5 runs two rounds earlier and in 4 of 5 in this control, so the margin was
+narrower than the control's own spread. The maintainer merged both, K as a recorded departure from
+the margin. The Opus validation of the release candidate measures the defects again.
+
+Issue #3's Minor findings table halved the first findings table, but two of five reports dropped
+QUAL-06, a criterion usually rated `low`, from every table and from Coverage, a loss the change can
+cause. It stays out of v0.2.1; a variant that keeps every ID visible can be tested later. Later
+rounds derive each margin from the observed spread, or name a frequency tiebreak in the criteria
+file, and cases list every criterion a correct row can use for a defect: 8 of the 18 defects the
+matcher missed here were correct rows under criteria the cases did not list.
+
 ## 2026-10-18 — Logic defects: PC merged with two checks missed by one
 
 Issue #1 found that audits with the skill missed logic defects that audits without it found. PC

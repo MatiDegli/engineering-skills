@@ -100,7 +100,8 @@ The evaluation runner's mechanisms, each with its incident, are listed under
   ([decision](decisions.md#2026-10-18--logic-defects-pc-merged-with-two-checks-missed-by-one)).
 - **Matchers need adversarial review too.** The term `500` matched inside `5000` and credited three
   control reports (*mechanism:* whole-number terms in `tools/evals.py`, with a test). In runs 157 to
-  176, 7 of 18 defects the matcher missed were correct rows under criteria the case did not list.
+  176, 8 of the 18 defects the matcher missed were correct rows under criteria the case did not
+  list, and a ninth cited another line of the same file.
   *Follow-up:* every criterion a correct row can use goes in a defect's `ids`.
 - **Margins must exceed the noise.** The same skill text found one defect in 2 of 5 runs and, two
   rounds later, in 4 of 5. A margin of one defect in 40 then reads chance as a regression.
