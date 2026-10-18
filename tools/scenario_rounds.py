@@ -28,10 +28,21 @@ import sys
 import tarfile
 import tempfile
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from tools.claude_rounds import stop_groups
+from tools.claude_rounds import (
+    init_key_source,
+    login_failed,
+    outside_paths,
+    provider_launch,
+    ran_model,
+    report_text,
+    stop_groups,
+    stream_results,
+    stream_usage,
+)
 from tools.evals import SETTINGS_OFF, git_environment
 from tools.validate_repo import ROOT
 
@@ -1251,3 +1262,160 @@ def preflight(hidden: list[Path], read_only: list[Path]) -> list[str]:
     if found.get("canary_reached") or not survived:
         problems.append("a pattern kill inside the sandbox reached a process of the host")
     return problems
+
+
+ALLOWED_TOOLS = ("Bash", "Read", "Grep", "Glob", "Edit", "Write")
+DISALLOWED_TOOLS = ("Agent", "Task", "Monitor", "WebFetch", "WebSearch", "NotebookEdit")
+DEFAULT_TOKEN_FILE = Path.home() / ".config" / "engineering-skills" / "claude-oauth-token"
+# The agent's global Git configuration: a fixed identity, and nothing from the host.
+GIT_CONFIG = "[user]\n\tname = Scenario Agent\n\temail = agent@example.invalid\n[init]\n\tdefaultBranch = main\n"
+# Variables the sandbox keeps from the host: the network may need a proxy.
+NETWORK_VARIABLES = ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "all_proxy", "no_proxy")
+PROVIDER_PREFIXES = ("ANTHROPIC_", "CLAUDE_")
+
+
+def agent_command(executable: Path, model: str, skill: Path | None, settings: str) -> list[str]:
+    """Return the agent's command; the prompt is not in it, it arrives on standard input.
+
+    Like the audit runner's, it fixes the model by its full ID and the effort, loads only user
+    settings with hooks off, and refuses MCP servers and session files. `--safe-mode` also disables
+    CLAUDE.md, skills, plugins, hooks, and MCP servers, so neither level inherits any customization.
+    Agents, monitors, and the web are disallowed.
+    """
+    return [
+        *(str(executable), "-p", "--model", model, "--effort", "high"),
+        *(["--add-dir", str(skill)] if skill else []),
+        *("--allowedTools", *ALLOWED_TOOLS, "--disallowedTools", *DISALLOWED_TOOLS),
+        *("--safe-mode", "--setting-sources", "user", "--settings", settings),
+        *("--output-format", "stream-json", "--verbose", "--no-session-persistence", "--strict-mcp-config"),
+    ]
+
+
+def agent_environment(home: Path, token: str | None, provider: dict[str, str] | None) -> dict[str, str]:
+    """Return the agent's whole environment: basics, the Git configuration, and one login.
+
+    A Claude run gets the long-lived token as CLAUDE_CODE_OAUTH_TOKEN; a provider run gets the
+    variables of `provider_launch` and no token. The agent can read either, so the runner fails a
+    run whose output contains it.
+    """
+    environment = {
+        "HOME": str(home), "USER": home.name, "LOGNAME": home.name, "PATH": SANDBOX_PATH, "LANG": "C.UTF-8",
+        "TERM": "dumb", "SHELL": "/bin/bash", "DISABLE_AUTOUPDATER": "1",
+        "GIT_CONFIG_GLOBAL": str(home / ".gitconfig"), "GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0",
+    }
+    environment |= {name: os.environ[name] for name in NETWORK_VARIABLES if name in os.environ}
+    if provider is not None:
+        environment |= {k: v for k, v in provider.items() if k.startswith(PROVIDER_PREFIXES) or k == "API_TIMEOUT_MS"}
+    elif token:
+        environment["CLAUDE_CODE_OAUTH_TOKEN"] = token
+    return environment
+
+
+def read_token(path: Path) -> str:
+    if not path.is_file() or path.stat().st_mode & 0o077:
+        raise SystemExit(
+            f"Claude runs need a long-lived token from `claude setup-token`, in a file only you can read (mode 600): {path}"
+        )
+    token = path.read_text(encoding="utf-8").strip()
+    if not token:
+        raise SystemExit(f"The token file is empty: {path}")
+    return token
+
+
+class Spending:
+    """Stop launching runs once the finished ones have used the round's budget.
+
+    The CLI reports an API-equivalent cost; on a subscription it measures quota, not money.
+    """
+
+    def __init__(self, limit: float) -> None:
+        self.limit, self.spent, self.lock = limit, 0.0, threading.Lock()
+
+    def allows(self) -> bool:
+        with self.lock:
+            return self.spent < self.limit
+
+    def add(self, cost: float) -> None:
+        with self.lock:
+            self.spent += cost
+
+
+class Stagger:
+    """Space the launches, so the first writes the prompt cache and the next ones read it."""
+
+    def __init__(self, interval: float) -> None:
+        self.interval, self.next, self.lock = interval, 0.0, threading.Lock()
+
+    def wait(self) -> None:
+        with self.lock:
+            moment = time.monotonic()
+            start = max(moment, self.next)
+            self.next = start + self.interval
+        if start > moment:
+            time.sleep(start - moment)
+
+
+def scrub(paths: list[Path], secret_values: list[str]) -> bool:
+    """Replace every secret in the files with a mark, and say whether any file held one.
+
+    Bytes that are not UTF-8 are replaced too, so that the parsers can read what the agent printed.
+    """
+    found = False
+    for path in paths:
+        if path.exists():
+            text = path.read_text(encoding="utf-8", errors="replace")
+            for value in secret_values:
+                if value and value in text:
+                    found, text = True, text.replace(value, "[REDACTED]")
+            path.write_text(text, encoding="utf-8")
+    return found
+
+
+def init_event(stream: Path) -> dict:
+    for line in stream.read_text(encoding="utf-8").splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("type") == "system" and event.get("subtype") == "init":
+            return event
+    return {}
+
+
+def run_failures(outcome: dict, results: list[dict], model: str, minutes: float) -> list[str]:
+    """List why a run does not count as finished; a failed run is still scored and reported."""
+    failures, launcher = [], outcome["launcher"]
+    if outcome["backstop"]:
+        failures.append("the runner's backstop ended a sandbox that outlived the launcher's time limit")
+    if launcher is None:
+        failures.append("launcher lost: no record from inside the sandbox")
+    elif launcher["agent"].get("error"):
+        failures.append(f"the agent did not start: {launcher['agent']['error']}")
+    elif launcher["agent"].get("timed_out"):
+        failures.append(f"time limit of {minutes:g} minutes")
+    elif launcher["agent"].get("state") == "killed":
+        failures.append(f"the agent was killed by {launcher['agent']['signal']}")
+    if not results:
+        failures.append("no result event in the stream")
+    elif login_failed(results):
+        failures.append("login failed")
+    elif not ran_model(results, model):
+        failures.append(f"model mismatch: the stream does not show {model}")
+    elif results[-1].get("is_error"):
+        failures.append(f"the agent ended with an error result: {results[-1].get('subtype')}")
+    return failures
+
+
+def provider_setup(round_dir: Path, label: str, model: str, provider: dict) -> tuple[dict, str, Path]:
+    """Prepare a provider run's configuration directory, with its own copy of the key.
+
+    The sandbox cannot see the file the key came from, so the key is copied next to the settings that
+    name it, in the one directory the run may use. `run_job` removes the copy afterwards.
+    """
+    config = round_dir / "providers" / label
+    config.mkdir(parents=True, exist_ok=True)
+    key = config / "key"
+    shutil.copyfile(provider["key"], key)
+    key.chmod(0o600)
+    environment, settings = provider_launch({"url": provider["url"], "key": key}, model, config)
+    return environment, str(settings), config

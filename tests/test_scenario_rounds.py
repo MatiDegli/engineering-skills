@@ -655,12 +655,12 @@ MINI = [
 MINI_FILES = {"one/app.py": "print(1)\n", "handoff.md": "{{now}} {{short:repo:main}}\n"}
 
 
-def write_scenario(directory, fixtures=MINI, files=MINI_FILES, expected=EXPECTED, minutes=15):
+def write_scenario(directory, fixtures=MINI, files=MINI_FILES, expected=EXPECTED, minutes=15, task="Do the task.\n"):
     """Write a valid scenario into `directory`, which a test then breaks on purpose."""
     spec = {"tier": "E1", "minutes": minutes, "task": "task.md", "fixtures": fixtures}
     write(directory / "scenario.json", json.dumps(spec))
     write(directory / "expected.json", json.dumps(expected))
-    write(directory / "task.md", "Do the task.\n")
+    write(directory / "task.md", task)
     for name, text in files.items():
         write(directory / "files" / name, text)
     return directory
@@ -1030,6 +1030,90 @@ class SandboxTests(unittest.TestCase):
         self.assertFalse(thread.is_alive())
         self.assertTrue(outcome["stopped"])
         self.assertEqual(processes_named(marker), [])
+
+
+TOKEN = "sk-ant-oat01-test-token-0123456789"
+
+
+class AgentCommandTests(unittest.TestCase):
+    def test_the_command_fixes_the_model_and_effort_and_refuses_customizations_and_agents(self):
+        command = scenario_rounds.agent_command(Path("/bin/claude"), "claude-sonnet-5-5", Path("/tmp/skill.x/s"), '{"a": 1}')
+        self.assertEqual(command[:7], ["/bin/claude", "-p", "--model", "claude-sonnet-5-5", "--effort", "high", "--add-dir"])
+        tools = command[command.index("--allowedTools") + 1: command.index("--disallowedTools")]
+        refused = command[command.index("--disallowedTools") + 1: command.index("--safe-mode")]
+        self.assertEqual(tools, ["Bash", "Read", "Grep", "Glob", "Edit", "Write"])
+        self.assertEqual(refused, ["Agent", "Task", "Monitor", "WebFetch", "WebSearch", "NotebookEdit"])
+        for flag in ("--safe-mode", "--strict-mcp-config", "--no-session-persistence", "--verbose"):
+            self.assertIn(flag, command)
+        self.assertEqual(command[command.index("--setting-sources") + 1], "user")
+        self.assertEqual(command[command.index("--settings") + 1], '{"a": 1}')
+        self.assertNotIn("--add-dir", scenario_rounds.agent_command(Path("/bin/claude"), "m", None, "{}"))
+
+    def test_the_environment_holds_one_login_and_the_git_configuration_and_nothing_else_of_the_hosts(self):
+        home = Path("/home/someone")
+        with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": "host-key", "GH_TOKEN": "gh", "HTTPS_PROXY": "http://proxy"}):
+            claude = scenario_rounds.agent_environment(home, TOKEN, None)
+            provider = scenario_rounds.agent_environment(
+                home, TOKEN, {"ANTHROPIC_BASE_URL": "https://example.invalid", "HOME": "/elsewhere", "CLAUDE_CONFIG_DIR": "/c"})
+        self.assertEqual(claude["CLAUDE_CODE_OAUTH_TOKEN"], TOKEN)
+        self.assertEqual((claude["HOME"], claude["GIT_CONFIG_GLOBAL"], claude["GIT_CONFIG_NOSYSTEM"]), ("/home/someone", "/home/someone/.gitconfig", "1"))
+        self.assertEqual(claude["HTTPS_PROXY"], "http://proxy")
+        for name in ("ANTHROPIC_API_KEY", "GH_TOKEN"):
+            self.assertNotIn(name, claude | provider)
+        self.assertNotIn("CLAUDE_CODE_OAUTH_TOKEN", provider)
+        self.assertEqual((provider["ANTHROPIC_BASE_URL"], provider["CLAUDE_CONFIG_DIR"], provider["HOME"]), ("https://example.invalid", "/c", "/home/someone"))
+
+    def test_the_token_file_must_exist_be_private_and_hold_a_token(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "token"
+            with self.assertRaisesRegex(SystemExit, "claude setup-token"):
+                scenario_rounds.read_token(path)
+            write(path, TOKEN + "\n", 0o644)
+            with self.assertRaisesRegex(SystemExit, "only you can read"):
+                scenario_rounds.read_token(path)
+            path.chmod(0o600)
+            self.assertEqual(scenario_rounds.read_token(path), TOKEN)
+            write(path, "\n", 0o600)
+            with self.assertRaisesRegex(SystemExit, "empty"):
+                scenario_rounds.read_token(path)
+
+    def test_failures_name_why_a_run_does_not_count_as_finished(self):
+        agent = {"timed_out": False, "state": "exited", "code": 0}
+        done = {"backstop": False, "launcher": {"agent": agent}}
+        result = {"type": "result", "result": "ok", "modelUsage": {"claude-a-1-0": {}}}
+        failures = lambda outcome, results, model="claude-a-1-0": scenario_rounds.run_failures(outcome, results, model, 15)
+        self.assertEqual(failures(done, [result]), [])
+        self.assertEqual(failures(done | {"launcher": None}, [result]), ["launcher lost: no record from inside the sandbox"])
+        self.assertEqual(failures(done | {"backstop": True}, [result])[0][:23], "the runner's backstop e")
+        self.assertEqual(failures(done | {"launcher": {"agent": agent | {"timed_out": True}}}, [result]), ["time limit of 15 minutes"])
+        self.assertEqual(failures(done | {"launcher": {"agent": {"error": "No such file"}}}, [result]), ["the agent did not start: No such file"])
+        self.assertEqual(failures(done | {"launcher": {"agent": {"state": "killed", "signal": "SIGKILL"}}}, [result]), ["the agent was killed by SIGKILL"])
+        self.assertEqual(failures(done, []), ["no result event in the stream"])
+        self.assertEqual(failures(done, [{**result, "result": "Failed to refresh OAuth token: x"}]), ["login failed"])
+        self.assertIn("model mismatch", failures(done, [result], model="claude-b-1-0")[0])
+        self.assertIn("error result", failures(done, [{**result, "is_error": True, "subtype": "error_max_turns"}])[0])
+
+    def test_spending_stops_new_runs_once_the_budget_is_used_and_the_stagger_spaces_launches(self):
+        spending = scenario_rounds.Spending(1.0)
+        self.assertTrue(spending.allows())
+        spending.add(0.6)
+        self.assertTrue(spending.allows())
+        spending.add(0.6)
+        self.assertFalse(spending.allows())
+        stagger = scenario_rounds.Stagger(0.2)
+        began = time.monotonic()
+        for _ in range(3):
+            stagger.wait()
+        self.assertGreaterEqual(time.monotonic() - began, 0.39)
+
+    def test_secrets_are_replaced_in_every_file_and_bytes_that_are_not_text_are_made_readable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            first, second, absent = (Path(directory) / name for name in ("a", "b", "c"))
+            first.write_bytes(b"has " + TOKEN.encode() + b" twice " + TOKEN.encode() + b" \xff\xfe")
+            second.write_text("clean\n")
+            self.assertTrue(scenario_rounds.scrub([first, second, absent], [TOKEN, ""]))
+            self.assertEqual(first.read_text(), "has [REDACTED] twice [REDACTED] ��")
+            self.assertFalse(scenario_rounds.scrub([second], [TOKEN]))
 
 
 class HandoffResumeSeedTests(unittest.TestCase):
