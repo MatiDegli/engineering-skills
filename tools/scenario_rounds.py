@@ -12,7 +12,6 @@ repository and outside /tmp, which a restart may clear.
 from __future__ import annotations
 
 import argparse
-import difflib
 import fnmatch
 import functools
 import glob
@@ -490,15 +489,27 @@ def split_sections(text: str) -> list[Unit]:
     return [Unit(" ".join(parts), "section") for parts in sections]
 
 
-def added_blocks(old: str, new: str) -> list[str]:
-    """Return the runs of lines that `new` has and `old` has not."""
-    old_lines, new_lines = old.splitlines(), new.splitlines()
-    matcher = difflib.SequenceMatcher(None, old_lines, new_lines, autojunk=False)
-    return [
-        "\n".join(new_lines[start:end])
-        for tag, _, _, start, end in matcher.get_opcodes()
-        if tag in ("insert", "replace")
-    ]
+def known_lines(snapshot: dict) -> set[str]:
+    """Return every line, stripped, of every text file that a snapshot holds."""
+    return {
+        line.strip()
+        for entry in snapshot["files"].values()
+        if isinstance(entry.get("text"), str)
+        for line in entry["text"].splitlines()
+    }
+
+
+def new_blocks(text: str, known: set[str]) -> list[str]:
+    """Return the runs of lines of `text` that are not in `known`; blank lines stay inside a run."""
+    blocks, run = [], []
+    for line in [*text.splitlines(), None]:
+        if line is not None and not (line.strip() and line.strip() in known):
+            run.append(line)
+            continue
+        if any(entry.strip() for entry in run):
+            blocks.append("\n".join(run))
+        run = []
+    return blocks
 
 
 def revision_sha(snapshot: dict, repo: str, revision: str) -> str:
@@ -537,12 +548,16 @@ def compile_near(pattern: str, before: dict) -> re.Pattern:
     return re.compile(TEMPLATE.sub(replace, pattern), re.IGNORECASE)
 
 
-def written_texts(source: list[str] | str, report: str, before: dict, after: dict) -> list[tuple[str, str]]:
+def written_texts(
+    source: list[str] | str, report: str, before: dict, after: dict, known: set[str] | None = None
+) -> list[tuple[str, str]]:
     """Return the text the agent wrote in the places a seed looks at, with where each came from.
 
-    The report counts whole. A workspace file counts only through the lines the agent added to it,
-    so words that a fixture already held never match by themselves.
+    The report counts whole. A workspace file counts only through its lines that no file of the
+    snapshot before the run contains, so words that a fixture already held never match by
+    themselves, wherever the agent moved or copied them.
     """
+    known = known_lines(before) if known is None else known
     texts = []
     for entry in [source] if isinstance(source, str) else source:
         if entry == "report":
@@ -551,9 +566,7 @@ def written_texts(source: list[str] | str, report: str, before: dict, after: dic
         for name, now in sorted(after["files"].items()):
             if not fnmatch.fnmatchcase(name, entry) or not isinstance(now.get("text"), str):
                 continue
-            was = before["files"].get(name, {}).get("text")
-            blocks = [now["text"]] if was is None else added_blocks(was, now["text"])
-            texts += [(name, block) for block in blocks]
+            texts += [(name, block) for block in new_blocks(now["text"], known)]
     return texts
 
 
@@ -564,10 +577,10 @@ def detect(seeds: list[dict], report: str, before: dict, after: dict) -> list[di
     unit, the section under a heading counts too, if it is short. A unit over `MAX_UNIT` characters
     is flagged, not matched, and only when nothing else matched. Each match says which kind it was.
     """
-    results = []
+    results, known = [], known_lines(before)
     for seed in seeds:
         patterns = [compile_near(pattern, before) for pattern in seed["near"]]
-        texts = written_texts(seed["source"], report, before, after)
+        texts = written_texts(seed["source"], report, before, after, known)
         found, flagged = [], []
         for origin, text in texts:
             for unit in split_units(text):

@@ -478,6 +478,26 @@ class DetectTests(unittest.TestCase):
         found = {i: r["found"] for i, r in self.detect(seeds, before=before, after=after).items()}
         self.assertEqual(found, {"held": False, "added": True, "created": True, "either": True, "untouched": False})
 
+    def test_fixture_text_that_reaches_a_new_path_is_not_the_agents_own(self):
+        held = "Front A is merged; remove the worktree.\n\nFront B fails its gate.\n"
+        before = snapshot({"handoff.md": held})
+        after = snapshot({
+            "handoff.md": held, "notes/copy.md": held, "notes/moved.md": "Front B fails its gate.\n",
+            "notes/own.md": held + "\nAdded: front c needs a rebase.\n",
+        })
+        seeds = [
+            seed("copy", "front b", "fails", source="notes/copy.md"),
+            seed("moved", "front b", "fails", source="notes/moved.md"),
+            seed("held", "front b", "fails", source="notes/own.md"),
+            seed("added", "front c", "rebase", source="notes/own.md"),
+        ]
+        found = {i: r["found"] for i, r in self.detect(seeds, before=before, after=after).items()}
+        self.assertEqual(found, {"copy": False, "moved": False, "held": False, "added": True})
+
+    def test_the_lines_no_file_held_come_out_in_runs_with_their_blank_lines(self):
+        self.assertEqual(scenario_rounds.new_blocks("a\nb\n\nc\nd\n  \ne", {"b", "d"}), ["a", "\nc", "  \ne"])
+        self.assertEqual(scenario_rounds.new_blocks("  b  \n\n", {"b"}), [])
+
     def test_a_rewritten_line_counts_as_added_and_a_deleted_one_does_not(self):
         before = snapshot({"note.md": "keep\nold wording about the stash\nlast\n"})
         after = snapshot({"note.md": "keep\nnew wording about the stash\nlast\n"})

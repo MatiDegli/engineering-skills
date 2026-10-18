@@ -74,8 +74,9 @@ no secret-like file names, and external URLs only inside code spans.
     headings is therefore read by section, and words from two sections never combine.
   - Units longer than 600 characters are flagged rather than matched, and only when nothing else
     matched.
-  - Only text that the agent wrote counts: the report, and the lines it added to workspace files.
-    A seed's words that a fixture already contains never match by themselves.
+  - Only text that the agent wrote counts: the report, and the lines of workspace files that no
+    file of the prepared workspace contains. A seed's words that a fixture already contains never
+    match by themselves, not even when the agent copies or moves them to another file.
   - Matching ignores case.
   - The `{{sha:...}}` templates resolve against the state recorded before the run and match any
     prefix of at least seven characters.
