@@ -13,8 +13,10 @@ is written anywhere the agent can read. It works in this order:
 5. write the record, one JSON line, to the descriptor.
 
 As PID 1 the launcher ignores the signals that a process inside the sandbox sends it, so the agent
-cannot kill it. It refuses to run as anything else: stopping "every other process" is only safe in
-a PID namespace of its own. It uses only the standard library, because nothing else is mounted.
+cannot kill it. That holds only for a signal with no handler, so it first restores the default
+disposition of the ones Python handles (SIGINT). It refuses to run as anything else: stopping
+"every other process" is only safe in a PID namespace of its own. It uses only the standard
+library, because nothing else is mounted.
 """
 
 from __future__ import annotations
@@ -158,7 +160,20 @@ def forbid_inspection() -> None:
         pass
 
 
+def restore_default_signals() -> None:
+    """Give every signal that Python handles back its default disposition.
+
+    The kernel drops a signal that a process in the namespace sends to PID 1 unless PID 1 has a
+    handler for it. Python installs one for SIGINT at start-up, so `kill -INT 1` from inside would
+    reach it and end the launcher; with the default disposition the signal is dropped.
+    """
+    for number in signal.valid_signals():
+        if callable(signal.getsignal(number)):
+            signal.signal(number, signal.SIG_DFL)
+
+
 def main() -> int:
+    restore_default_signals()
     if os.getpid() != 1:
         print("the launcher runs only as PID 1 of a sandbox", file=sys.stderr)
         return 2

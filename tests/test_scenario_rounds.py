@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
 
-from tools import claude_rounds, scenario_rounds
+from tools import claude_rounds, scenario_launcher, scenario_rounds
 from tools.evals import SETTINGS_OFF, git_environment
 
 NOW = datetime(2026, 10, 18, 12, 30, 45, tzinfo=timezone.utc)
@@ -970,9 +970,13 @@ class SandboxTests(unittest.TestCase):
         self.assertEqual(processes_named("gate front-"), [], "the sandbox leaves no process behind")
 
     def test_the_launcher_ignores_what_the_agent_sends_it(self):
-        script = "kill -9 1; kill -TERM 1; pkill -9 -f scenario-launche[r]; ls /proc/1/fd > fds.txt 2>&1; echo alive > survived.txt"
+        script = (
+            "kill -9 1; kill -TERM 1; kill -INT 1; kill -HUP 1; pkill -9 -f scenario-launche[r]; pkill -INT -f scenario-launche[r]; "
+            "ls /proc/1/fd > fds.txt 2>&1; echo alive > survived.txt"
+        )
         result = self.launch(script, [self.fixture("live", "sleeper")])
         self.assertEqual((self.workspace / "survived.txt").read_text().strip(), "alive")
+        self.assertIsNotNone(result["launcher"], "the launcher survived long enough to write its record")
         self.assertEqual(result["exit"], 0)
         self.assertEqual(result["launcher"]["fixtures"], {"live": {"state": "alive"}})
         self.assertIn("denied", (self.workspace / "fds.txt").read_text().lower())
@@ -1041,6 +1045,34 @@ class SandboxTests(unittest.TestCase):
         self.assertFalse(thread.is_alive(), "the stop ended the sandbox, long before its time limit")
         self.assertTrue(outcome["stopped"])
         self.assertEqual(processes_named(marker), [])
+
+
+class LauncherSignalTests(unittest.TestCase):
+    def run_python(self, script):
+        return subprocess.run(
+            [sys.executable, "-c", script], cwd=scenario_rounds.ROOT, capture_output=True, text=True, timeout=60,
+            env={"PATH": os.environ["PATH"]},
+        )
+
+    def test_every_signal_that_python_handles_gets_its_default_disposition_back(self):
+        result = self.run_python(
+            "import signal\n"
+            "from tools import scenario_launcher\n"
+            "handled = lambda: [s.name for s in signal.valid_signals() if callable(signal.getsignal(s))]\n"
+            "before = handled()\n"
+            "scenario_launcher.restore_default_signals()\n"
+            "print(before, handled(), signal.getsignal(signal.SIGINT) is signal.SIG_DFL)\n"
+        )
+        self.assertEqual(result.stdout.strip(), "['SIGINT'] [] True", result.stderr)
+
+    def test_main_restores_them_before_it_checks_that_it_is_pid_1(self):
+        result = self.run_python(
+            "import signal\n"
+            "from tools import scenario_launcher\n"
+            "code = scenario_launcher.main()\n"
+            "print(code, signal.getsignal(signal.SIGINT) is signal.SIG_DFL)\n"
+        )
+        self.assertEqual(result.stdout.strip(), "2 True", result.stderr)
 
 
 FAKE_CLAUDE = r'''#!PYTHON
