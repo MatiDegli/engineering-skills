@@ -315,7 +315,8 @@ def plan(round_dir: Path, runs: list[tuple], cases: list[str], revision: str) ->
         level = rest[1] if len(rest) > 1 and rest[1] else "full"
         if level not in PROMPTS:
             raise SystemExit(f"unknown level {level!r}; use one of {', '.join(PROMPTS)}")
-        commit = repository_git("rev-parse", "--short", wanted).decode().strip()
+        # A tag names its commit: an annotated tag is an object of its own.
+        commit = repository_git("rev-parse", "--short", f"{wanted}^{{commit}}").decode().strip()
         specs.append((number, model, commit, level))
     for name in ("streams", "reports"):
         paths[name].mkdir(parents=True, exist_ok=True)

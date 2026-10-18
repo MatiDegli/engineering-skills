@@ -208,6 +208,24 @@ class RoundTests(unittest.TestCase):
         self.rounds.remove(round_dir)
         self.assertFalse(any(path.exists() for path in exports))
 
+    def test_a_tag_records_the_commit_it_names(self):
+        identity = {"GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.invalid"}
+
+        def git(*arguments):
+            return subprocess.run(
+                ["git", *arguments], cwd=claude_rounds.ROOT, env=git_environment(**identity),
+                capture_output=True, check=True, text=True,
+            ).stdout.strip()
+
+        git("tag", "-a", "v1", "-m", "Annotated, so the tag is an object of its own")
+        round_dir = self.root / "round"
+        runs = claude_rounds.parse_runs(["1=claude-test-1-0@v1"])
+        with mock.patch("builtins.print"):
+            data = claude_rounds.plan(round_dir, runs, [str(self.case)], "HEAD")
+        self.rounds.append(round_dir)
+        self.assertEqual(data["jobs"][0]["revision"], git("rev-parse", "--short", "HEAD"))
+        self.assertEqual(list(data["skills"]), [git("rev-parse", "--short", "HEAD")])
+
     def test_a_round_stops_launching_audits_at_its_budget(self):
         round_dir = self.plan("round", ("1", "claude-test-1-0"), ("2", "claude-test-1-0"))
         with mock.patch("builtins.print"):
