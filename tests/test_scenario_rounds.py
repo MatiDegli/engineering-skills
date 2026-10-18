@@ -12,6 +12,8 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
+import time
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
@@ -633,6 +635,131 @@ class ScoreTests(WorkspaceTestCase):
         (self.workspace / "notes.md").write_text("notes\n\nThis was added by the agent.\n")
         result = self.score(report="front-b fails its gate")
         self.assertEqual([d["found"] for d in result["detect"]], [True, True])
+
+
+SANDBOX_PROBLEM = scenario_rounds.sandbox_problem()
+
+
+def processes_named(marker):
+    """List the host processes whose command line holds `marker`, read from /proc."""
+    found = []
+    for entry in Path("/proc").iterdir():
+        if entry.name.isdigit() and int(entry.name) != os.getpid():
+            try:
+                if marker.encode() in (entry / "cmdline").read_bytes():
+                    found.append(int(entry.name))
+            except OSError:
+                pass
+    return found
+
+
+@unittest.skipIf(SANDBOX_PROBLEM, f"bwrap cannot create a sandbox here: {SANDBOX_PROBLEM}")
+class SandboxTests(unittest.TestCase):
+    """Run commands in the real sandbox with the real launcher, and start no agent."""
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        self.workspace = self.root / "workspace"
+        self.workspace.mkdir()
+        self.sandboxes = scenario_rounds.Sandboxes()
+
+    def fixture(self, name, label, seconds=600):
+        return {"name": name, "label": label, "seconds": seconds}
+
+    def launch(self, agent, fixtures=(), limit=30, prompt="", read_only=()):
+        command = agent if isinstance(agent, list) else ["/bin/sh", "-c", agent]
+        payload = {
+            "files": {}, "fixtures": list(fixtures), "command": command, "cwd": str(self.workspace),
+            "environment": {"PATH": scenario_rounds.SANDBOX_PATH, "HOME": str(Path.home())},
+            "prompt": prompt, "limit": limit,
+        }
+        arguments = scenario_rounds.sandbox_arguments(
+            Path.home(), self.workspace, list(read_only), [self.workspace], [sys.executable, "-I", scenario_rounds.LAUNCHER_INSIDE]
+        )
+        return scenario_rounds.launch(
+            arguments, payload, self.root / "stream.txt", self.root / "stderr.txt", self.root / "status.json", limit, self.sandboxes,
+        )
+
+    def test_a_pattern_kill_inside_ends_only_the_fixture_it_names_and_no_host_process(self):
+        marker = f"scenario-canary-{os.getpid()}"
+        canary = subprocess.Popen([marker, "300"], executable="/bin/sleep")
+        self.addCleanup(lambda: (canary.kill(), canary.wait()))
+        fixtures = [self.fixture("orphan", "sh wait.sh gate front-a"), self.fixture("live", "python3 -m unittest gate front-c")]
+        result = self.launch(f"pkill -f 'gate fron[t]-a'; pkill -f scenario-canar[y]-{os.getpid()}; echo $? > status.txt", fixtures)
+        self.assertEqual(result["exit"], 0)
+        self.assertEqual(result["launcher"]["fixtures"], {"orphan": {"state": "killed", "signal": "SIGTERM"}, "live": {"state": "alive"}})
+        self.assertEqual((self.workspace / "status.txt").read_text().strip(), "1", "pkill found nothing of the host's")
+        self.assertIsNone(canary.poll())
+        self.assertEqual(processes_named("gate front-"), [], "the sandbox leaves no process behind")
+
+    def test_the_launcher_ignores_what_the_agent_sends_it(self):
+        script = "kill -9 1; kill -TERM 1; pkill -9 -f scenario-launche[r]; ls /proc/1/fd > fds.txt 2>&1; echo alive > survived.txt"
+        result = self.launch(script, [self.fixture("live", "sleeper")])
+        self.assertEqual((self.workspace / "survived.txt").read_text().strip(), "alive")
+        self.assertEqual(result["exit"], 0)
+        self.assertEqual(result["launcher"]["fixtures"], {"live": {"state": "alive"}})
+        self.assertIn("denied", (self.workspace / "fds.txt").read_text().lower())
+
+    def test_a_time_limit_ends_the_agent_and_the_record_says_so(self):
+        result = self.launch("sleep 600", [self.fixture("live", "sleeper")], limit=1)
+        record = result["launcher"]
+        self.assertTrue(record["agent"]["timed_out"])
+        self.assertEqual(record["agent"]["signal"], "SIGTERM")
+        self.assertLess(record["seconds"], 10)
+        self.assertEqual(record["fixtures"], {"live": {"state": "alive"}})
+        self.assertFalse(result["backstop"])
+
+    def test_what_the_agent_left_running_is_stopped_before_the_fixtures_are_read(self):
+        script = "(sleep 1; pkill -f slee[p]er) > /dev/null 2>&1 & exit 0"
+        result = self.launch(script, [self.fixture("live", "sleeper")])
+        record = result["launcher"]
+        self.assertEqual(record["fixtures"], {"live": {"state": "alive"}})
+        self.assertGreaterEqual(record["left_running"], 1)
+
+    def test_the_prompt_arrives_on_standard_input_and_not_in_the_command_line_or_the_launcher(self):
+        script = "cat > prompt.txt; tr '\\0' ' ' < /proc/$$/cmdline > argv.txt; tr '\\0' ' ' < /proc/1/cmdline > launcher.txt"
+        self.launch(script, prompt="the secret task words\n")
+        self.assertEqual((self.workspace / "prompt.txt").read_text(), "the secret task words\n")
+        self.assertNotIn("secret", (self.workspace / "argv.txt").read_text())
+        self.assertNotIn("secret", (self.workspace / "launcher.txt").read_text())
+
+    def test_the_repository_the_oracle_the_home_directory_and_the_host_channels_are_invisible(self):
+        script = (
+            f"ls -A $HOME > home.txt; ls -A /mnt > mnt.txt; ls -A /run > run.txt; ls -A /tmp > tmp.txt; "
+            f"test -e {scenario_rounds.ROOT} && echo repo > visible.txt; test -e {scenario_rounds.SCENARIOS} && echo oracle >> visible.txt; "
+            f"test -e /var/run/docker.sock && echo docker >> visible.txt; test -e /run/WSL && echo interop >> visible.txt; "
+            f"echo \"x$WSL_INTEROP$DOCKER_HOST\" > env.txt; touch /usr/blocked 2> blocked.txt; touch /tmp/scenario-private-{os.getpid()}; true"
+        )
+        self.launch(script)
+        seen = lambda name: (self.workspace / name).read_text().split()
+        self.assertFalse((self.workspace / "visible.txt").exists())
+        self.assertEqual(seen("home.txt"), [])
+        self.assertEqual([name for name in seen("mnt.txt") if len(name) == 1], [])
+        self.assertEqual([name for name in seen("run.txt") if name not in ("scenario-launcher.py",)], [])
+        if self.root.parent == Path("/tmp"):
+            self.assertEqual(seen("tmp.txt"), [self.root.name], "only the workspace's own path is bound back into /tmp")
+        self.assertEqual((self.workspace / "env.txt").read_text().strip(), "x")
+        self.assertIn("Read-only", (self.workspace / "blocked.txt").read_text())
+        self.assertFalse(Path(f"/tmp/scenario-private-{os.getpid()}").exists())
+
+    def test_stopping_the_sandboxes_ends_the_agent_and_every_fixture(self):
+        marker = f"scenario-stop-{os.getpid()}"
+        agent = [sys.executable, "-c", "import time; time.sleep(600)", marker]
+        outcome = {}
+        thread = threading.Thread(target=lambda: outcome.update(self.launch(agent, [self.fixture("live", f"{marker}-fixture")])))
+        thread.start()
+        for _ in range(100):
+            if len(processes_named(marker)) >= 2:
+                break
+            time.sleep(0.1)
+        self.assertGreaterEqual(len(processes_named(marker)), 2)
+        self.assertEqual(self.sandboxes.stop(), 1)
+        thread.join(timeout=30)
+        self.assertFalse(thread.is_alive())
+        self.assertTrue(outcome["stopped"])
+        self.assertEqual(processes_named(marker), [])
 
 
 class HandoffResumeSeedTests(unittest.TestCase):

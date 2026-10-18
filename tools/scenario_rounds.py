@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import difflib
 import fnmatch
+import functools
 import glob
 import hashlib
 import json
@@ -21,9 +22,11 @@ import re
 import shutil
 import stat
 import subprocess
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from tools.claude_rounds import stop_groups
 from tools.evals import SETTINGS_OFF, git_environment
 from tools.validate_repo import ROOT
 
@@ -718,3 +721,134 @@ def score_run(expected: dict, before: dict, after: dict, launcher: dict | None, 
         ],
         "loops": loops_to_check(calls),
     }
+
+
+LAUNCHER = Path(__file__).with_name("scenario_launcher.py")
+LAUNCHER_INSIDE = "/run/scenario-launcher.py"
+# Directories that the sandbox replaces with empty private ones; only what is bound back is there.
+MASKED = ("/tmp", "/run", "/mnt", "/var/tmp", "/dev/shm")
+SANDBOX_PATH = "/usr/local/bin:/usr/bin:/bin"
+# The runner's backstop waits this long beyond the time limit and the launcher's own grace.
+LAUNCHER_GRACE = 20
+BACKSTOP_MARGIN = 60
+
+
+def sandbox_arguments(
+    home: Path, directory: Path, read_only: list[Path], read_write: list[Path], command: list[str]
+) -> list[str]:
+    """Return the command that runs `command` in a sandbox built from an allow-list.
+
+    The root file system is read-only. The home directory and the directories in `MASKED` are
+    empty private file systems, so the repository, the oracle, other sessions' files, the Docker
+    socket, and the Windows drives are absent rather than read-only. Only the paths passed here are
+    bound back, at their own paths, and the launcher is bound under /run. The sandbox has its own
+    PID, IPC, and UTS namespaces, the command is its PID 1, and the network stays open because the
+    agent must reach the model. `setpriv` ends the sandbox if the runner's thread dies.
+    """
+    arguments = [
+        *("setpriv", "--pdeathsig", "KILL", "bwrap"),
+        *("--unshare-pid", "--unshare-ipc", "--unshare-uts", "--unshare-cgroup-try"),
+        *("--as-pid-1", "--die-with-parent", "--new-session", "--clearenv"),
+        *("--ro-bind", "/", "/", "--proc", "/proc", "--dev", "/dev"),
+    ]
+    for masked in (*MASKED, str(home)):
+        arguments += ["--tmpfs", masked]
+    arguments += ["--ro-bind", str(LAUNCHER), LAUNCHER_INSIDE]
+    resolver = Path(os.path.realpath("/etc/resolv.conf"))
+    if resolver.is_file() and any(resolver.is_relative_to(masked) for masked in (*MASKED, str(home))):
+        read_only = [*read_only, resolver]
+    for path in read_only:
+        arguments += ["--ro-bind", str(path), str(path)]
+    for path in read_write:
+        arguments += ["--bind", str(path), str(path)]
+    environment = {"HOME": str(home), "PATH": SANDBOX_PATH, "LANG": "C.UTF-8"}
+    for name, value in environment.items():
+        arguments += ["--setenv", name, value]
+    return [*arguments, "--chdir", str(directory), *command]
+
+
+@functools.cache
+def sandbox_problem() -> str | None:
+    """Return why a sandbox cannot start on this machine, or None when it can."""
+    for tool in ("bwrap", "setpriv"):
+        if not shutil.which(tool):
+            return f"{tool} is not installed"
+    probe = sandbox_arguments(Path.home(), Path("/"), [], [], [shutil.which("true") or "/usr/bin/true"])
+    result = subprocess.run(probe, capture_output=True, text=True, timeout=60, env={"PATH": SANDBOX_PATH})
+    lines = result.stderr.strip().splitlines()
+    return None if result.returncode == 0 else (lines[-1] if lines else f"bwrap exited {result.returncode}")
+
+
+class Sandboxes:
+    """The sandboxes that run now, so that a stop signal can end their process groups.
+
+    Once `stopped` is set, none starts.
+    """
+
+    def __init__(self) -> None:
+        self.processes: set[subprocess.Popen] = set()
+        self.stopped, self.lock = threading.Event(), threading.Lock()
+
+    def stop(self) -> int:
+        """Refuse new sandboxes, end the running ones, and return how many were running."""
+        self.stopped.set()
+        with self.lock:
+            live = [process for process in self.processes if process.poll() is None]
+        stop_groups(live)
+        return len(live)
+
+
+def launch(
+    arguments: list[str],
+    payload: dict,
+    stream: Path,
+    stderr: Path,
+    status: Path,
+    limit: float,
+    sandboxes: Sandboxes,
+) -> dict:
+    """Run one sandbox and return how it ended.
+
+    The payload goes to the launcher on standard input, never in the command line or the
+    environment, where another process could read it. The launcher answers on a descriptor that
+    only it holds. The runner waits a little longer than the time limit, which the launcher
+    enforces itself, and then ends the sandbox's process group.
+    """
+    descriptor = os.open(status, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    result = {"exit": None, "backstop": False, "stopped": False, "launcher": None}
+    try:
+        with stream.open("wb") as out, stderr.open("wb") as err, sandboxes.lock:
+            if sandboxes.stopped.is_set():
+                return result | {"stopped": True}
+            process = subprocess.Popen(
+                arguments,
+                stdin=subprocess.PIPE,
+                stdout=out,
+                stderr=err,
+                pass_fds=(descriptor,),
+                start_new_session=True,
+                env={"PATH": SANDBOX_PATH},
+            )
+            sandboxes.processes.add(process)
+        try:
+            process.stdin.write(json.dumps({**payload, "status_fd": descriptor}).encode("utf-8"))
+            process.stdin.close()
+        except BrokenPipeError:
+            pass
+        try:
+            result["exit"] = process.wait(timeout=payload["limit"] + LAUNCHER_GRACE + BACKSTOP_MARGIN)
+        except subprocess.TimeoutExpired:
+            stop_groups([process])
+            result |= {"exit": process.returncode, "backstop": True}
+        finally:
+            with sandboxes.lock:
+                sandboxes.processes.discard(process)
+    finally:
+        os.close(descriptor)
+    result["stopped"] = sandboxes.stopped.is_set()
+    lines = status.read_text(encoding="utf-8").splitlines()
+    try:
+        result["launcher"] = json.loads(lines[-1]) if lines else None
+    except json.JSONDecodeError:
+        pass
+    return result
