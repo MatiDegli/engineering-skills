@@ -11,6 +11,8 @@ repository and outside /tmp, which a restart may clear.
 
 from __future__ import annotations
 
+import difflib
+import fnmatch
 import hashlib
 import json
 import os
@@ -351,3 +353,122 @@ def take_snapshot(workspace: Path, manifest: dict, before: dict | None = None) -
             repo["added"] = commits_added(directory, before["repos"][relative], repo)
         snapshot["repos"][relative] = repo
     return snapshot
+
+
+LIST_ITEM = re.compile(r"\s*(?:[-*+]|\d+[.)])\s+")
+TABLE_RULE = re.compile(r"[|\s:-]+")
+# A longer unit is flagged for a person to read, not matched.
+MAX_UNIT = 600
+MIN_SHA = 7
+
+
+def split_units(text: str) -> list[str]:
+    """Split text into paragraphs, list items with their continuation lines, and table rows."""
+    units: list[str] = []
+    lines: list[str] = []
+
+    def close() -> None:
+        if lines:
+            units.append(" ".join(lines))
+            lines.clear()
+
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            close()
+        elif line.startswith("|"):
+            close()
+            if not TABLE_RULE.fullmatch(line):
+                units.append(line)
+        elif line.startswith("#"):
+            close()
+            units.append(line)
+        else:
+            if LIST_ITEM.match(raw):
+                close()
+            lines.append(line)
+    close()
+    return units
+
+
+def added_blocks(old: str, new: str) -> list[str]:
+    """Return the runs of lines that `new` has and `old` has not."""
+    old_lines, new_lines = old.splitlines(), new.splitlines()
+    matcher = difflib.SequenceMatcher(None, old_lines, new_lines, autojunk=False)
+    return [
+        "\n".join(new_lines[start:end])
+        for tag, _, _, start, end in matcher.get_opcodes()
+        if tag in ("insert", "replace")
+    ]
+
+
+def revision_sha(snapshot: dict, repo: str, revision: str) -> str:
+    """Resolve a branch, tag, remote branch, `HEAD`, or full SHA against a recorded snapshot."""
+    state = snapshot["repos"].get(repo)
+    if state is None:
+        raise SystemExit(f"the snapshot has no repository {repo!r}")
+    if revision == "HEAD":
+        head = state["head"]
+        revision = head.removeprefix("ref: ") if head.startswith("ref: ") else head
+    if re.fullmatch(r"[0-9a-f]{40}", revision):
+        return revision
+    for prefix in ("", "refs/heads/", "refs/tags/", "refs/remotes/", "refs/remotes/origin/"):
+        if sha := state["refs"].get(prefix + revision):
+            return sha
+    raise SystemExit(f"cannot resolve {revision!r} in {repo!r} from the recorded refs")
+
+
+def sha_pattern(sha: str) -> str:
+    """Match the SHA or any prefix of it from seven characters on."""
+    tail = ""
+    for character in reversed(sha[MIN_SHA:]):
+        tail = f"(?:{character}{tail})?"
+    return rf"\b{sha[:MIN_SHA]}{tail}\b"
+
+
+def compile_near(pattern: str, before: dict) -> re.Pattern:
+    """Compile a `near` expression; its sha and short templates resolve against the snapshot before the run."""
+
+    def replace(match: re.Match) -> str:
+        found = REVISION_TEMPLATE.fullmatch(match.group(1).strip())
+        if not found:
+            raise SystemExit(f"unknown template {match.group(0)} in {pattern!r}")
+        return sha_pattern(revision_sha(before, found[2], found[3]))
+
+    return re.compile(TEMPLATE.sub(replace, pattern), re.IGNORECASE)
+
+
+def written_texts(source: list[str] | str, report: str, before: dict, after: dict) -> list[tuple[str, str]]:
+    """Return the text the agent wrote in the places a seed looks at, with where each came from.
+
+    The report counts whole. A workspace file counts only through the lines the agent added to it,
+    so words that a fixture already held never match by themselves.
+    """
+    texts = []
+    for entry in [source] if isinstance(source, str) else source:
+        if entry == "report":
+            texts.append(("report", report))
+            continue
+        for name, now in sorted(after["files"].items()):
+            if not fnmatch.fnmatchcase(name, entry) or not isinstance(now.get("text"), str):
+                continue
+            was = before["files"].get(name, {}).get("text")
+            blocks = [now["text"]] if was is None else added_blocks(was, now["text"])
+            texts += [(name, block) for block in blocks]
+    return texts
+
+
+def detect(seeds: list[dict], report: str, before: dict, after: dict) -> list[dict]:
+    """Say which seeds the agent's text names: all `near` patterns must match inside one unit."""
+    results = []
+    for seed in seeds:
+        patterns = [compile_near(pattern, before) for pattern in seed["near"]]
+        found, flagged = [], []
+        for origin, text in written_texts(seed["source"], report, before, after):
+            for unit in split_units(text):
+                if all(pattern.search(unit) for pattern in patterns):
+                    (flagged if len(unit) > MAX_UNIT else found).append({"origin": origin, "unit": unit})
+        results.append({"id": seed["id"], "kind": seed["kind"], "found": bool(found), "units": found[:3]})
+        if flagged:
+            results[-1]["flagged"] = flagged[:3]
+    return results

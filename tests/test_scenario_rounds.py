@@ -295,6 +295,105 @@ class SnapshotTests(TemporaryTestCase):
         self.assertFalse([name for name in files if name.startswith("linked-dir/")])
 
 
+SHA = "0123456789abcdef0123456789abcdef01234567"
+
+
+def snapshot(files=None, refs=None):
+    """Build a snapshot by hand: `files` maps a path to its text."""
+    entries = {name: {"sha256": name, "text": text} for name, text in (files or {}).items()}
+    repo = {"head": "ref: refs/heads/main", "refs": refs or {}, "stash": [], "worktrees": []}
+    return {"files": entries, "repos": {"repo": repo}, "problems": []}
+
+
+def seed(identifier, *near, source="report", kind="seeded"):
+    return {"id": identifier, "kind": kind, "source": source, "near": list(near)}
+
+
+class DetectTests(unittest.TestCase):
+    def detect(self, seeds, report="", before=None, after=None):
+        before = before or snapshot()
+        return {r["id"]: r for r in scenario_rounds.detect(seeds, report, before, after or before)}
+
+    def test_text_splits_into_paragraphs_list_items_with_continuations_and_table_rows(self):
+        text = (
+            "# Heading\nFirst line\nof one paragraph.\n\n- item one\n  continues here\n- item two\n"
+            "1. numbered\n\n| a | b |\n| --- | :-: |\n| row | two |\nafter the table\n"
+        )
+        self.assertEqual(scenario_rounds.split_units(text), [
+            "# Heading", "First line of one paragraph.", "- item one continues here", "- item two",
+            "1. numbered", "| a | b |", "| row | two |", "after the table",
+        ])
+
+    def test_every_pattern_must_match_inside_one_unit_and_case_is_ignored(self):
+        report = "Front C is READY.\n\nThe lockfile conflicts with main.\n\n- front c: the LOCKFILE moved\n"
+        found = self.detect([seed("one", r"front[- ]?c\b", "lock ?file|conflict")], report)["one"]
+        self.assertEqual([u["unit"] for u in found["units"]], ["- front c: the LOCKFILE moved"])
+        apart = self.detect([seed("one", r"ready", "lockfile")], report)["one"]
+        self.assertFalse(apart["found"])
+
+    def test_a_table_row_is_a_unit_so_one_row_cannot_borrow_from_another(self):
+        report = "| front-b | gate failed |\n| front-c | ready |\n"
+        self.assertTrue(self.detect([seed("a", "front-b", "fail")], report)["a"]["found"])
+        self.assertFalse(self.detect([seed("a", "front-c", "fail")], report)["a"]["found"])
+
+    def test_a_unit_longer_than_the_cap_is_flagged_instead_of_matched(self):
+        report = "front-b fails " + "x " * 400
+        result = self.detect([seed("a", "front-b", "fail")], report)["a"]
+        self.assertFalse(result["found"])
+        self.assertEqual(len(result["flagged"]), 1)
+        self.assertEqual(result["flagged"][0]["origin"], "report")
+
+    def test_revision_templates_match_the_sha_or_any_prefix_of_seven_characters_or_more(self):
+        before = snapshot(refs={"refs/heads/front-b": SHA})
+        pattern = r"{{sha:repo:front-b}}"
+        for text, expected in ((SHA, True), (SHA[:12], True), (SHA[:7], True), (SHA[:6], False),
+                               (SHA[:7] + "ffff", False), ("x" + SHA[:8], False)):
+            with self.subTest(text=text):
+                found = self.detect([seed("a", pattern, "broken")], f"commit {text} is broken", before)["a"]["found"]
+                self.assertEqual(found, expected)
+
+    def test_a_template_must_name_a_known_repository_and_revision(self):
+        with self.assertRaises(SystemExit):
+            self.detect([seed("a", "{{sha:other:main}}")])
+        with self.assertRaises(SystemExit):
+            self.detect([seed("a", "{{short:repo:nothing}}")])
+
+    def test_head_and_tags_resolve_from_the_recorded_refs(self):
+        before = snapshot(refs={"refs/heads/main": SHA, "refs/tags/v1": "f" * 40})
+        self.assertEqual(scenario_rounds.revision_sha(before, "repo", "HEAD"), SHA)
+        self.assertEqual(scenario_rounds.revision_sha(before, "repo", "v1"), "f" * 40)
+        self.assertEqual(scenario_rounds.revision_sha(before, "repo", "a" * 40), "a" * 40)
+
+    def test_words_that_a_fixture_already_held_never_match_but_the_lines_an_agent_added_do(self):
+        before = snapshot({"handoff.md": "Front A is merged; remove the worktree.\n", "plan.md": "old plan\n"})
+        after = snapshot({
+            "handoff.md": "Front A is merged; remove the worktree.\n\nAdded: front b fails its gate.\n",
+            "plan.md": "old plan\n",
+            "briefs/one.md": "front c needs a rebase\n",
+        })
+        seeds = [
+            seed("held", "front a", "worktree", source="handoff.md"),
+            seed("added", "front b", "fails", source="handoff.md"),
+            seed("created", "front c", "rebase", source="briefs/*.md"),
+            seed("either", "front b|front c", "fails|rebase", source=["report", "handoff.md", "briefs/*"]),
+            seed("untouched", "old plan", source="plan.md"),
+        ]
+        found = {i: r["found"] for i, r in self.detect(seeds, before=before, after=after).items()}
+        self.assertEqual(found, {"held": False, "added": True, "created": True, "either": True, "untouched": False})
+
+    def test_a_rewritten_line_counts_as_added_and_a_deleted_one_does_not(self):
+        before = snapshot({"note.md": "keep\nold wording about the stash\nlast\n"})
+        after = snapshot({"note.md": "keep\nnew wording about the stash\nlast\n"})
+        seeds = [seed("new", "new wording", source="note.md"), seed("old", "old wording", source="note.md")]
+        found = {i: r["found"] for i, r in self.detect(seeds, before=before, after=after).items()}
+        self.assertEqual(found, {"new": True, "old": False})
+
+    def test_a_null_run_detects_nothing(self):
+        seeds = [seed("a", "front", "ready"), seed("b", "x", source="*.md", kind="off-list")]
+        results = self.detect(seeds, report="", before=snapshot({"handoff.md": "front is ready\n"}))
+        self.assertEqual([r["found"] for r in results.values()], [False, False])
+
+
 class HandoffResumeSeedTests(unittest.TestCase):
     """Prove that every problem the handoff-resume scenario claims to seed is really there."""
 
