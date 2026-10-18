@@ -1,0 +1,12 @@
+{
+  "tier": "E2",
+  "minutes": 15,
+  "task": "task.md",
+  "fixtures": [
+    {"kind": "repo", "path": "repo", "commits": [
+      {"files": "base", "message": "feat: list tasks from a CSV file", "minutes_ago": 3000},
+      {"files": "project", "message": "chore: add the license, the decisions, the debt register, and tools", "minutes_ago": 2000}
+    ]},
+    {"kind": "file", "path": "request.md", "source": "top/request.md"}
+  ]
+}

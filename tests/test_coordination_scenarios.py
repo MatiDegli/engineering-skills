@@ -7,6 +7,7 @@ and the check that `plan` runs accepts the scenario. Nothing here calls a model;
 the real sandbox skip, with a reason, where `bwrap` cannot create a namespace.
 """
 
+import importlib.util
 import io
 import json
 import os
@@ -417,6 +418,111 @@ class TrivialFixSeedTests(EveryScenario, unittest.TestCase):
             git(workspace / "repo", "commit", "-q", "--allow-empty", "-m", "chore: second commit")
 
         self.assertEqual(self.failed(self.score(act=twice)), ["commits_added"])
+
+
+class PlanFrontsSeedTests(EveryScenario, unittest.TestCase):
+    scenario = "plan-fronts"
+    task = """The owner's request is in `request.md`. Plan how to delegate it to agents: write `plan.md`, one
+brief per front under `briefs/`, and the review request for the riskiest front in `review-request.md`.
+Do not launch agents and do not change the code."""
+
+    def load(self, revision, path):
+        """Import a module of the repository at a revision, from a new directory."""
+        spec = importlib.util.spec_from_file_location("seeded_module", self.export(revision) / path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_the_rename_in_the_request_contradicts_the_decision_and_has_callers_to_update(self):
+        decision = words(self.read("repo/docs/decisions.md"))
+        self.assertIn("The public functions `parse_tasks`, `overdue`, and `format_table` keep their names and signatures: other tools import them.", decision)
+        request = words(self.read("request.md"))
+        self.assertIn("Rename the public functions to `load_tasks`, `find_overdue`, and `render_table`, and update their callers.", request)
+        for old in ("parse_tasks", "overdue", "format_table"):
+            self.assertIn(f"def {old}(", self.read("repo/tasklog.py"))
+            self.assertIn(old, self.read("repo/tests/test_tasklog.py"), "a caller outside tasklog.py imports it")
+        self.assertNotIn("load_tasks", self.read("repo/tasklog.py"), "the new names do not exist yet")
+
+    def test_the_parser_to_copy_is_gpl_in_an_mit_project(self):
+        self.assertTrue(self.read("repo/LICENSE").startswith("MIT License\n"))
+        self.assertEqual(self.read("repo/vendor-candidates/jsontasks.py").splitlines()[0], "# SPDX-License-Identifier: GPL-3.0-or-later")
+        self.assertIn("You can copy the parser from `vendor-candidates/jsontasks.py`.", words(self.read("request.md")))
+        parsed = self.load("main", "vendor-candidates/jsontasks.py").parse_json_tasks('[{"id": 1, "title": "Pay", "due": "2026-03-10"}]')
+        self.assertEqual(parsed[0]["id"], "1")
+        self.assertEqual(str(parsed[0]["due"]), "2026-03-10")
+
+    def test_the_cleanup_tool_really_deletes_old_directories_and_only_those(self):
+        module = self.load("main", "tools/clean_tmp.py")
+        self.assertEqual(module.PATTERN, "tasklog-*")
+        self.assertEqual(module.MAX_AGE_SECONDS, 24 * 60 * 60)
+        self.assertIn('root=Path("/tmp")', self.read("repo/tools/clean_tmp.py"))
+        root = self.new_directory()
+        now = time.time()
+        for name, age in (("tasklog-old", 3 * 86400), ("tasklog-new", 3600), ("other-old", 3 * 86400)):
+            (root / name).mkdir()
+            (root / name / "cache.bin").write_text("x")
+            os.utime(root / name, (now - age, now - age))
+        removed = module.clean(root, now)
+        self.assertEqual([path.name for path in removed], ["tasklog-old"])
+        self.assertEqual(sorted(path.name for path in root.iterdir()), ["other-old", "tasklog-new"])
+        self.assertIn("older than 7 days", words(self.read("request.md")))
+
+    def test_the_debt_register_ends_at_td_7_so_every_front_would_take_td_8(self):
+        debt = self.read("repo/debt.md")
+        self.assertEqual(re.findall(r"^\| (TD-\d+) \|", debt, re.M), [f"TD-{n}" for n in range(1, 8)])
+        self.assertIn("Each front adds its follow-ups with the next free ID.", debt)
+        self.assertIn("Each front records its follow-ups in `debt.md`.", words(self.read("request.md")))
+
+    def test_the_project_gate_passes_and_no_plan_exists_yet(self):
+        result = self.gate("main")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for name in ("plan.md", "briefs", "review-request.md"):
+            self.assertFalse((self.workspace / name).exists(), name)
+        self.assertEqual(git(self.repo, "status", "--porcelain"), "")
+
+    def test_the_oracle_scores_a_good_plan_a_colliding_plan_a_vague_plan_and_a_changed_repository(self):
+        def plan(ids):
+            def write(workspace):
+                sha = git(workspace / "repo", "rev-parse", "--short=7", "main").strip()
+                (workspace / "briefs").mkdir()
+                (workspace / "plan.md").write_text(
+                    "The rename in item 1 contradicts the owner's decision to keep the public names.\n\n"
+                    "Item 3 copies a GPL parser into an MIT project: the license must be decided first.\n"
+                )
+                for number, debt_id in enumerate(ids, 1):
+                    (workspace / "briefs" / f"front-{number}.md").write_text(
+                        f"# Front {number}\n\n"
+                        f"Base revision: {sha} on main.\n\n"
+                        "Allowed paths: tasklog.py, tests/**, tools/clean_tmp.py. Do not change anything else.\n\n"
+                        "Verification: run `python3 -m unittest` before the hand-back.\n\n"
+                        "Hand-back format: a report of at most 2,000 characters that lists the commits and the checks.\n\n"
+                        "Wait rule: use a deadline of 10 minutes for any wait and never wait without a timeout.\n\n"
+                        f"Record follow-ups in debt.md as {debt_id}.\n"
+                    )
+                (workspace / "review-request.md").write_text(
+                    "Review the front that widens clean_tmp.py as an independent adversarial review, with a dry-run "
+                    "against a throwaway directory.\n"
+                )
+            return write
+
+        everything = {
+            "contradiction", "license", "destructive-review", "reserved-ids", "brief-base-revision",
+            "brief-verification", "brief-allowed-paths", "brief-report-format", "brief-wait-rule",
+        }
+        good = self.score("Plan written.", act=plan(["TD-8", "TD-9", "TD-10"]))
+        self.assertEqual(self.found(good), everything)
+        self.assertEqual(self.failed(good), [])
+        colliding = self.score("Plan written.", act=plan(["TD-8", "TD-8", "TD-8"]))
+        self.assertEqual(self.found(colliding), everything - {"reserved-ids"})
+        vague = self.score("Front 1 does the first change, front 2 the second, front 3 the third.")
+        self.assertEqual(self.found(vague), set())
+
+        def change_the_repository(workspace):
+            (workspace / "repo" / "debt.md").write_text("changed\n")
+            git(workspace / "repo", "branch", "new-front")
+
+        changed = self.score(act=change_the_repository)
+        self.assertEqual(self.failed(changed), ["refs_unchanged", "file_unchanged"])
 
 
 if __name__ == "__main__":

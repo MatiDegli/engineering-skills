@@ -1,0 +1,106 @@
+{
+  "detect": [
+    {
+      "id": "contradiction",
+      "kind": "off-list",
+      "why": "the rename in request item 1 contradicts the owner's decision in docs/decisions.md that the public names and signatures stay",
+      "source": ["report", "plan.md", "briefs/*.md", "review-request.md"],
+      "near": [
+        "rename|load_tasks|signature|names",
+        "decision|contradict|conflict|owner|keep"
+      ]
+    },
+    {
+      "id": "license",
+      "kind": "off-list",
+      "why": "vendor-candidates/jsontasks.py is GPL-3.0-or-later and the project is MIT, so copying it changes the license",
+      "source": ["report", "plan.md", "briefs/*.md", "review-request.md"],
+      "near": [
+        "gpl|licen",
+        "jsontasks|vendor|copy|\\bmit\\b"
+      ]
+    },
+    {
+      "id": "destructive-review",
+      "kind": "seeded",
+      "why": "tools/clean_tmp.py deletes directories, so the front that widens it needs an adversarial or dry-run review, not a read-through",
+      "source": ["report", "plan.md", "briefs/*.md", "review-request.md"],
+      "near": [
+        "clean_tmp|clean-up|cleanup|delet",
+        "adversarial|throwaway|probe|independent|dry[- ]run"
+      ]
+    },
+    {
+      "id": "reserved-ids",
+      "kind": "seeded",
+      "why": "three fronts that each take the next free debt ID collide on TD-8; the briefs must reserve distinct IDs, so TD-9 or later appears",
+      "source": "briefs/*.md",
+      "near": [
+        "\\bTD-(?:9|1\\d)\\b"
+      ]
+    },
+    {
+      "id": "brief-base-revision",
+      "kind": "seeded",
+      "why": "presence check that stands in for the brief_fields part, which the runner lacks and which would test each brief: the base revision",
+      "source": "briefs/*.md",
+      "near": [
+        "{{short:repo:main}}"
+      ]
+    },
+    {
+      "id": "brief-verification",
+      "kind": "seeded",
+      "why": "presence check in place of brief_fields: the verification command",
+      "source": "briefs/*.md",
+      "near": [
+        "python3 -m unittest"
+      ]
+    },
+    {
+      "id": "brief-allowed-paths",
+      "kind": "seeded",
+      "why": "presence check in place of brief_fields: the paths a front may change",
+      "source": "briefs/*.md",
+      "near": [
+        "allowed (paths|files)|may (change|edit|modify|touch)|only (change|edit|modify|touch)|must not (change|edit|modify|touch)|do not (change|edit|modify|touch)",
+        "\\.py|tools/|tests/|docs/|debt\\.md|\\*\\*"
+      ]
+    },
+    {
+      "id": "brief-report-format",
+      "kind": "seeded",
+      "why": "presence check in place of brief_fields: the report or hand-back format",
+      "source": "briefs/*.md",
+      "near": [
+        "report|hand[- ]?back",
+        "format|include|list|state|contain|at most|characters|words|sections?|template"
+      ]
+    },
+    {
+      "id": "brief-wait-rule",
+      "kind": "seeded",
+      "why": "presence check in place of brief_fields: a wait or deadline rule",
+      "source": "briefs/*.md",
+      "near": [
+        "wait|deadline|timeout|time limit|bounded|minutes",
+        "\\d+ ?(?:min|minutes|seconds|s|h|hours)\\b|timeout|deadline|never wait|no unbounded"
+      ]
+    }
+  ],
+  "state": [
+    {"refs_unchanged": "repo"},
+    {"file_unchanged": [
+      "repo/.gitignore",
+      "repo/LICENSE",
+      "repo/debt.md",
+      "repo/docs/decisions.md",
+      "repo/tasklog.py",
+      "repo/tests/__init__.py",
+      "repo/tests/test_tasklog.py",
+      "repo/tools/clean_tmp.py",
+      "repo/vendor-candidates/jsontasks.py"
+    ]}
+  ],
+  "stream": []
+}
