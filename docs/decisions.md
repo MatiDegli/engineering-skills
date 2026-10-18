@@ -180,6 +180,78 @@ deserve high is a question of correctness, which reading the rows answered. The 
 both misses after seeing the results and merged PC. Listing that case's real defects, so later rounds
 exclude them from the limit, is left for later.
 
+## 2026-10-18 — Scenario evaluations for work skills
+
+An audit produces a report that a scorer reads for criterion IDs; a work skill changes what an agent
+does. `coordinating-agents` is therefore evaluated with seeded scenarios. Each scenario is a
+prepared workspace and a task, plus an oracle that reads three things: the agent's final report,
+the state it leaves behind (a stash, a worktree, or a process that another agent owns), and the
+commands in its stream. Every round also runs the same scenarios without the skill, as a control.
+
+Three lessons from v0.2.0 shape the design:
+
+- A long checklist displaced judgment. Some seeds are therefore problems that the skill does not
+  name, and the skill must not find fewer of them than no skill.
+- The scorer saw only what was seeded. A blind comparison by the maintainer therefore accompanies
+  the scores, and real findings that were not seeded join their scenario with a date.
+- A complete report was harder to use. Reports and hand-backs are therefore measured by length too.
+
+One scenario is a trivial task, where coordination steps count against the run.
+
+The scenarios and a baseline without the skill come before the skill's text. That way the procedure
+covers failures that were measured, not every lesson available.
+
+The material lives in `evals/coordinating-agents/`, with its own runner, `tools/scenario_rounds.py`.
+The runner reuses the headless safeguards of `tools/claude_rounds.py` without changing it and takes
+the same round lock. Each scenario agent runs in its own PID namespace, so a command that kills
+processes by pattern reaches only its own scenario. Extending `tools/claude_rounds.py` to cover both
+skills is postponed until after v0.3.0, because the audit rounds depend on it while it changes for
+v0.2.1.
+
+## 2026-10-18 — No executable mechanism in coordinating-agents v0.3.0
+
+The maintainer's projects enforce bounded waits and exact-PID kills with a shell guard registered as
+a hook. They adopted it after rules written into briefs were broken again and again: one
+coordinating agent counted about a dozen calls to a forbidden interpreter despite an explicit rule,
+and waits that matched their own command line kept running for hours.
+
+The Agent Skills specification allows a `scripts/` directory, so a guard would not break the
+portable frontmatter. It is deferred for two other reasons: each agent registers hooks in its own
+way, against tool independence, and a guard that filters commands is high-trust code that every
+user would have to review.
+
+v0.3.0 states the guard's contract instead:
+
+- what it refuses: waits without a deadline, polling without a timeout, and killing processes by
+  pattern;
+- the threat it addresses: an agent that forgets, not one that evades;
+- the failure modes it must be tested for;
+- a deliberate choice between failing open and failing closed.
+
+The scenario evaluations count how often agents with the skill still break these rules. That count
+decides whether a reference guard ships in a later version, under the conditions of "No executable
+code in the audit skill".
+
+## 2026-10-18 — Separate guides for auditing and coordinating
+
+`coordinating-agents`, planned for v0.3, needs the practices that the audit's agent guide checks:
+briefs, review, isolation, and capacity. The audit's guide is written for someone who verifies a
+repository. The work skill is read by the agent that coordinates, which needs templates, the order
+of the steps, and when to wait, resume, or start fresh.
+
+Each skill therefore keeps its own text for its own reader. "One explanation per rule" holds within
+each skill. A test that ships with neither skill maps each criterion from AGENT-02 to AGENT-05 to
+the section of `coordinating-agents` that carries it out, so the two texts cannot drift apart
+unnoticed.
+
+This is the decision that "Origin and scope" asks of a second skill, and it chooses neither of the
+two options named there:
+
+- A shared copy checked for equality was rejected: one text would serve two readers, and every
+  change would require evaluating both skills.
+- Another packaging, such as a plugin with dependencies, was rejected: the Agent Skills
+  specification has no dependencies between skills.
+
 ## 2026-10-17 — A secret scan before every push
 
 The self-audit before v0.2.0 found that nothing scanned file contents or history for secrets:
