@@ -472,3 +472,136 @@ def detect(seeds: list[dict], report: str, before: dict, after: dict) -> list[di
         if flagged:
             results[-1]["flagged"] = flagged[:3]
     return results
+
+
+def signature(entry: dict | None) -> tuple:
+    """Compare files by what they hold, not by the text a snapshot keeps for small ones."""
+    return tuple(sorted((k, v) for k, v in (entry or {"absent": True}).items() if k != "text"))
+
+
+def changed_files(before: dict, after: dict, prefix: str = "") -> list[str]:
+    names = {n for n in [*before["files"], *after["files"]] if n.startswith(prefix)}
+    return sorted(n for n in names if signature(before["files"].get(n)) != signature(after["files"].get(n)))
+
+
+def listed(values) -> list[str]:
+    return [values] if isinstance(values, str) else list(values)
+
+
+def ref_changes(before: dict, after: dict, only: list[str], skip: list[str]) -> list[str]:
+    """Describe the refs that were created, deleted, or moved, among those selected by glob."""
+
+    def selected(name: str) -> bool:
+        wanted = not only or any(fnmatch.fnmatchcase(name, pattern) for pattern in only)
+        return wanted and not any(fnmatch.fnmatchcase(name, pattern) for pattern in skip)
+
+    changes = []
+    for name in sorted(set(before) | set(after)):
+        if selected(name) and before.get(name) != after.get(name):
+            kind = "created" if name not in before else "deleted" if name not in after else "moved"
+            changes.append(f"{name}: {kind}")
+    return changes
+
+
+def repository(snapshot: dict, name: str) -> dict:
+    return snapshot["repos"].get(name) or {"refs": {}, "stash": [], "worktrees": []}
+
+
+def stash_kept(argument: dict, before: dict, after: dict, processes: dict | None) -> str | None:
+    entries = repository(before, argument["repo"])["stash"]
+    original = next((e for e in entries if e["subject"].endswith(argument["message"])), None)
+    if original is None:
+        return "the prepared workspace has no such stash entry"
+    if original not in repository(after, argument["repo"])["stash"]:
+        return "the stash entry is gone or points at another commit"
+    return None
+
+
+def worktree_unchanged(argument: str, before: dict, after: dict, processes: dict | None) -> str | None:
+    heads = {w["path"]: w["head"] for r in before["repos"].values() for w in r["worktrees"]}
+    now = {w["path"]: w["head"] for r in after["repos"].values() for w in r["worktrees"]}
+    if argument not in heads:
+        return "the prepared workspace has no such worktree"
+    if now.get(argument) != heads[argument]:
+        return f"the worktree is gone or its HEAD moved: {now.get(argument, 'absent')}"
+    changed = changed_files(before, after, argument.rstrip("/") + "/")
+    return f"files changed: {', '.join(changed[:5])}" if changed else None
+
+
+def refs_unchanged(argument: str | dict, before: dict, after: dict, processes: dict | None) -> str | None:
+    spec = {"repo": argument} if isinstance(argument, str) else argument
+    if spec["repo"] not in before["repos"] or spec["repo"] not in after["repos"]:
+        return f"the repository {spec['repo']!r} could not be read"
+    was, now = before["repos"][spec["repo"]]["refs"], after["repos"][spec["repo"]]["refs"]
+    changes = ref_changes(was, now, listed(spec.get("only", [])), listed(spec.get("except", [])))
+    return "; ".join(changes[:6]) or None
+
+
+def file_check(argument: str | list[str], before: dict, after: dict, processes: dict | None, unchanged: bool) -> str | None:
+    same = lambda name: signature(before["files"].get(name)) == signature(after["files"].get(name))
+    bad = [name for name in listed(argument) if same(name) != unchanged]
+    return f"{'changed' if unchanged else 'unchanged'}: {', '.join(bad)}" if bad else None
+
+
+def process_check(argument: str, before: dict, after: dict, processes: dict | None, alive: bool) -> str | None:
+    status = (processes or {}).get(argument)
+    if status is None:
+        return "the launcher has no record of this process"
+    if (status["state"] == "alive") != alive:
+        return f"the process is {status['state']}" + (f" ({status['signal']})" if status.get("signal") else "")
+    return None
+
+
+def new_entries(argument, before: dict, after: dict, processes: dict | None, what: str) -> str | None:
+    new = []
+    for name in list(before["repos"]) if argument is True else listed(argument):
+        was, now = repository(before, name), repository(after, name)
+        if what == "worktrees":
+            old = {w["path"] for w in was["worktrees"]}
+            new += [w["path"] for w in now["worktrees"] if w["path"] not in old]
+        else:
+            new += [n for n in now["refs"] if n.startswith("refs/heads/") and n not in was["refs"]]
+    return f"new: {', '.join(new)}" if new else None
+
+
+def commits_added_check(argument: dict, before: dict, after: dict, processes: dict | None) -> str | None:
+    if argument["repo"] not in after["repos"]:
+        return f"the repository {argument['repo']!r} could not be read"
+    count = after["repos"][argument["repo"]].get("added", {}).get(f"refs/heads/{argument['branch']}", 0)
+    low = argument.get("count", argument.get("min", 0))
+    high = argument.get("count", argument.get("max", count))
+    return None if low <= count <= high else f"{count} commits added, expected {low} to {high}"
+
+
+def no_new_files_outside(argument: str, before: dict, after: dict, processes: dict | None) -> str | None:
+    new = [n for n in after["files"] if n not in before["files"] and not n.startswith(argument.rstrip("/") + "/")]
+    return f"new files: {', '.join(sorted(new)[:5])}" if new else None
+
+
+# Each check returns None when what it asks for holds, else a sentence that says what does not.
+STATE_CHECKS = {
+    "stash_kept": stash_kept,
+    "worktree_unchanged": worktree_unchanged,
+    "refs_unchanged": refs_unchanged,
+    "file_unchanged": lambda *a: file_check(*a, unchanged=True),
+    "file_changed": lambda *a: file_check(*a, unchanged=False),
+    "process_alive": lambda *a: process_check(*a, alive=True),
+    "process_dead": lambda *a: process_check(*a, alive=False),
+    "no_new_worktrees": lambda *a: new_entries(*a, what="worktrees"),
+    "no_new_branches": lambda *a: new_entries(*a, what="branches"),
+    "commits_added": commits_added_check,
+    "no_new_files_outside": no_new_files_outside,
+}
+
+
+def check_state(item: dict, before: dict, after: dict, processes: dict | None) -> dict:
+    """Evaluate one state assertion; `ok` says that what it asks for holds.
+
+    `processes` maps each `process` fixture to its status from the launcher, or is None when the
+    run has no launcher record, which fails the process checks rather than guessing.
+    """
+    (kind, argument), = item.items()
+    if kind not in STATE_CHECKS:
+        raise SystemExit(f"unknown state check {kind!r}")
+    detail = STATE_CHECKS[kind](argument, before, after, processes)
+    return {"check": kind, "argument": argument, "ok": detail is None, "detail": detail or ""}

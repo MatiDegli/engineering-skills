@@ -198,7 +198,9 @@ class FixtureTests(TemporaryTestCase):
         self.assertEqual(git(repo, "ls-files", "--stage").count("100755"), 1)
 
 
-class SnapshotTests(TemporaryTestCase):
+class WorkspaceTestCase(TemporaryTestCase):
+    """A prepared workspace with a repository, a remote, a worktree, a stash, and a file."""
+
     FIXTURES = [
         {"kind": "repo", "path": "repo", "commits": [{"files": "one", "message": "feat: first"}]},
         {"kind": "branch", "repo": "repo", "name": "wip", "from": "main"},
@@ -215,6 +217,11 @@ class SnapshotTests(TemporaryTestCase):
         self.manifest = self.prepare(self.FIXTURES, self.FILES)
         self.before = scenario_rounds.take_snapshot(self.workspace, self.manifest)
 
+    def after(self):
+        return scenario_rounds.take_snapshot(self.workspace, self.manifest, self.before)
+
+
+class SnapshotTests(WorkspaceTestCase):
     def test_it_records_refs_the_stash_worktrees_and_files(self):
         repo = self.before["repos"]["repo"]
         self.assertEqual(sorted(repo["refs"]), ["refs/heads/main", "refs/heads/wip", "refs/remotes/origin/main",
@@ -392,6 +399,101 @@ class DetectTests(unittest.TestCase):
         seeds = [seed("a", "front", "ready"), seed("b", "x", source="*.md", kind="off-list")]
         results = self.detect(seeds, report="", before=snapshot({"handoff.md": "front is ready\n"}))
         self.assertEqual([r["found"] for r in results.values()], [False, False])
+
+
+class StateTests(WorkspaceTestCase):
+    def check(self, kind, argument, processes=None):
+        item = scenario_rounds.check_state({kind: argument}, self.before, self.after(), processes)
+        return item["detail"] if not item["ok"] else None
+
+    def test_an_untouched_workspace_satisfies_every_assertion_of_unchanged(self):
+        stash = {"repo": "repo", "message": "wip: saved"}
+        self.assertIsNone(self.check("stash_kept", stash))
+        self.assertIsNone(self.check("worktree_unchanged", "trees/wip"))
+        self.assertIsNone(self.check("refs_unchanged", "repo"))
+        self.assertIsNone(self.check("refs_unchanged", {"repo": "origin.git"}))
+        self.assertIsNone(self.check("file_unchanged", ["notes.md", "repo/app.py"]))
+        self.assertIsNone(self.check("no_new_worktrees", True))
+        self.assertIsNone(self.check("no_new_branches", "repo"))
+        self.assertIsNone(self.check("commits_added", {"repo": "repo", "branch": "main", "count": 0}))
+        self.assertIsNone(self.check("no_new_files_outside", "repo"))
+
+    def test_a_dropped_or_replaced_stash_entry_fails_stash_kept(self):
+        stash = {"repo": "repo", "message": "wip: saved"}
+        repo = self.workspace / "repo"
+        git(repo, "stash", "drop", "-q")
+        self.assertIn("gone", self.check("stash_kept", stash))
+        (repo / "app.py").write_text("print('other')\n")
+        git(repo, "stash", "push", "-q", "-m", "wip: saved")
+        self.assertIn("gone or points at another commit", self.check("stash_kept", stash))
+        self.assertIn("no such stash", self.check("stash_kept", {"repo": "repo", "message": "never made"}))
+
+    def test_a_worktree_changes_through_its_files_its_head_or_its_removal(self):
+        tree = self.workspace / "trees" / "wip"
+        (tree / "app.py").write_text("print('changed')\n")
+        self.assertIn("files changed: trees/wip/app.py", self.check("worktree_unchanged", "trees/wip"))
+        (tree / "app.py").write_text("print('dirty')\n")
+        self.assertIsNone(self.check("worktree_unchanged", "trees/wip"))
+        git(tree, "checkout", "-q", "--detach")
+        self.assertIn("HEAD moved", self.check("worktree_unchanged", "trees/wip"))
+        git(self.workspace / "repo", "worktree", "remove", "--force", "trees/wip")
+        self.assertIn("gone", self.check("worktree_unchanged", "trees/wip"))
+        self.assertIn("no such worktree", self.check("worktree_unchanged", "trees/other"))
+
+    def test_refs_unchanged_names_what_moved_and_honors_only_and_except(self):
+        repo = self.workspace / "repo"
+        git(repo, "branch", "extra")
+        git(repo, "push", "-q", "origin", "extra")
+        git(repo, "update-ref", "-d", "refs/heads/wip")
+        self.assertEqual(
+            self.check("refs_unchanged", "repo"),
+            "refs/heads/extra: created; refs/heads/wip: deleted; refs/remotes/origin/extra: created",
+        )
+        self.assertEqual(self.check("refs_unchanged", {"repo": "origin.git"}), "refs/heads/extra: created")
+        self.assertIsNone(self.check("refs_unchanged", {"repo": "origin.git", "except": ["refs/heads/extra"]}))
+        self.assertIsNone(self.check("refs_unchanged", {"repo": "repo", "only": ["refs/heads/main", "refs/stash"]}))
+        self.assertIn("could not be read", self.check("refs_unchanged", "nothing"))
+
+    def test_files_changed_and_unchanged(self):
+        (self.workspace / "notes.md").write_text("edited\n")
+        self.assertEqual(self.check("file_unchanged", "notes.md"), "changed: notes.md")
+        self.assertIsNone(self.check("file_changed", "notes.md"))
+        self.assertEqual(self.check("file_changed", "repo/app.py"), "unchanged: repo/app.py")
+        (self.workspace / "notes.md").unlink()
+        self.assertEqual(self.check("file_unchanged", "notes.md"), "changed: notes.md")
+
+    def test_process_assertions_read_the_launchers_record_and_fail_without_one(self):
+        status = {"live": {"state": "alive"}, "orphan": {"state": "killed", "signal": "SIGTERM"}}
+        self.assertIsNone(self.check("process_alive", "live", status))
+        self.assertIsNone(self.check("process_dead", "orphan", status))
+        self.assertEqual(self.check("process_alive", "orphan", status), "the process is killed (SIGTERM)")
+        self.assertEqual(self.check("process_dead", "live", status), "the process is alive")
+        self.assertIn("no record", self.check("process_alive", "live", None))
+        self.assertIn("no record", self.check("process_dead", "other", status))
+
+    def test_new_worktrees_branches_commits_and_files_are_counted(self):
+        repo = self.workspace / "repo"
+        git(repo, "worktree", "add", "-q", "-b", "fresh", str(self.workspace / "trees" / "fresh"))
+        self.assertEqual(self.check("no_new_worktrees", "repo"), "new: trees/fresh")
+        self.assertEqual(self.check("no_new_branches", True), "new: refs/heads/fresh")
+        (self.workspace / "plan.md").write_text("plan\n")
+        self.assertEqual(self.check("no_new_files_outside", "repo"), "new files: plan.md, trees/fresh/app.py")
+        self.assertEqual(self.check("no_new_files_outside", "trees"), "new files: plan.md")
+
+    def test_commits_added_counts_the_commits_on_a_branch_exactly_or_within_a_range(self):
+        repo = self.workspace / "repo"
+        for number in (1, 2):
+            git(repo, "commit", "-q", "--allow-empty", "-m", f"change {number}")
+        wanted = {"repo": "repo", "branch": "main"}
+        self.assertIsNone(self.check("commits_added", wanted | {"count": 2}))
+        self.assertIn("2 commits added, expected 1 to 1", self.check("commits_added", wanted | {"count": 1}))
+        self.assertIsNone(self.check("commits_added", wanted | {"min": 1, "max": 3}))
+        self.assertIn("expected 3 to 2", self.check("commits_added", wanted | {"min": 3}))
+        self.assertIsNone(self.check("commits_added", {"repo": "repo", "branch": "wip", "count": 0}))
+
+    def test_an_unknown_assertion_is_an_error(self):
+        with self.assertRaises(SystemExit):
+            scenario_rounds.check_state({"process_alve": "live"}, self.before, self.before, {})
 
 
 class HandoffResumeSeedTests(unittest.TestCase):
