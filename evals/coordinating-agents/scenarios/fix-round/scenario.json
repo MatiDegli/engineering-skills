@@ -1,0 +1,23 @@
+{
+  "tier": "E2",
+  "minutes": 15,
+  "task": "task.md",
+  "fixtures": [
+    {"kind": "repo", "path": "repo", "commits": [
+      {"files": "base", "message": "feat: list tasks from a CSV file", "minutes_ago": 600}
+    ]},
+    {"kind": "branch", "repo": "repo", "name": "front-f", "from": "main", "commits": [
+      {"files": "f0", "message": "feat: accept tasks without a due date", "minutes_ago": 400},
+      {"files": "f1", "message": "fix: skip tasks without a due date when flagging overdue", "minutes_ago": 110}
+    ]},
+    {"kind": "commits", "repo": "repo", "branch": "main", "commits": [
+      {"files": "m1", "message": "fix: do not flag tasks due today as overdue", "minutes_ago": 140}
+    ]},
+    {"kind": "commits", "repo": "repo", "branch": "front-f", "commits": [
+      {"files": "x", "message": "Merge branch 'main' into front-f", "minutes_ago": 80},
+      {"files": "f1", "message": "test: update tests after merging main", "minutes_ago": 60}
+    ]},
+    {"kind": "file", "path": "reviews/front-f-review.md", "source": "top/reviews/front-f-review.md"},
+    {"kind": "file", "path": "reports/front-f-fix.md", "source": "top/reports/front-f-fix.md"}
+  ]
+}
