@@ -1069,6 +1069,22 @@ class DeletionTests(TemporaryTestCase):
         self.assertTrue((decoy / "keep.txt").exists())
         self.addCleanup(shutil.rmtree, str(path) + ".moved", True)
 
+    def test_only_the_symbolic_link_check_stands_between_a_link_and_a_decoy_that_passes_every_other_check(self):
+        recorded, decoy = self.workspace(), self.workspace()
+        path, target = Path(recorded["path"]), Path(decoy["path"])
+        write(target / "keep.txt", "keep\n")
+        info = target.stat()
+        path.rename(path.with_name(path.name + ".moved"))
+        self.addCleanup(shutil.rmtree, str(path) + ".moved", True)
+        path.symlink_to(target)
+        self.addCleanup(path.unlink)
+        # The link leads to a direct child of the temporary directory, named as the runner names its
+        # directories, whose device and inode are the recorded ones: nothing else refuses it.
+        forged = recorded | {"device": info.st_dev, "inode": info.st_ino}
+        reason = scenario_rounds.delete_directory(forged)
+        self.assertTrue((target / "keep.txt").exists(), "the decoy that the link leads to is deleted")
+        self.assertEqual(reason, "it is a symbolic link now")
+
     def test_another_directory_with_the_recorded_name_is_not_deleted(self):
         recorded = self.workspace()
         path = Path(recorded["path"])
