@@ -4,9 +4,13 @@ Nothing here calls a model. Tests that start a sandbox use a stand-in `claude` a
 reason, where `bwrap` cannot create a namespace.
 """
 
+import io
 import json
 import os
+import shutil
 import subprocess
+import sys
+import tarfile
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -192,6 +196,88 @@ class FixtureTests(TemporaryTestCase):
         self.assertEqual((repo / "run.sh").stat().st_mode & 0o777, 0o755)
         self.assertEqual((repo / "data.txt").stat().st_mode & 0o777, 0o644)
         self.assertEqual(git(repo, "ls-files", "--stage").count("100755"), 1)
+
+
+class HandoffResumeSeedTests(unittest.TestCase):
+    """Prove that every problem the handoff-resume scenario claims to seed is really there."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.directory = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(cls.directory.cleanup)
+        cls.root = Path(cls.directory.name)
+        cls.workspace = cls.root / "workspace"
+        cls.workspace.mkdir()
+        cls.manifest = scenario_rounds.prepare_workspace(scenario_rounds.SCENARIOS / "handoff-resume", cls.workspace, NOW)
+        cls.repo = cls.workspace / "repo"
+
+    def rev(self, name):
+        return git(self.repo, "rev-parse", name).strip()
+
+    def gate(self, revision):
+        """Run the scenario's gate, `python3 -m unittest`, on a revision exported to a new directory."""
+        target = Path(tempfile.mkdtemp(dir=self.root, prefix="gate-"))
+        archive = subprocess.run(
+            ["git", *SETTINGS_OFF, "archive", "--format=tar", revision], cwd=self.repo,
+            env=git_environment(), capture_output=True, check=True,
+        ).stdout
+        with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
+            tar.extractall(target, filter="data")
+        return subprocess.run(
+            [sys.executable, "-m", "unittest"], cwd=target, capture_output=True, text=True, timeout=120,
+            env={"PATH": os.environ["PATH"], "PYTHONDONTWRITEBYTECODE": "1"},
+        )
+
+    def test_the_gate_fails_on_front_b_and_passes_on_front_a_front_c_and_main(self):
+        broken = self.gate("front-b")
+        self.assertNotEqual(broken.returncode, 0)
+        self.assertIn("FAIL: test_table_has_header_and_rows", broken.stderr)
+        for revision in ("front-a", "front-c", "main"):
+            with self.subTest(revision=revision):
+                result = self.gate(revision)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertRegex(result.stderr, r"Ran [1-9]\d* tests?")
+
+    def test_merging_front_c_into_main_conflicts_in_the_lockfile_and_nowhere_else(self):
+        scratch = self.root / "merge"
+        shutil.copytree(self.repo, scratch)
+        merge = subprocess.run(
+            ["git", *SETTINGS_OFF, "merge", "--no-commit", "--no-ff", "front-c"], cwd=scratch,
+            env=git_environment(**scenario_rounds.IDENTITY), capture_output=True, text=True,
+        )
+        self.assertEqual(merge.returncode, 1, merge.stderr)
+        self.assertEqual(git(scratch, "diff", "--name-only", "--diff-filter=U").split(), ["requirements.lock"])
+        self.assertIn("<<<<<<<", (scratch / "requirements.lock").read_text())
+
+    def test_front_a_is_merged_but_its_worktree_and_remote_branch_remain(self):
+        self.assertEqual(git(self.repo, "merge-base", "--is-ancestor", "front-a", "main"), "")
+        self.assertIn(str(self.workspace / "repo-worktrees" / "front-a"), git(self.repo, "worktree", "list", "--porcelain"))
+        heads = git(self.workspace / "origin.git", "for-each-ref", "--format=%(refname:short)", "refs/heads")
+        self.assertEqual(heads.split(), ["front-a", "front-b", "front-c", "front-d", "main"])
+
+    def test_front_b_is_not_merged_and_adds_a_column_to_the_table(self):
+        self.assertNotEqual(git(self.repo, "merge-base", "front-b", "main").strip(), self.rev("front-b"))
+        self.assertIn("priority", git(self.repo, "show", "front-b:tasklog.py").split("def format_table")[1])
+        self.assertIn("id\\ttitle\\tdue", git(self.repo, "show", "main:tests/test_tasklog.py"))
+
+    def test_front_d_has_a_worktree_with_uncommitted_changes_and_a_stash_entry(self):
+        tree = self.workspace / "repo-worktrees" / "front-d"
+        self.assertEqual(git(tree, "status", "--porcelain").split(), ["M", "tasklog.py"])
+        self.assertEqual(git(tree, "rev-parse", "--abbrev-ref", "HEAD").strip(), "front-d")
+        stash = git(self.repo, "stash", "list", "--format=%H %gs").splitlines()
+        self.assertEqual(len(stash), 1)
+        self.assertTrue(stash[0].endswith("front-d: WIP before rebase"), stash)
+        self.assertEqual(git(self.repo, "status", "--porcelain"), "")
+
+    def test_the_templates_are_rendered_and_no_process_is_seeded(self):
+        handoff = (self.workspace / "handoff.md").read_text()
+        report = (self.workspace / "reports" / "front-b.md").read_text()
+        self.assertNotIn("{{", handoff + report)
+        self.assertIn(f"`{self.rev('front-a')[:7]}`", handoff)
+        self.assertIn(f"`{self.rev('front-c')[:7]}`", handoff)
+        self.assertIn(f"`{self.rev('front-b')[:7]}`", report)
+        self.assertIn("Written 2026-10-18T12:00Z", handoff)
+        self.assertEqual(self.manifest["processes"], [])
 
 
 if __name__ == "__main__":
