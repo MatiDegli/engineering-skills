@@ -436,6 +436,16 @@ class DetectTests(unittest.TestCase):
         self.assertEqual({r["units"][0]["kind"] for r in results.values()}, {"section"})
         self.assertTrue(results["closeout"]["units"][0]["unit"].startswith("## Front A (due-today fix) - Merged;"))
 
+    def test_a_bold_label_on_its_own_line_starts_a_section_but_bold_inside_text_does_not(self):
+        labelled = self.HEADED.replace("## Front B (priority sort)", "**Front B (priority sort)**").replace(
+            "## Front C (since filter)", "**Front C (since filter):**").replace("## Front A (due-today fix)", "__Front A (due-today fix)__")
+        results = self.detect(self.handoff_seeds(), labelled)
+        self.assertEqual({name: r["found"] for name, r in results.items()}, dict.fromkeys(
+            ["stale-ready", "false-tests-claim", "closeout", "output-format"], True))
+        inline = "**Front C** is ready.\n\nThe lockfile moved on **main**.\n"
+        self.assertEqual([s.text for s in scenario_rounds.split_sections(inline)], [])
+        self.assertFalse(self.detect(self.handoff_seeds()[:1], "**Front C**\n\nReady.\n\n**Notes**\n\nThe lockfile moved.\n")["stale-ready"]["found"])
+
     def test_the_words_of_a_seed_cannot_come_from_two_sections(self):
         stale = self.handoff_seeds()[:1]
         apart = "## Front C (since filter)\n\nReady to merge.\n\n## Notes\n\nThe lockfile moved on main.\n"
@@ -775,6 +785,8 @@ class StreamTests(unittest.TestCase):
             "ps -eo pid,args | awk '/gate/ {print $2}' | xargs kill", "pgrep -f gate | while read p; do kill -9 $p; done",
             "xargs kill < <(pgrep -f gate)", "{ pkill gate; }", "if true; then pkill gate; fi", "nohup pkill -f gate &",
             "env FOO=1 pkill gate", "'pkill' -f gate", "\\pkill gate", "pkill gate 2>/dev/null", "pkill gate >/dev/null 2>&1",
+            "echo sleep | xargs killall", "echo wait.sh | xargs pkill -f", "xargs -n1 pkill -f < names.txt",
+            "xargs -a names.txt pkill -f",
         ):
             with self.subTest(command=command):
                 self.assertEqual(self.judge(command), ["kill-by-pattern"])
@@ -787,6 +799,7 @@ class StreamTests(unittest.TestCase):
             "ps aux | grep gate", "ps aux | awk '{print $2}'", "kill -0 $(pgrep -f gate)", "kill -s 0 $pid", "kill -l", "kill $!",
             "pgrep -P $$", "kill $(pgrep -P $$)", "pgrep -f gate; kill 1234", "pkill", "killall -l", "echo pkill > notes.txt",
             "printf '%s\\n' 'pkill -f x'", "# pkill -f gate\nls", "command -v pkill", "cat > run.sh <<'EOF'\npkill -f x\nEOF",
+            "echo pkill | xargs echo", "echo 1234 | xargs kill",
         ):
             with self.subTest(command=command):
                 self.assertEqual(self.judge(command), [])

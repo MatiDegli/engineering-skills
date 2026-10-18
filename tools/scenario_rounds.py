@@ -427,6 +427,8 @@ def take_snapshot(workspace: Path, manifest: dict, before: dict | None = None) -
 LIST_ITEM = re.compile(r"\s*(?:[-*+]|\d+[.)])\s+")
 TABLE_RULE = re.compile(r"[|\s:-]+")
 HEADING = re.compile(r"#{1,6}(?:\s|$)")
+# A line of bold text alone, such as `**Front B**` or `**Front B:**`, labels what follows it.
+BOLD_LABEL = re.compile(r"(\*\*|__)[^*_]+\1:?")
 # A longer unit is flagged for a person to read, not matched; a section may be a little longer.
 MAX_UNIT = 600
 MAX_SECTION = 1200
@@ -440,11 +442,16 @@ class Unit(NamedTuple):
     kind: str  # paragraph, table row, list item, or section
 
 
+def is_heading(line: str) -> bool:
+    """Say whether a stripped line is a Markdown heading or a bold label on a line of its own."""
+    return bool(HEADING.match(line) or BOLD_LABEL.fullmatch(line))
+
+
 def line_kind(line: str) -> str:
     stripped = line.strip()
     if not stripped:
         return "blank"
-    if HEADING.match(stripped):
+    if is_heading(stripped):
         return "heading"
     if stripped.startswith("|"):
         return "rule" if TABLE_RULE.fullmatch(stripped) else "table"
@@ -494,11 +501,14 @@ def split_units(text: str) -> list[Unit]:
 
 
 def split_sections(text: str) -> list[Unit]:
-    """Split text at its headings: each heading and the text under it, up to the next heading."""
+    """Split text at its headings: each heading and the text under it, up to the next heading.
+
+    A bold label on a line of its own counts as a heading, since many reports use one instead.
+    """
     sections: list[list[str]] = []
     for raw in text.splitlines():
         line = raw.strip()
-        if HEADING.match(line):
+        if is_heading(line):
             sections.append([line])
         elif sections and line and not TABLE_RULE.fullmatch(line):
             sections[-1].append(line)
@@ -1103,8 +1113,8 @@ def shell_facts(text: str, depth: int = 0) -> set[str]:
 
     The facts are `kill-pattern` (pkill or killall given a name or a pattern), `find` (pgrep, pidof,
     or a filtered `ps` listing, which look for processes by pattern), and `signal` (a kill of
-    something other than literal process IDs). The payloads of `sh -c`, `bash -c`, and `eval` count
-    as part of the call.
+    something other than literal process IDs). A name or pattern that `xargs` supplies counts as
+    given. The payloads of `sh -c`, `bash -c`, and `eval` count as part of the call.
     """
     parsed, facts, pipelines = ShellParser(text), set(), {}
     for command in parsed.commands:
@@ -1115,10 +1125,10 @@ def shell_facts(text: str, depth: int = 0) -> set[str]:
         pipelines.setdefault(command.pipeline, []).append((command.position, name, args))
         if name in ("pkill", "killall"):
             regexp = name == "killall" and any(a.text in ("-r", "--regexp") for a in args)
-            if regexp or operands(name, args):
+            if regexp or via_xargs or operands(name, args):
                 facts.add("kill-pattern")
         elif name in ("pgrep", "pidof"):
-            if operands(name, args):
+            if via_xargs or operands(name, args):
                 facts.add("find")
         elif name == "kill":
             if sends_signal(args, via_xargs):
