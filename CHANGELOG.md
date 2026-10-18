@@ -12,6 +12,10 @@
 - `criteria.md` and `quality.md`, the two guides longer than 100 lines, start with a table of
   contents, as Anthropic's skill authoring guide recommends, so a partial read still shows every
   section.
+- A finding that holds only under a condition, such as a setting, a log level, an environment
+  variable, or a deployment option, states the condition and whether the repository shows that it
+  is met, and software already in production or distributed gets no "before release" timing. With
+  Sonnet, no production-case report used that timing, against 4 of 10 before (runs 157 to 176).
 
 ### Evaluations and tooling
 

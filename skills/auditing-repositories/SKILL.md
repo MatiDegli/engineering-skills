@@ -160,7 +160,8 @@ Up to five, each with evidence.
 
 ## Priority actions
 Up to five actions, each naming the IDs of the findings it closes, with scope, an acceptance check,
-and timing: now, before release, or when the need arises.
+and timing: now, before release, or when the need arises. Software already in production or
+distributed has no release ahead to wait for: its timing is now or when the need arises.
 
 ## Deeper checks
 Up to three, one line each: a `high` finding's ID, the premise you did not verify, and the check
@@ -177,7 +178,9 @@ What could not be inspected or executed, and anything that needs separate verifi
 
 Order findings by [priority](#priority) (`high`, `medium`, `low`). Each finding cites concrete
 evidence: a path with line numbers, a configuration value, or a command and its result; a count
-names the command and the bounds, such as a date range, that produced it. Take each line number from
+names the command and the bounds, such as a date range, that produced it. A finding that holds only
+under a condition, such as a setting, a log level, an environment variable, or a deployment option,
+states the condition and whether the repository shows that it is met. Take each line number from
 output that numbers each file on its own: a numbered read, a search, or, to read several files in
 one command, one such as `grep -n '' a b` that prefixes every line with its file and line number;
 `cat -n a b` instead continues one count across the files. When you have no such number, cite the
