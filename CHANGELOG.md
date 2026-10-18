@@ -45,9 +45,12 @@ criteria approved before the comparison:
   misses are the unverified backups of `orders-service`, rated medium. The maintainer released with
   this exception recorded in `docs/decisions.md`.
 - In a blind comparison of `orders-service` reports, the reviewer and the maintainer preferred the
-  full skill to the catalog, but ranked the report written without any skill first. It found two
-  real logic defects that the case does not seed and that every skill report missed. Finding such
-  defects is the first goal after this release.
+  full skill to the catalog, but ranked the report written without any skill first, for logic
+  defects that the case does not seed. Across both runs of each level, the reports without the skill
+  found a CPU alert's unit error that every skill report missed, and a discount that trusts the
+  caller's flag, which each skill level found in one of two runs and rated medium. Finding and
+  ranking such defects is the first goal after this release. (Corrected after the release: the
+  first count said every skill report missed both defects.)
 
 Evaluated with small fictional cases and one large private repository, mostly with Claude models.
 

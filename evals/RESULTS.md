@@ -1776,14 +1776,21 @@ a service already in production. The case's unseeded defects across all six orde
 
 | Defect the case does not seed | Full 87, 90 | Catalog 88, 91 | No skill 89, 92 |
 | --- | --- | --- | --- |
-| The first-order discount trusts the caller's own flag | 0 of 2 | 0 of 2 | 2 of 2 |
+| The first-order discount trusts the caller's own flag | 1 of 2 | 1 of 2 | 2 of 2 |
 | The CPU alert's `> 0.8` means 0.8 cores, not 80% | 0 of 2 | 0 of 2 | 2 of 2 |
 | A list as a SKU raises a 500 instead of a 400 | 1 of 2 | 0 of 2 | 1 of 2 |
 | The container runs as root | 1 of 2 | 2 of 2 | 2 of 2 |
 
-The skill found every seeded gap and the no-skill level 75 of 100, but in this case the no-skill
-level found logic defects that both skill levels missed. The scorer cannot see them because the case
-does not list them.
+The skill found every seeded gap and the no-skill level 75 of 100. The full skill's report in the
+blind set, run 87, missed all four defects above. Run 90 found the discount and the SKU defects,
+reproduced both, and rated them medium. Run 88 found the discount and also rated it medium. The
+CPU alert's unit error is the only one that every skill report missed. The scorer could not see any
+of them, because the case did not list them.
+
+Corrected on 2026-10-18: the first count, published with v0.2.0, gave the discount as 0 of 2 for
+both skill levels. It had read only the first mention in each report. The defect matcher of issue
+#2 found the rows that count missed, and a recount by hand of every mention confirmed it. The three
+logic defects are now dated defects of the case, from 2026-10-18.
 
 Guidance read, measured afterwards from the streams of runs 87 and 90: each full-skill audit opened
 5,741 to 8,739 words of the skill (median 6,147), out of 11,775 in all of its files; `SKILL.md` and
