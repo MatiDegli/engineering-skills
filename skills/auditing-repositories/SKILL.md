@@ -60,7 +60,9 @@ Copy this checklist into your working notes and complete every step:
    follow [Large repositories](#large-repositories).
 4. **Behavior.** Before walking the catalog, read the main code paths as their users would exercise
    them. Look for inputs at the limits, paths that should agree but answer differently, silent changes
-   to data, errors that leave partial state, and invariants the documentation states. Report each
+   to data, errors that leave partial state, and invariants the documentation states. Read
+   configuration that encodes behavior the same way: alert thresholds, limits, timeouts, retries,
+   and schedules must mean what their names, units, and descriptions say. Report each
    defect under the closest criterion, such as TEST-01, ARCH-02, ARCH-05, or REPO-06. Behavior that
    the documentation describes and a test pins is a design choice, not a defect: report it only if it
    contradicts other documentation or puts users at risk.
@@ -124,7 +126,7 @@ When you cannot read every maintained file, audit a sample chosen by risk and sa
 
 | Priority | Use when |
 | --- | --- |
-| `high` | A plausible path to unauthorized access, secret exposure, data loss, or a broken or unsafe release, or a control that lets failures pass on code that ships |
+| `high` | A plausible path to unauthorized access, secret exposure, data loss or corruption, a business rule that callers can bypass or that charges, grants, or books wrongly, or a broken or unsafe release, or a control that lets failures pass on code that ships |
 | `medium` | A gap that makes defects or security problems more likely to reach users without a direct path to a high outcome, or an unverified control on a high-impact path |
 | `low` | Maintainability, documentation, or hygiene with limited impact at the current stage |
 

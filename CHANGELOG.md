@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### auditing-repositories
+
+- Logic defects: a business rule that callers can bypass, or that charges, grants, or books
+  wrongly, is rated `high`, and the behavior step checks that configuration such as alert
+  thresholds, limits, timeouts, retries, and schedules means what its names, units, and
+  descriptions say. With Opus, audits found 15 of 16 seeded logic defects against 10 before, 13
+  without the skill, and 13 with the catalog alone (runs 149 to 156 in `evals/RESULTS.md`).
+
+### Evaluations and tooling
+
+- Cases can list logic defects that a findings row must pin by criterion, location, and wording.
+  A new `booking-api` case breaks five rules its README states, and `orders-service` lists three
+  defects found after v0.2.0.
+- `tools/claude_rounds.py` runs one round at a time on a machine.
+
 ## v0.2.0 — 2026-10-18
 
 ### auditing-repositories
