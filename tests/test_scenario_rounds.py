@@ -24,10 +24,10 @@ NOW = datetime(2026, 10, 18, 12, 30, 45, tzinfo=timezone.utc)
 
 
 def git(repo, *arguments):
-    """Read from a prepared repository with Git, without any host configuration."""
+    """Run Git on a prepared repository without any host configuration, as the fixture identity."""
     return subprocess.run(
-        ["git", *SETTINGS_OFF, *arguments], cwd=repo, env=git_environment(), capture_output=True,
-        text=True, check=True,
+        ["git", *SETTINGS_OFF, *arguments], cwd=repo, env=git_environment(**scenario_rounds.IDENTITY),
+        capture_output=True, text=True, check=True,
     ).stdout
 
 
@@ -196,6 +196,103 @@ class FixtureTests(TemporaryTestCase):
         self.assertEqual((repo / "run.sh").stat().st_mode & 0o777, 0o755)
         self.assertEqual((repo / "data.txt").stat().st_mode & 0o777, 0o644)
         self.assertEqual(git(repo, "ls-files", "--stage").count("100755"), 1)
+
+
+class SnapshotTests(TemporaryTestCase):
+    FIXTURES = [
+        {"kind": "repo", "path": "repo", "commits": [{"files": "one", "message": "feat: first"}]},
+        {"kind": "branch", "repo": "repo", "name": "wip", "from": "main"},
+        {"kind": "remote", "repo": "repo", "path": "origin.git"},
+        {"kind": "worktree", "repo": "repo", "path": "trees/wip", "branch": "wip", "uncommitted": "dirty"},
+        {"kind": "stash", "repo": "repo", "message": "wip: saved", "files": "stashed"},
+        {"kind": "file", "path": "notes.md", "source": "notes.md"},
+    ]
+    FILES = {"one/app.py": "print(1)\n", "dirty/app.py": "print('dirty')\n", "stashed/app.py": "print('s')\n",
+             "notes.md": "notes\n"}
+
+    def setUp(self):
+        super().setUp()
+        self.manifest = self.prepare(self.FIXTURES, self.FILES)
+        self.before = scenario_rounds.take_snapshot(self.workspace, self.manifest)
+
+    def test_it_records_refs_the_stash_worktrees_and_files(self):
+        repo = self.before["repos"]["repo"]
+        self.assertEqual(sorted(repo["refs"]), ["refs/heads/main", "refs/heads/wip", "refs/remotes/origin/main",
+                                                "refs/remotes/origin/wip", "refs/stash"])
+        self.assertEqual(repo["refs"]["refs/heads/main"], git(self.workspace / "repo", "rev-parse", "main").strip())
+        self.assertEqual(repo["head"], "ref: refs/heads/main")
+        self.assertEqual(len(repo["stash"]), 1)
+        self.assertTrue(repo["stash"][0]["subject"].endswith("wip: saved"))
+        self.assertEqual([w["path"] for w in repo["worktrees"]], ["trees/wip"])
+        self.assertEqual(repo["worktrees"][0]["head"], "ref: refs/heads/wip")
+        self.assertEqual(sorted(self.before["repos"]["origin.git"]["refs"]), ["refs/heads/main", "refs/heads/wip"])
+        self.assertEqual(self.before["problems"], [])
+        files = self.before["files"]
+        self.assertEqual(sorted(files), ["notes.md", "repo/app.py", "trees/wip/app.py"])
+        self.assertEqual(files["trees/wip/app.py"]["text"], "print('dirty')\n")
+
+    def test_a_changed_workspace_shows_in_the_next_snapshot(self):
+        repo, tree = self.workspace / "repo", self.workspace / "trees" / "wip"
+        (repo / "app.py").write_text("print(9)\n")
+        git(repo, "commit", "-aqm", "agent change")
+        git(repo, "push", "-q", "origin", "main")
+        git(repo, "stash", "drop", "-q")
+        (tree / "app.py").write_text("print('changed')\n")
+        (self.workspace / "report.md").write_text("new file\n")
+        after = scenario_rounds.take_snapshot(self.workspace, self.manifest, self.before)
+        self.assertNotEqual(after["repos"]["repo"]["refs"]["refs/heads/main"], self.before["repos"]["repo"]["refs"]["refs/heads/main"])
+        self.assertEqual(after["repos"]["repo"]["added"], {"refs/heads/main": 1})
+        self.assertEqual(after["repos"]["repo"]["stash"], [])
+        self.assertNotIn("refs/stash", after["repos"]["repo"]["refs"])
+        self.assertEqual(after["repos"]["origin.git"]["refs"]["refs/heads/main"], after["repos"]["repo"]["refs"]["refs/heads/main"])
+        self.assertNotEqual(after["files"]["trees/wip/app.py"], self.before["files"]["trees/wip/app.py"])
+        self.assertIn("report.md", after["files"])
+
+    def test_it_runs_nothing_that_the_agent_configured(self):
+        repo = self.workspace / "repo"
+        marker = self.root / "marker"
+        script = self.root / "mark.sh"
+        write(script, f"#!/bin/sh\ncat\ntouch {marker}\n", 0o755)
+        write(repo / ".gitattributes", "* filter=mark\n")
+        for name, value in (("filter.mark.clean", str(script)), ("core.fsmonitor", str(script)),
+                            ("core.hooksPath", str(self.root)), ("core.pager", str(script)),
+                            ("alias.for-each-ref", f"!touch {marker}")):
+            git(repo, "config", name, value)
+        (repo / "app.py").write_text("print('touched')\n")
+        git(repo, "status", "--porcelain")
+        self.assertTrue(marker.exists(), "the control: git status runs the configured filter")
+        marker.unlink()
+        after = scenario_rounds.take_snapshot(self.workspace, self.manifest, self.before)
+        self.assertFalse(marker.exists())
+        self.assertIn("refs/heads/main", after["repos"]["repo"]["refs"])
+
+    def test_a_git_directory_that_leaves_the_workspace_is_not_read(self):
+        elsewhere = self.root / "elsewhere"
+        shutil.copytree(self.workspace / "repo" / ".git", elsewhere)
+        shutil.rmtree(self.workspace / "repo" / ".git")
+        (self.workspace / "repo" / ".git").symlink_to(elsewhere)
+        after = scenario_rounds.take_snapshot(self.workspace, self.manifest)
+        self.assertNotIn("repo", after["repos"])
+        self.assertEqual(after["problems"], ["repo: no Git directory inside the workspace"])
+        self.assertIn("origin.git", after["repos"])
+
+    def test_links_and_unreadable_files_are_described_without_being_followed(self):
+        secret = self.root / "secret.txt"
+        secret.write_text("outside\n")
+        (self.workspace / "link.txt").symlink_to(secret)
+        (self.workspace / "linked-dir").symlink_to(self.root)
+        (self.workspace / "big.bin").write_bytes(b"\0\1\2" * 10)
+        (self.workspace / "closed.txt").write_text("closed\n")
+        (self.workspace / "closed.txt").chmod(0)
+        self.addCleanup((self.workspace / "closed.txt").chmod, 0o600)
+        files = scenario_rounds.take_snapshot(self.workspace, self.manifest)["files"]
+        self.assertEqual(files["link.txt"], {"link": str(secret)})
+        self.assertEqual(files["linked-dir"], {"link": str(self.root)})
+        self.assertIsNone(files["big.bin"]["text"])
+        self.assertEqual(files["big.bin"]["size"], 30)
+        if os.getuid():
+            self.assertIn("unreadable", files["closed.txt"])
+        self.assertFalse([name for name in files if name.startswith("linked-dir/")])
 
 
 class HandoffResumeSeedTests(unittest.TestCase):

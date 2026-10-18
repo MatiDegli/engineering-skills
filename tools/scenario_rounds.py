@@ -11,9 +11,12 @@ repository and outside /tmp, which a restart may clear.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import re
 import shutil
+import stat
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -217,3 +220,134 @@ def prepare_workspace(scenario: Path, workspace: Path, now: datetime | None = No
     for fixture in spec["fixtures"]:
         fixtures.apply(fixture)
     return fixtures.manifest
+
+
+# Files up to this size keep their text in a snapshot, so that the lines an agent added can be
+# found afterwards; files up to the second size are hashed.
+MAX_TEXT = 100_000
+MAX_HASHED = 50_000_000
+
+
+def file_entry(path: Path) -> dict:
+    """Describe a file without following links: its size and hash, and its text when it is small."""
+    try:
+        info = path.lstat()
+        if stat.S_ISLNK(info.st_mode):
+            return {"link": os.readlink(path)}
+        if not stat.S_ISREG(info.st_mode):
+            return {"special": stat.S_IFMT(info.st_mode)}
+        if info.st_size > MAX_HASHED:
+            return {"size": info.st_size, "sha256": None}
+        data = path.read_bytes()
+    except OSError as error:
+        return {"unreadable": error.strerror}
+    entry = {"size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+    if len(data) <= MAX_TEXT:
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError:
+            return entry
+        entry["text"] = None if "\0" in text else text
+    return entry
+
+
+def workspace_files(workspace: Path, skip: set[Path]) -> dict[str, dict]:
+    """Describe every file of the workspace except Git's own data and the directories in `skip`.
+
+    Contents are read directly. Running `git status` instead would run any filter or fsmonitor
+    command that the agent configured, on the maintainer's machine.
+    """
+    files = {}
+    for directory, names, filenames in os.walk(workspace):
+        here = Path(directory)
+        linked = [name for name in names if (here / name).is_symlink()]
+        names[:] = sorted(n for n in names if n != ".git" and n not in linked and here / n not in skip)
+        for name in sorted(filenames + linked):
+            if name != ".git":
+                files[(here / name).relative_to(workspace).as_posix()] = file_entry(here / name)
+    return files
+
+
+def git_dir(workspace: Path, relative: str) -> Path | None:
+    """Return a recorded repository's Git directory if it is a real directory inside the workspace.
+
+    The agent can replace `.git` with a link or a file that points anywhere, so the check runs
+    again before every read, on the path as it is now.
+    """
+    inside = workspace.resolve()
+    for candidate in (workspace / relative / ".git", workspace / relative):
+        if candidate.is_dir() and not candidate.is_symlink() and (candidate / "HEAD").is_file():
+            return candidate if candidate.resolve().is_relative_to(inside) else None
+    return None
+
+
+def read_git(directory: Path, *arguments: str) -> str | None:
+    """Run a Git plumbing command on exactly this Git directory; None when it fails.
+
+    Only commands that read refs, reflogs, and objects are used here: they do not run the filters,
+    hooks, or fsmonitor that the agent's repository configuration can name.
+    """
+    result = subprocess.run(
+        ["git", *SETTINGS_OFF, "-c", "core.fsmonitor=false", *arguments],
+        cwd=directory,
+        env=git_environment(GIT_DIR=str(directory), GIT_OPTIONAL_LOCKS="0"),
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    return result.stdout if result.returncode == 0 else None
+
+
+def read_repository(directory: Path, workspace: Path) -> dict:
+    """Read the refs, the stash, and the worktrees of one Git directory."""
+    refs = {}
+    for line in (read_git(directory, "for-each-ref", "--format=%(refname)%09%(objectname)") or "").splitlines():
+        name, _, sha = line.partition("\t")
+        refs[name] = sha
+    stash = []
+    for line in (read_git(directory, "reflog", "show", "--format=%H%x09%gs", "refs/stash") or "").splitlines():
+        commit, _, subject = line.partition("\t")
+        stash.append({"commit": commit, "subject": subject})
+    worktrees = []
+    for entry in sorted((directory / "worktrees").glob("*/gitdir")):
+        pointer = Path(entry.read_text(encoding="utf-8", errors="replace").strip()).parent
+        head = (entry.parent / "HEAD").read_text(encoding="utf-8", errors="replace").strip()
+        try:
+            location = pointer.relative_to(workspace).as_posix()
+        except ValueError:
+            location = str(pointer)
+        worktrees.append({"path": location, "head": head})
+    head = (directory / "HEAD").read_text(encoding="utf-8", errors="replace").strip()
+    return {"head": head, "refs": refs, "stash": stash, "worktrees": worktrees}
+
+
+def commits_added(directory: Path, before: dict, repo: dict) -> dict[str, int]:
+    """Count, for each branch that moved, the commits that are now on it and were not before."""
+    added = {}
+    for name, sha in repo["refs"].items():
+        old = before["refs"].get(name)
+        if name.startswith("refs/heads/") and old and old != sha:
+            count = read_git(directory, "rev-list", "--count", f"{old}..{sha}")
+            added[name] = int(count) if count and count.strip().isdigit() else -1
+    return added
+
+
+def take_snapshot(workspace: Path, manifest: dict, before: dict | None = None) -> dict:
+    """Record the workspace's files and the refs, stash, and worktrees of its recorded repositories.
+
+    A repository whose Git directory is not a real directory inside the workspace is not read and
+    is named in `problems`. Given the snapshot from before the run, the one after it also counts the
+    commits added to each branch.
+    """
+    skip = {workspace / relative for relative in manifest["remotes"]}
+    snapshot = {"files": workspace_files(workspace, skip), "repos": {}, "problems": []}
+    for relative in [*manifest["repos"], *manifest["remotes"]]:
+        directory = git_dir(workspace, relative)
+        if directory is None:
+            snapshot["problems"].append(f"{relative}: no Git directory inside the workspace")
+            continue
+        repo = read_repository(directory, workspace)
+        if before and relative in before["repos"]:
+            repo["added"] = commits_added(directory, before["repos"][relative], repo)
+        snapshot["repos"][relative] = repo
+    return snapshot
