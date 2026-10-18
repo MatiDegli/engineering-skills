@@ -1,0 +1,17 @@
+{
+  "tier": "E1",
+  "minutes": 15,
+  "task": "task.md",
+  "fixtures": [
+    {"kind": "repo", "path": "repo", "commits": [
+      {"files": "base", "message": "feat: list tasks from a CSV file", "minutes_ago": 30000},
+      {"files": "docs", "message": "docs: add the usage guide and the changelog", "minutes_ago": 25900},
+      {"files": "bench", "message": "build: add the benchmark script", "minutes_ago": 2000}
+    ]},
+    {"kind": "file", "path": "lines.md", "source": "top/lines.md"},
+    {"kind": "file", "path": "shared/runs.md", "source": "top/runs.md"},
+    {"kind": "file", "path": "shared/bench.log", "source": "top/bench-start.txt"},
+    {"kind": "file", "path": "shared/messages.md", "source": "top/messages.md"},
+    {"kind": "process", "name": "docs-bench", "label": "sh tools/bench.sh front-g", "seconds": 3600}
+  ]
+}
