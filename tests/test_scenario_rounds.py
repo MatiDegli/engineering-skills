@@ -887,6 +887,16 @@ class SkillWordsTests(unittest.TestCase):
         self.assertEqual(result["files"], {"references/briefs.md": 10, "references/waits.md": 2, "SKILL.md": 5})
         self.assertEqual(self.words(call(f"cat {self.skill}/references/*.md"))["words"], 12)
 
+    def test_a_grep_call_counts_the_file_it_names_as_its_path_by_the_rule_for_a_shell_command(self):
+        grep = lambda path, **fields: {"name": "Grep", "input": {"pattern": "x", "path": path, **fields}}
+        self.assertEqual(self.words(grep(str(self.skill / "SKILL.md"), output_mode="content", head_limit=1)), {"words": 5, "files": {"SKILL.md": 5}})
+        self.assertEqual(self.words(grep(str(self.skill / "references" / "*.md")))["files"], {"references/briefs.md": 10, "references/waits.md": 2})
+        self.assertEqual(self.words(grep(str(self.skill / "SKILL.md")), self.read("SKILL.md"), call(f"cat {self.skill}/SKILL.md"))["words"], 5)
+        for path in (str(self.skill), str(self.skill / "references"), str(Path(self.directory.name) / "outside.md"), "SKILL.md", ""):
+            with self.subTest(path=path):
+                self.assertEqual(self.words(grep(path, glob="*.md")), {"words": 0, "files": {}})
+        self.assertEqual(self.words({"name": "Grep", "input": {"pattern": "x"}}), {"words": 0, "files": {}})
+
     def test_directories_other_files_and_other_tools_do_not_count(self):
         outside = Path(self.directory.name) / "outside.md"
         result = self.words(
@@ -1417,7 +1427,8 @@ def bash(command):
 
 
 emit(type="system", subtype="init", argv=arguments, prompt=prompt, cwd=os.getcwd(), home=os.environ.get("HOME"),
-     variables=sorted(os.environ), token_length=len(token), git_config=os.environ.get("GIT_CONFIG_GLOBAL"))
+     variables=sorted(os.environ), token_length=len(token), git_config=os.environ.get("GIT_CONFIG_GLOBAL"),
+     **({"skills": ["update-config"], "plugins": [], "mcp_servers": [{"name": "docs"}]} if "listed" in model else {}))
 if "skill" in model:
     bash("cat " + re.search(r"skill is in (\S+)\. Read", prompt)[1] + "/SKILL.md")
 if "pkill" in model:
@@ -1691,6 +1702,14 @@ class JobTests(StandInCase):
         stream = (self.round / "streams" / "run1-alpha.jsonl").read_text()
         self.assertIn("[REDACTED]", stream)
         self.assertNotIn(TOKEN, stream)
+
+    def test_an_init_event_that_lists_skills_plugins_or_servers_under_safe_mode_fails_the_run(self):
+        line, record = self.run_job("claude-listed-1-0", level="none")
+        self.assertIn("failed: the init event lists skills under --safe-mode: ['update-config']", line)
+        self.assertIn("the init event lists mcp_servers under --safe-mode: [{'name': 'docs'}]", line)
+        self.assertNotIn("plugins", line, "an empty list is no list")
+        self.assertEqual(len(record["failures"]), 2)
+        self.assertEqual(record["notes"], [])
 
     def test_a_stream_that_shows_another_model_fails_the_run(self):
         line, _ = self.run_job("claude-mismatch-1-0", level="none")

@@ -1209,9 +1209,9 @@ def loops_to_check(calls: list[dict]) -> list[str]:
 def skill_words(calls: list[dict], skill: Path) -> dict:
     """Count the words of the skill that the agent read.
 
-    A file counts once per run, whole, when the Read tool opened it or a shell command named it, so a
-    partial read counts in full. A command may name a glob, or a file relative to a `cd` into the
-    skill.
+    A file counts once per run, whole, when the Read tool opened it, a Grep call named it as its
+    path, or a shell command named it, so a partial read counts in full. A command may name a glob,
+    or a file relative to a `cd` into the skill. A directory counts nothing, however it is searched.
     """
     root, files = skill.resolve(), {}
 
@@ -1227,6 +1227,8 @@ def skill_words(calls: list[dict], skill: Path) -> dict:
     for call in calls:
         if call["name"] == "Read":
             count(str(call["input"].get("file_path", "")))
+        elif call["name"] == "Grep":
+            count(str(call["input"].get("path", "")))
         elif call["name"] == "Bash":
             command = str(call["input"].get("command", ""))
             for match in named.findall(command):
@@ -1923,6 +1925,9 @@ def init_event(stream: Path) -> dict:
     return {}
 
 
+INIT_LISTS = ("skills", "plugins", "mcp_servers")
+
+
 def run_failures(outcome: dict, results: list[dict], model: str, minutes: float) -> list[str]:
     """List why a run does not count as finished; a failed run is still scored and reported."""
     failures, launcher = [], outcome["launcher"]
@@ -2037,8 +2042,9 @@ def execute_job(round_dir: Path, job: dict, context: dict, workspace: Path) -> s
         failures.append("secret in the stream: it was redacted")
     calls = tool_calls(stream)
     init = init_event(stream) if results else {}
-    notes = [f"the init event lists {key}: {init[key]}" for key in ("skills", "plugins", "mcp_servers") if init.get(key)]
-    notes += [f"snapshot: {problem}" for problem in after["problems"]]
+    # `--safe-mode` loads none of them, so a list means the run was customized and its level is not what it says.
+    failures += [f"the init event lists {key} under --safe-mode: {str(init[key])[:200]}" for key in INIT_LISTS if init.get(key)]
+    notes = [f"snapshot: {problem}" for problem in after["problems"]]
     if provider and results and init_key_source(stream) != "apiKeyHelper":
         notes.append(f"the key source is {init_key_source(stream)}, not apiKeyHelper")
     outside = outside_paths(stream, [workspace, Path(job["skill"]).parent if skill else workspace, round_dir / "providers"]) if results else []
