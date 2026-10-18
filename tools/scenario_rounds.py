@@ -11,6 +11,7 @@ repository and outside /tmp, which a restart may clear.
 
 from __future__ import annotations
 
+import argparse
 import difflib
 import fnmatch
 import functools
@@ -22,13 +23,16 @@ import os
 import re
 import secrets
 import shutil
+import signal
 import stat
+import statistics
 import subprocess
 import sys
 import tarfile
 import tempfile
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -36,12 +40,15 @@ from tools.claude_rounds import (
     init_key_source,
     login_failed,
     outside_paths,
+    parse_providers,
     provider_launch,
     ran_model,
     report_text,
+    round_lock,
     stop_groups,
     stream_results,
     stream_usage,
+    warm_up,
 )
 from tools.evals import SETTINGS_OFF, git_environment
 from tools.validate_repo import ROOT
@@ -1516,3 +1523,280 @@ def execute_job(round_dir: Path, job: dict, context: dict, workspace: Path) -> s
     (paths["reports"] / f"{label}.md").write_text(report, encoding="utf-8")
     (paths["runs"] / f"{label}.json").write_text(text, encoding="utf-8")
     return f"{label}: {'failed: ' + '; '.join(failures) if failures else 'ok'}"
+
+
+class Interrupted(Exception):
+    """A stop signal arrived; its number is the first argument."""
+
+
+def claude_executable() -> Path:
+    found = shutil.which("claude")
+    if not found:
+        raise SystemExit("claude is not on PATH")
+    return Path(found).resolve()
+
+
+def run(
+    round_dir: Path,
+    jobs: int,
+    budget: float,
+    stagger: float = 0.0,
+    providers: dict[str, dict] | None = None,
+    lock_wait: float = 0.0,
+    token_file: Path = DEFAULT_TOKEN_FILE,
+) -> int:
+    """Run every planned scenario in a sandbox; return 1 when a run did not end well.
+
+    `providers` maps a model served by another provider to its base URL and key file. SIGTERM or
+    SIGINT stops every sandbox, starts no other run, and returns 128 plus the signal number; the
+    handlers are restored afterwards. The whole round holds the round lock that the audit runner
+    takes, waiting for it at most `lock_wait` seconds.
+    """
+    with round_lock(f"scenario_rounds run {round_dir.resolve()}", lock_wait):
+        return run_round(round_dir, jobs, budget, stagger, providers or {}, token_file)
+
+
+def run_round(
+    round_dir: Path, jobs: int, budget: float, stagger: float, providers: dict[str, dict], token_file: Path
+) -> int:
+    """The body of `run`, under the round lock: check the machine, then run the jobs."""
+    paths = round_paths(round_dir)
+    data = json.loads(paths["plan.json"].read_text(encoding="utf-8"))
+    problem = sandbox_problem()
+    if problem:
+        raise SystemExit(f"A scenario round needs a sandbox, and bwrap cannot create one here: {problem}")
+    executable = claude_executable()
+    models = sorted({job["model"] for job in data["jobs"]})
+    token = read_token(token_file) if any(model not in providers for model in models) else None
+    skills = [Path(path) for path in data["skills"].values()]
+    gone = [str(path) for path in skills if not path.is_dir()]
+    if gone:
+        raise SystemExit(f"The skill export is gone: {', '.join(gone)}. Plan the round again.")
+    problems = preflight([ROOT, round_dir.resolve(), token_file.resolve()], [executable, *skills])
+    if problems:
+        raise SystemExit("The sandbox does not isolate a run:\n- " + "\n- ".join(problems))
+    version = subprocess.run([str(executable), "--version"], capture_output=True, text=True, timeout=60)
+    (round_dir / "cli-version.txt").write_text(version.stdout, encoding="utf-8")
+    warm_up(round_dir, [model for model in models if model in providers], providers)
+    sandboxes = Sandboxes()
+    context = {
+        "sandboxes": sandboxes, "spending": Spending(budget), "starts": Stagger(stagger), "providers": providers,
+        "token": token, "executable": executable, "home": Path.home(),
+    }
+
+    def interrupt(number: int, frame) -> None:
+        if not sandboxes.stopped.is_set():
+            sandboxes.stopped.set()
+            raise Interrupted(number)
+
+    lines, interrupted = [], 0
+    previous = {number: signal.signal(number, interrupt) for number in (signal.SIGTERM, signal.SIGINT)}
+    try:
+        with paths["log.txt"].open("a", encoding="utf-8") as log:
+            log.write(f"start {now()} {version.stdout.strip()}, budget USD {budget:g}\n")
+            with ThreadPoolExecutor(max_workers=jobs) as pool:
+                try:
+                    futures = [pool.submit(run_job, round_dir, job, context) for job in data["jobs"]]
+                    for future in as_completed(futures):
+                        lines.append(future.result())
+                        log.write(lines[-1] + "\n")
+                        log.flush()
+                        print(lines[-1], flush=True)
+                except Interrupted as stop:
+                    interrupted = stop.args[0]
+                    pool.shutdown(wait=False, cancel_futures=True)
+                    name, ended = signal.Signals(interrupted).name, sandboxes.stop()
+                    log.write(f"stopped {now()} by {name}: {ended} running sandboxes ended\n")
+                    print(f"stopped by {name}: {ended} running sandboxes ended", flush=True)
+            log.write(f"end {now()}\n")
+    finally:
+        for number, handler in previous.items():
+            signal.signal(number, handler)
+    if interrupted:
+        return 128 + interrupted
+    return int(any(not line.endswith((": ok", "skipped, record exists")) for line in lines))
+
+
+def arm_label(job: dict, jobs: list[dict]) -> str:
+    """Name a job's model, and its level and revision when the round compares several."""
+    label = job["model"]
+    if len({j["level"] for j in jobs}) > 1:
+        label += f" {job['level']}"
+    if len({j["revision"] for j in jobs if j["level"] == "full"}) > 1 and job["revision"]:
+        label += f" @ {job['revision']}"
+    return label
+
+
+def score_record(round_dir: Path, job: dict, record: dict) -> dict:
+    """Score a recorded run again with the oracle as it is now, from the saved report and stream."""
+    paths, label = round_paths(round_dir), job["label"]
+    expected = json.loads((SCENARIOS / job["scenario"] / "expected.json").read_text(encoding="utf-8"))
+    report, stream = paths["reports"] / f"{label}.md", paths["streams"] / f"{label}.jsonl"
+    text = report.read_text(encoding="utf-8") if report.is_file() else ""
+    calls = tool_calls(stream) if stream.is_file() else []
+    return score_run(expected, record["before"], record["after"], record["launcher"], text, calls)
+
+
+def found_count(scored: dict, kind: str) -> tuple[int, int]:
+    seeds = [seed for seed in scored["detect"] if seed["kind"] == kind]
+    return sum(seed["found"] for seed in seeds), len(seeds)
+
+
+def summarize(round_dir: Path) -> str:
+    """Score every record again, tell the arms apart, and write summary.md.
+
+    A run that failed (time limit, lost launcher, and so on) counts in every column, and the failures
+    are counted per arm, so that no arm is graded on fewer or easier runs than another.
+    """
+    paths = round_paths(round_dir)
+    data = json.loads(paths["plan.json"].read_text(encoding="utf-8"))
+    rows, details, notes = [], [], []
+    arms: dict[str, list[dict]] = {}
+    for job in data["jobs"]:
+        label, arm = job["label"], arm_label(job, data["jobs"])
+        record_path = paths["runs"] / f"{label}.json"
+        if (paths["runs"] / f"{label}.workspace.json").exists():
+            notes.append(f"{label}: a workspace was not deleted; `clean` re-checks and removes it")
+        if not record_path.exists():
+            notes.append(f"{label}: no record")
+            arms.setdefault(arm, []).append({"missing": True})
+            continue
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+        scored = score_record(round_dir, job, record)
+        bad = [check for check in scored["state"] if not check["ok"]]
+        seeded, off_list = found_count(scored, "seeded"), found_count(scored, "off-list")
+        figures = {
+            "seeded": seeded, "off_list": off_list, "state": len(bad), "stream": len(scored["stream"]),
+            "ceremony": len(scored["ceremony"]), "words": record["skill"]["words"], "chars": record["report_chars"],
+            "minutes": record["seconds"] / 60, "cost": record["cost"], "failed": bool(record["failures"]),
+        }
+        arms.setdefault(arm, []).append(figures)
+        rows.append(
+            f"| {job['scenario']} | {job['run']} | {arm} | {seeded[0]} of {seeded[1]} | {off_list[0]} of {off_list[1]} "
+            f"| {len(bad)} | {len(scored['stream'])} | {len(scored['ceremony'])} | {figures['words']} | {figures['chars']} "
+            f"| {figures['minutes']:.1f} | {figures['cost']:.2f} | {'; '.join(record['failures']) or 'ok'} |"
+        )
+        for check in bad:
+            details.append(f"{label}: state check {check['check']} {check['argument']} failed: {check['detail']}")
+        for hit in scored["stream"]:
+            details.append(f"{label}: stream violation {hit['id']}: {hit['command']!r}")
+        for check in scored["ceremony"]:
+            details.append(f"{label}: ceremony {check.get('check') or check.get('id')}: {check.get('detail') or check.get('command')}")
+        for seed in scored["detect"]:
+            for unit in seed["units"][:1]:
+                details.append(f"{label}: {seed['id']} matched in {unit['origin']}: {unit['unit'][:200]!r}")
+            for unit in seed.get("flagged", [])[:1]:
+                details.append(f"{label}: {seed['id']} matched a unit over {MAX_UNIT} characters, check by hand: {unit['origin']}")
+        details += [f"{label}: loop without a visible bound, check by hand: {loop!r}" for loop in scored["loops"]]
+        notes += [f"{label}: {note}" for note in record["notes"]]
+        notes += [f"{label}: outside path in a tool call: {path}" for path in record["outside"]]
+    lines = [
+        f"# Scenario round summary ({now()})",
+        "",
+        f"Skill `{data['skill_commit']}`, planned {data['created']}.",
+        "",
+        "| Scenario | Run | Arm | Seeded found | Off-list found | State failures | Stream violations | Ceremony"
+        " | Skill words | Report characters | Minutes | USD | Result |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        *rows,
+        "",
+        "| Arm | Runs | Failed or missing | Seeded found | Off-list found | State failures | Stream violations"
+        " | Ceremony | Median skill words | Mean report characters | Mean minutes | Mean USD |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for arm, runs in arms.items():
+        done = [run for run in runs if "missing" not in run]
+        total = lambda key, index: sum(run[key][index] for run in done)
+        mean = lambda key: sum(run[key] for run in done) / (len(done) or 1)
+        lines.append(
+            f"| {arm} | {len(runs)} | {len(runs) - len([r for r in done if not r['failed']])} "
+            f"| {total('seeded', 0)} of {total('seeded', 1)} | {total('off_list', 0)} of {total('off_list', 1)} "
+            f"| {sum(run['state'] for run in done)} | {sum(run['stream'] for run in done)} "
+            f"| {sum(run['ceremony'] for run in done)} | {statistics.median([r['words'] for r in done] or [0]):g} "
+            f"| {mean('chars'):.0f} | {mean('minutes'):.1f} | {mean('cost'):.2f} |"
+        )
+    lines += ["", "Details:", ""] + ([f"- {line}" for line in details] or ["- none"])
+    lines += ["", "Notes:", ""] + ([f"- {note}" for note in notes] or ["- none"])
+    summary = "\n".join(lines) + "\n"
+    paths["summary.md"].write_text(summary, encoding="utf-8")
+    return summary
+
+
+def clean(round_dir: Path) -> list[str]:
+    """Remove the workspaces that a stopped round left and the skill exports that its plan made.
+
+    A workspace goes only after the same re-checks as at the end of a run, against the directory
+    recorded when it was made. An export goes only when it is a direct child of the temporary
+    directory with the name `plan` gives it. Anything else is reported and kept.
+    """
+    paths = round_paths(round_dir)
+    removed = []
+    for pending in sorted(paths["runs"].glob("*.workspace.json")):
+        recorded = json.loads(pending.read_text(encoding="utf-8"))
+        reason = delete_directory(recorded)
+        if reason:
+            print(f"kept {recorded['path']}: {reason}")
+            continue
+        pending.unlink()
+        removed.append(recorded["path"])
+    data = json.loads(paths["plan.json"].read_text(encoding="utf-8"))
+    for export in (Path(path).parent for path in data["skills"].values()):
+        resolved = export.resolve()
+        if export.is_symlink() or resolved.parent != Path(tempfile.gettempdir()).resolve() or not SKILL_EXPORT_NAME.fullmatch(resolved.name):
+            print(f"kept {export}: not a directory this round created")
+        elif resolved.is_dir():
+            remove_tree(resolved)
+            removed.append(str(resolved))
+    return removed
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    commands = parser.add_subparsers(dest="command", required=True)
+    plan_parser = commands.add_parser("plan", help="validate the scenarios and export the skill")
+    plan_parser.add_argument("round_dir", type=Path)
+    plan_parser.add_argument(
+        "--run", action="append", required=True, metavar="NUMBER=MODEL",
+        help="a run number, a full model ID, and optionally a skill revision and a level, such as"
+        " 1=claude-sonnet-5-5 or 2=claude-sonnet-5-5@8b2a2c6+none; repeat for each run",
+    )
+    plan_parser.add_argument(
+        "--scenario", action="append", metavar="NAME", help="a scenario name; repeat; default: every scenario"
+    )
+    plan_parser.add_argument("--revision", default="HEAD", help="skill revision for runs that do not name one")
+    run_parser = commands.add_parser("run", help="run every planned scenario in a sandbox (starts agents)")
+    run_parser.add_argument("round_dir", type=Path)
+    run_parser.add_argument("--jobs", type=int, default=4)
+    run_parser.add_argument("--stagger-seconds", type=float, default=5)
+    run_parser.add_argument("--budget-usd", type=float, required=True, help="stop launching runs at this API-equivalent cost")
+    run_parser.add_argument("--token-file", type=Path, default=DEFAULT_TOKEN_FILE, help="a long-lived token from `claude setup-token`")
+    run_parser.add_argument("--provider-url", action="append", default=[], metavar="MODEL=URL")
+    run_parser.add_argument("--provider-key", action="append", default=[], metavar="MODEL=KEY_FILE")
+    run_parser.add_argument("--lock-wait-minutes", type=float, default=0)
+    for name, text in (
+        ("summarize", "score the records again and write summary.md"),
+        ("clean", "remove the workspaces and the skill exports that this round left"),
+    ):
+        commands.add_parser(name, help=text).add_argument("round_dir", type=Path)
+    arguments = parser.parse_args()
+    if arguments.command == "plan":
+        names = arguments.scenario or sorted(p.parent.name for p in SCENARIOS.glob("*/scenario.json"))
+        data = plan(arguments.round_dir, parse_runs(arguments.run), names, arguments.revision)
+        print(f"planned {len(data['jobs'])} runs of skill {data['skill_commit']}")
+        return 0
+    if arguments.command == "run":
+        providers = parse_providers(arguments.provider_url, arguments.provider_key)
+        return run(
+            arguments.round_dir, arguments.jobs, arguments.budget_usd, arguments.stagger_seconds, providers,
+            arguments.lock_wait_minutes * 60, arguments.token_file.expanduser(),
+        )
+    if arguments.command == "summarize":
+        print(summarize(arguments.round_dir), end="")
+        return 0
+    for path in clean(arguments.round_dir):
+        print(f"removed {path}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

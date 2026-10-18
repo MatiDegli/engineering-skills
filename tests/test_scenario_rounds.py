@@ -4,10 +4,12 @@ Nothing here calls a model. Tests that start a sandbox use a stand-in `claude` a
 reason, where `bwrap` cannot create a namespace.
 """
 
+import contextlib
 import io
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tarfile
@@ -19,7 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
 
-from tools import scenario_rounds
+from tools import claude_rounds, scenario_rounds
 from tools.evals import SETTINGS_OFF, git_environment
 
 NOW = datetime(2026, 10, 18, 12, 30, 45, tzinfo=timezone.utc)
@@ -1038,6 +1040,9 @@ import json, os, re, subprocess, sys, time
 from pathlib import Path
 
 arguments = sys.argv[1:]
+if "--version" in arguments:
+    print("9.9.9 (stand-in)")
+    sys.exit(0)
 model = arguments[arguments.index("--model") + 1]
 prompt = sys.stdin.read()
 token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
@@ -1163,9 +1168,8 @@ class AgentCommandTests(unittest.TestCase):
             self.assertFalse(scenario_rounds.scrub([second], [TOKEN]))
 
 
-@unittest.skipIf(SANDBOX_PROBLEM, f"bwrap cannot create a sandbox here: {SANDBOX_PROBLEM}")
-class JobTests(TemporaryTestCase):
-    """Run whole jobs, in the real sandbox, with a stand-in `claude`."""
+class StandInCase(TemporaryTestCase):
+    """A round directory, a scenario, a skill, and a stand-in `claude`, for tests that run jobs."""
 
     def setUp(self):
         super().setUp()
@@ -1202,6 +1206,11 @@ class JobTests(TemporaryTestCase):
 
     def init(self, label="run1-alpha"):
         return scenario_rounds.init_event(self.round / "streams" / f"{label}.jsonl")
+
+
+@unittest.skipIf(SANDBOX_PROBLEM, f"bwrap cannot create a sandbox here: {SANDBOX_PROBLEM}")
+class JobTests(StandInCase):
+    """Run whole jobs, in the real sandbox, with a stand-in `claude`."""
 
     def test_a_run_gives_the_agent_its_prompt_login_and_command_and_records_what_scoring_needs(self):
         line, record = self.run_job("claude-write-skill-1-0")
@@ -1302,6 +1311,168 @@ class JobTests(TemporaryTestCase):
         self.assertEqual(self.run_job("claude-test-1-0")[0], "run1-alpha: skipped, record exists")
         self.context["sandboxes"].stopped.set()
         self.assertEqual(self.run_job("claude-test-1-0", run="2")[0], "run2-alpha: skipped, stopped")
+
+
+class RoundCase(StandInCase):
+    """A hand-made plan, a private token file, the stand-in first on PATH, and a lock of its own."""
+
+    def setUp(self):
+        super().setUp()
+        self.token_file = self.root / "token"
+        write(self.token_file, TOKEN + "\n", 0o600)
+        for patch in (
+            mock.patch.object(claude_rounds, "ROUND_LOCK", self.root / "lock" / "rounds.lock"),
+            mock.patch.dict(os.environ, {"PATH": f"{self.fake.parent}:{os.environ['PATH']}"}),
+        ):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def plan(self, *jobs, skills=None):
+        skills = {"abc1234": str(self.skill)} if skills is None else skills
+        data = {"created": "2026-10-18T12:00:00Z", "skill_commit": ", ".join(skills) or "none", "skills": skills, "jobs": list(jobs)}
+        write(self.round / "plan.json", json.dumps(data))
+
+    def run_round(self, jobs=2, budget=100, **changes):
+        with contextlib.redirect_stdout(io.StringIO()) as printed:
+            code = scenario_rounds.run(self.round, jobs, budget, 0, **({"token_file": self.token_file} | changes))
+        return code, printed.getvalue()
+
+    def refusal(self, **changes):
+        with self.assertRaises(SystemExit) as stopped:
+            self.run_round(**changes)
+        self.assertEqual(list((self.round / "streams").iterdir()), [], "no run started")
+        return str(stopped.exception)
+
+
+class RoundRefusalTests(RoundCase):
+    def setUp(self):
+        super().setUp()
+        self.plan(self.job("claude-test-1-0"))
+        patch = mock.patch.object(scenario_rounds, "sandbox_problem", return_value=None)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_a_round_refuses_to_start_where_a_sandbox_cannot(self):
+        with mock.patch.object(scenario_rounds, "sandbox_problem", return_value="no user namespaces"):
+            self.assertIn("no user namespaces", self.refusal())
+
+    def test_a_round_needs_the_cli_a_private_token_and_the_skill_export(self):
+        self.token_file.chmod(0o644)
+        self.assertIn("only you can read", self.refusal())
+        self.token_file.chmod(0o600)
+        shutil.rmtree(self.skill.parent)
+        self.assertIn("The skill export is gone", self.refusal())
+        write(self.skill / "SKILL.md", "x\n")
+        with mock.patch.dict(os.environ, {"PATH": str(self.root / "nothing")}):
+            self.assertEqual(self.refusal(), "claude is not on PATH")
+
+    def test_a_round_that_cannot_hide_the_repository_or_the_oracle_is_refused_before_any_run(self):
+        with mock.patch.object(scenario_rounds, "preflight", return_value=["visible inside: /repo"]) as checked:
+            self.assertIn("does not isolate a run:\n- visible inside: /repo", self.refusal())
+        hidden, read_only = checked.call_args.args
+        self.assertEqual(hidden, [scenario_rounds.ROOT, self.round.resolve(), self.token_file.resolve()])
+        self.assertEqual(read_only, [self.fake.resolve(), self.skill])
+
+    def test_a_held_round_lock_stops_the_round_at_once_and_names_the_holder(self):
+        with claude_rounds.round_lock("the audit runner, round 90"):
+            self.assertIn("the audit runner, round 90", self.refusal())
+
+    def test_clean_removes_what_a_stopped_round_left_and_keeps_what_it_cannot_vouch_for(self):
+        left, replaced = (scenario_rounds.new_directory(scenario_rounds.WORKSPACE_PREFIX) for _ in range(2))
+        export = Path(tempfile.mkdtemp(prefix="skill.")) / "coordinating-agents"
+        export.mkdir()
+        for path in (left["path"], replaced["path"], export.parent):
+            self.addCleanup(shutil.rmtree, path, True)
+        elsewhere = self.root / "skill.12345678" / "coordinating-agents"
+        elsewhere.mkdir(parents=True)
+        decoy = self.root / "decoy"
+        write(decoy / "keep.txt", "keep\n")
+        Path(replaced["path"]).rename(replaced["path"] + ".moved")
+        self.addCleanup(shutil.rmtree, replaced["path"] + ".moved", True)
+        Path(replaced["path"]).symlink_to(decoy)
+        self.addCleanup(Path(replaced["path"]).unlink)
+        for name, recorded in (("run1-alpha", left), ("run2-alpha", replaced)):
+            write(self.round / "runs" / f"{name}.workspace.json", json.dumps(recorded))
+        self.plan(skills={"abc1234": str(export), "def5678": str(elsewhere)})
+        with contextlib.redirect_stdout(io.StringIO()) as printed:
+            removed = scenario_rounds.clean(self.round)
+        self.assertEqual(removed, [left["path"], str(export.parent)])
+        self.assertFalse(Path(left["path"]).exists() or export.parent.exists())
+        self.assertTrue((decoy / "keep.txt").exists() and elsewhere.exists())
+        self.assertEqual([p.name for p in (self.round / "runs").glob("*.workspace.json")], ["run2-alpha.workspace.json"])
+        self.assertIn("it is a symbolic link now", printed.getvalue())
+        self.assertIn(f"kept {elsewhere.parent}: not a directory this round created", printed.getvalue())
+
+    def test_the_command_line_plans_summarizes_and_cleans(self):
+        arguments = ["plan", str(self.root / "second"), "--run", "1=claude-test-1-0+none", "--scenario", "alpha"]
+        for command, text in ((arguments, "planned 1 runs of skill none"), (["summarize", arguments[1]], "no record"), (["clean", arguments[1]], "")):
+            with mock.patch.object(sys, "argv", ["scenario_rounds", *command]), contextlib.redirect_stdout(io.StringIO()) as printed:
+                self.assertEqual(scenario_rounds.main(), 0)
+            self.assertIn(text, printed.getvalue())
+        self.assertTrue((self.root / "second" / "summary.md").is_file())
+
+
+@unittest.skipIf(SANDBOX_PROBLEM, f"bwrap cannot create a sandbox here: {SANDBOX_PROBLEM}")
+class RoundTests(RoundCase):
+    def test_a_round_runs_every_job_and_a_summary_scores_the_records_again_with_the_oracle_as_it_is(self):
+        self.plan(self.job("claude-write-skill-1-0", "full", "1"), self.job("claude-test-1-0", "none", "2"))
+        code, printed = self.run_round()
+        self.assertEqual(code, 0)
+        self.assertEqual(sorted(printed.splitlines()), ["run1-alpha: ok", "run2-alpha: ok"])
+        log = (self.round / "log.txt").read_text()
+        self.assertRegex(log, r"(?s)start .* 9\.9\.9 \(stand-in\), budget USD 100\n.*end ")
+        self.assertEqual((self.round / "cli-version.txt").read_text(), "9.9.9 (stand-in)\n")
+        summary = scenario_rounds.summarize(self.round)
+        self.assertEqual((self.round / "summary.md").read_text(), summary)
+        self.assertIn("| alpha | 1 | claude-write-skill-1-0 full | 1 of 1 | 0 of 0 | 0 | 0 | 0 | 5 | 17 | 0.0 | 0.25 | ok |", summary)
+        self.assertIn("| alpha | 2 | claude-test-1-0 none | 1 of 1 | 0 of 0 | 1 | 0 | 0 | 0 | 17 | 0.0 | 0.25 | ok |", summary)
+        self.assertIn("| claude-test-1-0 none | 1 | 0 | 1 of 1 | 0 of 0 | 1 | 0 | 0 | 0 | 17 | 0.0 | 0.25 |", summary)
+        self.assertIn("- run2-alpha: state check file_changed repo/app.py failed", summary)
+        self.assertIn("- run1-alpha: stale matched in report: 'front-a is stale.'", summary)
+        stricter = json.loads((self.scenarios / "alpha" / "expected.json").read_text())
+        stricter["detect"][0]["near"].append("never written")
+        write(self.scenarios / "alpha" / "expected.json", json.dumps(stricter))
+        self.assertIn("| alpha | 1 | claude-write-skill-1-0 full | 0 of 1 |", scenario_rounds.summarize(self.round))
+
+    def test_a_summary_counts_failed_and_missing_runs_in_their_arm(self):
+        self.write_alpha(minutes=0.03)
+        self.plan(self.job("claude-pkill-hang-1-0", "none", "1"), self.job("claude-pkill-hang-1-0", "none", "2"))
+        scenario_rounds.run_job(self.round, self.job("claude-pkill-hang-1-0", "none", "1"), self.context)
+        summary = scenario_rounds.summarize(self.round)
+        self.assertIn("| claude-pkill-hang-1-0 | 2 | 2 | 0 of 1 |", summary)
+        self.assertIn("| alpha | 1 | claude-pkill-hang-1-0 | 0 of 1 | 0 of 0 | 2 | 1 | 0 | 0 | 0 | 0.0 | 0.00 | time limit of 0.03 minutes; no result event in the stream |", summary)
+        self.assertIn("- run2-alpha: no record", summary)
+        self.assertIn("stream violation kill-by-pattern", summary)
+
+    def test_a_stop_signal_ends_every_sandbox_and_starts_no_other_run(self):
+        marker = "wait.sh gate front-c"
+        self.plan(*(self.job("claude-hang-1-0", "none", str(number)) for number in (1, 2, 3)))
+
+        def send_when_two_agents_run():
+            deadline = time.monotonic() + 90
+            while len(processes_named(marker)) < 2 and time.monotonic() < deadline:
+                time.sleep(0.1)
+            os.kill(os.getpid(), signal.SIGTERM)
+
+        sender = threading.Thread(target=send_when_two_agents_run)
+        previous = signal.getsignal(signal.SIGTERM)
+        sender.start()
+        code, printed = self.run_round(jobs=2)
+        sender.join(timeout=30)
+        self.assertEqual(code, 128 + signal.SIGTERM)
+        self.assertIn("stopped by SIGTERM: 2 running sandboxes ended", printed)
+        self.assertEqual(processes_named(marker), [])
+        self.assertEqual(sorted(p.name for p in (self.round / "runs").glob("run?-alpha.json")), [])
+        self.assertEqual(list((self.round / "runs").glob("*.workspace.json")), [], "the workspaces were deleted")
+        self.assertFalse((self.round / "streams" / "run3-alpha.jsonl").exists(), "the third run never started")
+        self.assertIn("stopped", (self.round / "log.txt").read_text())
+        self.assertIs(signal.getsignal(signal.SIGTERM), previous)
+
+    def test_a_round_that_has_used_its_budget_starts_no_more_runs_and_says_so(self):
+        self.plan(self.job("claude-test-1-0", "none", "1"), self.job("claude-test-1-0", "none", "2"))
+        code, printed = self.run_round(jobs=1, budget=0.1)
+        self.assertEqual(code, 1)
+        self.assertEqual(printed.splitlines(), ["run1-alpha: ok", "run2-alpha: skipped, budget reached"])
 
 
 class HandoffResumeSeedTests(unittest.TestCase):
