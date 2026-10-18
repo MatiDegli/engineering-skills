@@ -277,6 +277,14 @@ class SnapshotTests(WorkspaceTestCase):
         self.assertFalse(marker.exists())
         self.assertIn("refs/heads/main", after["repos"]["repo"]["refs"])
 
+    def test_a_repository_replaced_by_a_link_to_another_place_is_not_read(self):
+        elsewhere = self.root / "elsewhere-repository"
+        shutil.move(self.workspace / "repo", elsewhere)
+        (self.workspace / "repo").symlink_to(elsewhere)
+        after = scenario_rounds.take_snapshot(self.workspace, self.manifest)
+        self.assertNotIn("repo", after["repos"])
+        self.assertEqual(after["problems"], ["repo: no Git directory inside the workspace"])
+
     def test_a_git_directory_that_leaves_the_workspace_is_not_read(self):
         elsewhere = self.root / "elsewhere"
         shutil.copytree(self.workspace / "repo" / ".git", elsewhere)
@@ -1020,7 +1028,8 @@ class SandboxTests(unittest.TestCase):
         marker = f"scenario-stop-{os.getpid()}"
         agent = [sys.executable, "-c", "import time; time.sleep(600)", marker]
         outcome = {}
-        thread = threading.Thread(target=lambda: outcome.update(self.launch(agent, [self.fixture("live", f"{marker}-fixture")])))
+        fixtures = [self.fixture("live", f"{marker}-fixture")]
+        thread = threading.Thread(target=lambda: outcome.update(self.launch(agent, fixtures, limit=600)), daemon=True)
         thread.start()
         for _ in range(100):
             if len(processes_named(marker)) >= 2:
@@ -1028,8 +1037,8 @@ class SandboxTests(unittest.TestCase):
             time.sleep(0.1)
         self.assertGreaterEqual(len(processes_named(marker)), 2)
         self.assertEqual(self.sandboxes.stop(), 1)
-        thread.join(timeout=30)
-        self.assertFalse(thread.is_alive())
+        thread.join(timeout=20)
+        self.assertFalse(thread.is_alive(), "the stop ended the sandbox, long before its time limit")
         self.assertTrue(outcome["stopped"])
         self.assertEqual(processes_named(marker), [])
 
