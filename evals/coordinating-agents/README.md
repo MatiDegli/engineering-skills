@@ -154,8 +154,12 @@ The runner therefore works as follows:
 - **Agent command:**
   - The model is a full model ID, with the effort fixed.
   - `--safe-mode` disables CLAUDE.md, skills, plugins, hooks, and MCP servers, so no user
-    configuration reaches either level. The stream's init event is checked, and a run whose init
-    event lists skills, plugins, or MCP servers fails, because its level is not what it says.
+    configuration reaches either level.
+  - The first live run showed that `--safe-mode` keeps the CLI's own skills (16 in version
+    2.1.292) and two built-in plugins. `--disable-slash-commands` turns those skills off too; the
+    built-in plugins stay, the same for both levels.
+  - The stream's init event is checked. A run fails, because its level is not what it says, when
+    the event lists any skill, any MCP server, or a plugin that is not built in.
   - Bash, Read, Grep, Glob, Edit, and Write are allowed. Agent, Task, Monitor, WebFetch, WebSearch,
     and NotebookEdit are disallowed.
   - The prompt arrives on standard input, not in the command line, so a pattern kill that uses a

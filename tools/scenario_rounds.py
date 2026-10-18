@@ -1835,13 +1835,15 @@ def agent_command(executable: Path, model: str, skill: Path | None, settings: st
     Like the audit runner's, it fixes the model by its full ID and the effort, loads only user
     settings with hooks off, and refuses MCP servers and session files. `--safe-mode` also disables
     CLAUDE.md, skills, plugins, hooks, and MCP servers, so neither level inherits any customization.
+    It keeps the skills built into the CLI (16 in 2.1.292, seen in the first live run), so
+    `--disable-slash-commands` turns those off too; the `full` level reads its skill by path.
     Agents, monitors, and the web are disallowed.
     """
     return [
         *(str(executable), "-p", "--model", model, "--effort", "high"),
         *(["--add-dir", str(skill)] if skill else []),
         *("--allowedTools", *ALLOWED_TOOLS, "--disallowedTools", *DISALLOWED_TOOLS),
-        *("--safe-mode", "--setting-sources", "user", "--settings", settings),
+        *("--safe-mode", "--disable-slash-commands", "--setting-sources", "user", "--settings", settings),
         *("--output-format", "stream-json", "--verbose", "--no-session-persistence", "--strict-mcp-config"),
     ]
 
@@ -1938,6 +1940,18 @@ def init_event(stream: Path) -> dict:
 
 
 INIT_LISTS = ("skills", "plugins", "mcp_servers")
+
+
+def init_failures(init: dict) -> list[str]:
+    """Name what the init event says was loaded although the agent command turns it off.
+
+    The command loads no skill and no MCP server, so any listed means the run was customized and
+    its level is not what it says. Plugins built into the CLI (`"path": "builtin"`) stay under
+    `--safe-mode` for both levels alike; only another plugin fails the run.
+    """
+    listed = {key: init.get(key) or [] for key in INIT_LISTS}
+    listed["plugins"] = [p for p in listed["plugins"] if not (isinstance(p, dict) and p.get("path") == "builtin")]
+    return [f"the init event lists {key} under --safe-mode: {str(value)[:200]}" for key, value in listed.items() if value]
 
 
 def run_failures(outcome: dict, results: list[dict], model: str, minutes: float) -> list[str]:
@@ -2054,8 +2068,7 @@ def execute_job(round_dir: Path, job: dict, context: dict, workspace: Path) -> s
         failures.append("secret in the stream: it was redacted")
     calls = tool_calls(stream)
     init = init_event(stream) if results else {}
-    # `--safe-mode` loads none of them, so a list means the run was customized and its level is not what it says.
-    failures += [f"the init event lists {key} under --safe-mode: {str(init[key])[:200]}" for key in INIT_LISTS if init.get(key)]
+    failures += init_failures(init)
     notes = [f"snapshot: {problem}" for problem in after["problems"]]
     if provider and results and init_key_source(stream) != "apiKeyHelper":
         notes.append(f"the key source is {init_key_source(stream)}, not apiKeyHelper")

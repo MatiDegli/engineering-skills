@@ -1508,7 +1508,7 @@ class AgentCommandTests(unittest.TestCase):
         refused = command[command.index("--disallowedTools") + 1: command.index("--safe-mode")]
         self.assertEqual(tools, ["Bash", "Read", "Grep", "Glob", "Edit", "Write"])
         self.assertEqual(refused, ["Agent", "Task", "Monitor", "WebFetch", "WebSearch", "NotebookEdit"])
-        for flag in ("--safe-mode", "--strict-mcp-config", "--no-session-persistence", "--verbose"):
+        for flag in ("--safe-mode", "--disable-slash-commands", "--strict-mcp-config", "--no-session-persistence", "--verbose"):
             self.assertIn(flag, command)
         self.assertEqual(command[command.index("--setting-sources") + 1], "user")
         self.assertEqual(command[command.index("--settings") + 1], '{"a": 1}')
@@ -1750,6 +1750,14 @@ class JobTests(StandInCase):
         self.assertNotIn("plugins", line, "an empty list is no list")
         self.assertEqual(len(record["failures"]), 2)
         self.assertEqual(record["notes"], [])
+
+    def test_plugins_built_into_the_cli_do_not_fail_a_run_but_any_other_plugin_does(self):
+        builtin = {"name": "cc-plugin-agents-md", "path": "builtin", "source": "cc-plugin-agents-md@builtin"}
+        installed = {"name": "mine", "path": "/home/u/.claude/plugins/mine", "source": "mine@market"}
+        self.assertEqual(scenario_rounds.init_failures({"plugins": [builtin], "skills": [], "mcp_servers": []}), [])
+        self.assertEqual(scenario_rounds.init_failures({"plugins": [builtin, installed]}), [
+            f"the init event lists plugins under --safe-mode: {[installed]}"])
+        self.assertEqual(len(scenario_rounds.init_failures({"skills": ["deep-research"]})), 1)
 
     def test_a_stream_that_shows_another_model_fails_the_run(self):
         line, _ = self.run_job("claude-mismatch-1-0", level="none")
