@@ -279,6 +279,38 @@ class SnapshotTests(WorkspaceTestCase):
         self.assertFalse(marker.exists())
         self.assertIn("refs/heads/main", after["repos"]["repo"]["refs"])
 
+    def test_a_signed_stash_commit_cannot_make_the_snapshot_run_the_agents_signature_program(self):
+        repo, marker = self.workspace / "repo", self.root / "marker"
+        program = self.root / "gpg.sh"
+        write(program, f"#!/bin/sh\ntouch {marker}\nexit 1\n", 0o755)
+        head, _, message = git(repo, "cat-file", "commit", "refs/stash").partition("\n\n")
+        signed = f"{head}\ngpgsig -----BEGIN PGP SIGNATURE-----\n \n abc\n -----END PGP SIGNATURE-----\n\n{message}"
+        stash = subprocess.run(
+            ["git", *SETTINGS_OFF, "hash-object", "-t", "commit", "-w", "--stdin"], cwd=repo, input=signed, text=True,
+            env=git_environment(), capture_output=True, check=True,
+        ).stdout.strip()
+        git(repo, "update-ref", "-m", "On main: wip: signed", "refs/stash", stash)
+        git(repo, "config", "log.showSignature", "true")
+        git(repo, "config", "gpg.program", str(program))
+        git(repo, "reflog", "show", "--format=%H%x09%gs", "refs/stash")
+        self.assertTrue(marker.exists(), "the control: reading the stash through git reflog runs the program")
+        marker.unlink()
+        entries = self.after()["repos"]["repo"]["stash"]
+        self.assertFalse(marker.exists())
+        self.assertEqual([e["subject"] for e in entries], ["On main: wip: signed", self.before["repos"]["repo"]["stash"][0]["subject"]])
+        self.assertEqual(entries[0]["commit"], stash)
+
+    def test_a_stash_log_that_is_a_link_or_holds_other_text_is_not_trusted(self):
+        log = self.workspace / "repo" / ".git" / "logs" / "refs" / "stash"
+        secret = self.root / "secret"
+        write(secret, f"{'0' * 40} {'a' * 40} Name <n@example.invalid> 1 +0000\tsecret text\n")
+        log.unlink()
+        log.symlink_to(secret)
+        self.assertEqual(self.after()["repos"]["repo"]["stash"], [])
+        log.unlink()
+        write(log, f"not a log line\n{'0' * 40} {'b' * 40} Name <n@example.invalid> 1 +0000\tOn main: kept\n\n")
+        self.assertEqual(self.after()["repos"]["repo"]["stash"], [{"commit": "b" * 40, "subject": "On main: kept"}])
+
     def test_a_repository_replaced_by_a_link_to_another_place_is_not_read(self):
         elsewhere = self.root / "elsewhere-repository"
         shutil.move(self.workspace / "repo", elsewhere)

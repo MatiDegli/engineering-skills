@@ -315,7 +315,7 @@ def git_dir(workspace: Path, relative: str) -> Path | None:
 def read_git(directory: Path, *arguments: str, work_tree: Path | None = None) -> str | None:
     """Run a Git plumbing command on exactly this Git directory; None when it fails.
 
-    Only commands that read refs, reflogs, objects, and ignore rules are used here: they do not run
+    Only commands that read refs, objects, and ignore rules are used here: they do not run
     the filters, hooks, or fsmonitor that the agent's repository configuration can name. A command
     that lists files needs the work tree too.
     """
@@ -345,6 +345,25 @@ def ignored_files(git_directory: Path, work_tree: Path, workspace: Path) -> list
     return [(base / name).as_posix() for name in (listing or "").split("\0") if name]
 
 
+STASH_ENTRY = re.compile(r"[0-9a-f]{40,64} ([0-9a-f]{40,64}) [^\t]*\t(.*)")
+
+
+def read_stash(directory: Path) -> list[dict]:
+    """Read the stash entries from the reflog file, newest first.
+
+    `git reflog` walks the commits with the repository's own log settings. With `log.showSignature`
+    on and a `gpg.program` in the repository's configuration, a signed commit in the stash would run
+    the agent's program on this machine (reproduced with `git reflog show refs/stash`). The file is
+    only text, and a link or a file outside the Git directory is not read.
+    """
+    log = directory / "logs" / "refs" / "stash"
+    if log.is_symlink() or not log.is_file() or not log.resolve().is_relative_to(directory.resolve()):
+        return []
+    lines = log.read_text(encoding="utf-8", errors="replace").splitlines()
+    entries = (STASH_ENTRY.fullmatch(line) for line in reversed(lines))
+    return [{"commit": found[1], "subject": found[2]} for found in entries if found]
+
+
 def read_repository(directory: Path, workspace: Path) -> dict:
     """Read the refs, the stash, the worktrees, and the ignored files of one Git directory.
 
@@ -355,10 +374,7 @@ def read_repository(directory: Path, workspace: Path) -> dict:
     for line in (read_git(directory, "for-each-ref", "--format=%(refname)%09%(objectname)") or "").splitlines():
         name, _, sha = line.partition("\t")
         refs[name] = sha
-    stash = []
-    for line in (read_git(directory, "reflog", "show", "--format=%H%x09%gs", "refs/stash") or "").splitlines():
-        commit, _, subject = line.partition("\t")
-        stash.append({"commit": commit, "subject": subject})
+    stash = read_stash(directory)
     worktrees, ignored = [], []
     if directory.name == ".git":
         ignored += ignored_files(directory, directory.parent, workspace)

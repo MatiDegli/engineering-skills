@@ -173,8 +173,10 @@ The runner therefore works as follows:
   fewer, easier runs.
 - **Snapshot:** the state after the run is read without executing anything the agent could have
   configured:
-  - refs and the stash come from Git plumbing, on Git directories re-checked to lie inside the
-    workspace;
+  - refs, and the ignore rules of each work tree, come from Git plumbing, on Git directories
+    re-checked to lie inside the workspace;
+  - the stash comes from its reflog file, not from `git reflog`, which would run the signature
+    program that a repository's configuration names for a signed stash commit;
   - the bare remote is read by its recorded path, not through `origin`;
   - file contents are hashed directly, instead of running `git status`, which runs configured
     filters.
