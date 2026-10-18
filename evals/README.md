@@ -25,7 +25,8 @@ A defect is found when a single row of the report's findings table meets all of 
 - Any of its cells cites the file of `at` with a line or range that overlaps the lines of `at`. A
   path resolves by its full relative path or else a unique suffix, as in the citation check, and a
   citation without a line number does not count.
-- When `terms` is present, the row contains at least one term, ignoring case. The terms name the
+- When `terms` is present, the row contains at least one term, ignoring case; a term made of
+  digits matches only a whole number, so `500` does not match `5000`. The terms name the
   mechanism, so a row that cites the right lines for another reason, such as a missing test, does not
   find the defect.
 

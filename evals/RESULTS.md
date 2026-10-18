@@ -1886,7 +1886,7 @@ Notes:
 | orders-service | 96 | Sonnet 5.5 none | 7 of 9 by hand | 2 of 3 by hand | by hand | — | — |
 | orders-service | 97 | Sonnet 5.5 none | 5 of 9 by hand | 2 of 3 by hand | by hand | — | — |
 | orders-service | 98 | Haiku 5.5 full | 9 of 9 | 1 of 3 | no | 2 of 3 | unmarked high 1 |
-| orders-service | 99 | Haiku 5.5 full | 9 of 9 | 2 of 3 | yes | 2 of 3 | — |
+| orders-service | 99 | Haiku 5.5 full | 9 of 9 | 1 of 3 | yes | 2 of 3 | — |
 | orders-service | 100 | Haiku 5.5 none | 7 of 9 by hand | 3 of 3 by hand | by hand | — | secret copied |
 | orders-service | 101 | Haiku 5.5 none | 6 of 9 by hand | 3 of 3 by hand | by hand | — | secret copied |
 
@@ -1901,12 +1901,12 @@ Notes:
 | --- | --- | --- |
 | booking-api, all five | 19 of 20 | 20 of 20 |
 | orders-service, WELCOME10 trusts the caller's flag | 2 of 4 | 4 of 4 |
-| orders-service, a list as SKU returns 500 | 4 of 4 | 2 of 4 |
+| orders-service, a list as SKU returns 500 | 3 of 4 | 2 of 4 |
 | orders-service, the CPU alert's `> 0.8` means cores | 0 of 4 | 4 of 4 |
 
 - When the README states the rule, both levels find the defect. Every skill report that found one
   reproduced it, and most rated it high, so `booking-api` does not separate the levels and serves as
-  a regression check. Where the rule is only implied, the skill found 6 of 12 and the no-skill
+  a regression check. Where the rule is only implied, the skill found 5 of 12 and the no-skill
   level 10 of 12. The CPU alert's unit error is now missed by all eight skill reports of rounds 19
   and 21 and found by all six no-skill reports. The criterion that covers it, OPS-03, asks what an
   alert measures, not whether its threshold means what its summary says.
@@ -1920,6 +1920,9 @@ Notes:
 - By hand, a multi-part gap counts only when the report names every part; `by-hand.md` in the round
   directory also gives the count for any part named. Run 97 cites `src/bookings.ts:156` for the
   defect at line 30; it names the file and the mechanism, so the defect counts.
+- Corrected with runs 149 to 156: the matcher found the term `500` inside `5000`, and credited run
+  99 with the SKU error for a row about untested limits. Run 99's figure, the SKU row, and the
+  skill's total above are corrected (they were 2 of 3, 4 of 4, and 6 of 12).
 
 Report SHA-256 hashes, as printed by the summary:
 
@@ -1985,7 +1988,7 @@ Report SHA-256 hashes, as printed by the summary:
 | orders-service | 111 | Sonnet 5.5 @ 0a855a8 | 9 of 9 | 2 of 3 | yes | 2 of 3 | — |
 | orders-service | 112 | Sonnet 5.5 @ 0a855a8 | 9 of 9 | 1 of 3 | yes | 2 of 3 | — |
 | orders-service | 113 | Sonnet 5.5 @ 0a855a8 | 9 of 9 | 1 of 3 | yes | 2 of 3 | — |
-| orders-service | 114 | glm-5.3 @ 7d06633 | 9 of 9 | 2 of 3 | yes | 3 of 3 | — |
+| orders-service | 114 | glm-5.3 @ 7d06633 | 9 of 9 | 1 of 3 | yes | 3 of 3 | — |
 | orders-service | 115 | glm-5.3 @ 7d06633 | 9 of 9 | 1 of 3 | no | 2 of 3 | uncovered 1 |
 | orders-service | 116 | glm-5.3 @ 0a855a8 | 9 of 9 | 1 of 3 | yes | 2 of 3 | — |
 | orders-service | 117 | glm-5.3 @ 0a855a8 | 9 of 9 | 2 of 3 | yes | 3 of 3 | — |
@@ -1995,7 +1998,7 @@ Report SHA-256 hashes, as printed by the summary:
 | Control | Sonnet 5.5 | 5 | 69 of 70 | 25 of 25 | 8 of 15 | 2.2 | 0.50 |
 | V1 | Sonnet 5.5 | 5 | 69 of 70 | 22 of 25 | 9 of 15 | 2.5 | 0.50 |
 | V2 | Sonnet 5.5 | 2 | 28 of 28 | 10 of 10 | 3 of 6 | 2.6 | 0.56 |
-| Control | GLM 5.3 | 2 | 28 of 28 | 7 of 10 | 3 of 6 | 11.4 | 1.67 |
+| Control | GLM 5.3 | 2 | 28 of 28 | 7 of 10 | 2 of 6 | 11.4 | 1.67 |
 | V1 | GLM 5.3 | 2 | 28 of 28 | 6 of 10 | 3 of 6 | 10.6 | 1.80 |
 
 | orders-service defect, Sonnet 5.5, five runs per arm | Control | V1 |
@@ -2005,15 +2008,18 @@ Report SHA-256 hashes, as printed by the summary:
 | The CPU alert's `> 0.8` means cores | 0 of 5 | 1 of 5 |
 
 - After two runs per arm, V1 looked better on `orders-service` (5 of 6 against 3 of 6). After five,
-  the totals are equal (9 of 15 against 8 of 15), and with GLM there is no difference. Two runs per
-  arm cannot separate variants like these, so later comparisons of detection rates use at least
-  five runs per arm.
+  the totals are equal (9 of 15 against 8 of 15), and with GLM V1 found one more (3 of 6 against 2
+  of 6). Two runs per arm cannot separate variants like these, so later comparisons of detection
+  rates use at least five runs per arm.
 - V1 changes how an audit treats a bypassable rule: it found WELCOME10 in every run and rated it
   high four times, while the control found it three times and always rated it medium. It found the
   SKU error less often, and found one fewer `booking-api` defect in three of five runs. V2 showed no
   gain and is dropped.
 - The CPU alert's unit error: one skill report in 18 has found it across rounds 19, 21, 22, and 23
   (run 104), against six of six reports without the skill.
+- Corrected with runs 149 to 156: the matcher found the term `500` inside `5000`, and credited run
+  114 with the SKU error for a row about untested limits. Run 114 and the GLM control are corrected
+  (they were 2 of 3 and 3 of 6).
 
 Report SHA-256 hashes, as printed by the summaries:
 

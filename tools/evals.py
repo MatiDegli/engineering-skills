@@ -506,6 +506,13 @@ def counted_defects(expected: dict, as_of: date) -> list[dict]:
     ]
 
 
+def term_in(term: str, text: str) -> bool:
+    """Whether the text contains the term; a number, such as 500, never matches inside 5000."""
+    if term.isdigit():
+        return re.search(rf"(?<!\d){term}(?!\d)", text) is not None
+    return term in text
+
+
 def defect_found(defect: dict, table: list[dict[str, str]], files: dict[str, Path]) -> bool:
     """Whether one row of the findings table pins the defect, not only its criterion.
 
@@ -518,7 +525,7 @@ def defect_found(defect: dict, table: list[dict[str, str]], files: dict[str, Pat
     for row in table:
         if row["id"] not in defect["ids"] or row["status"] not in FINDING_STATUSES:
             continue
-        if terms and not any(term in row["text"].lower() for term in terms):
+        if terms and not any(term_in(term, row["text"].lower()) for term in terms):
             continue
         for cited, lines in CITATION.findall(row["text"]):
             overlaps = any(a <= last and first <= b for a, b in cited_ranges(lines))

@@ -383,6 +383,13 @@ class DefectTests(unittest.TestCase):
         self.assertEqual(resolve_path("alerts.yaml", files), "deploy/alerts.yaml")
         self.assertEqual(resolve_path("legacy/checkout.py", files), "legacy/checkout.py")
 
+    def test_a_numeric_term_matches_only_the_whole_number(self):
+        sku = {**SKU_LIST, "ids": ["TEST-01"], "terms": ["500"]}
+        limits = "Nothing tests the limits at `app/checkout.py:36-59`, such as taxable 4999/5000"
+        self.assertFalse(self.found(("TEST-01", "partial", limits), defect=sku))
+        crash = "A list sku at `app/checkout.py:53` returns 500, not 400"
+        self.assertTrue(self.found(("TEST-01", "partial", crash), defect=sku))
+
     def test_a_test_gap_at_the_lines_is_not_the_defect_but_the_trusted_flag_is(self):
         welcome = {
             "description": "The WELCOME10 first-order rule trusts the returning_customer flag",
