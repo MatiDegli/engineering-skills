@@ -1078,6 +1078,10 @@ if "canary" in model:
 if "write" in model:
     with open("repo/app.py", "a") as handle:
         handle.write("print('agent')\n")
+if "printenv" in model:
+    tool = {"type": "tool_use", "name": "Bash", "input": {"command": "printenv"}}
+    emit(type="assistant", message={"content": [tool]})
+    emit(type="user", message={"content": [{"type": "tool_result", "content": "CLAUDE_CODE_OAUTH_TOKEN=" + token}]})
 if "hang" in model:
     time.sleep(600)
 text = "front-a is stale."
@@ -1284,6 +1288,41 @@ class JobTests(StandInCase):
         for path in (self.round / "streams" / "run1-alpha.jsonl", self.round / "reports" / "run1-alpha.md", self.round / "runs" / "run1-alpha.json"):
             self.assertNotIn(TOKEN, path.read_text())
         self.assertIn("[REDACTED]", (self.round / "reports" / "run1-alpha.md").read_text())
+
+    def test_a_run_stopped_by_the_maintainer_keeps_no_token_in_its_streams(self):
+        job = self.job("claude-printenv-hang-1-0", level="none")
+        stream, stderr = (self.round / "streams" / f"{job['label']}{suffix}" for suffix in (".jsonl", ".stderr.txt"))
+        done = []
+        thread = threading.Thread(target=lambda: done.append(scenario_rounds.run_job(self.round, job, self.context)), daemon=True)
+        thread.start()
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline and not (stream.exists() and TOKEN in stream.read_text()):
+            time.sleep(0.1)
+        self.assertIn(TOKEN, stream.read_text(), "the control: the agent printed the token and is still running")
+        self.assertEqual(self.context["sandboxes"].stop(), 1)
+        thread.join(timeout=30)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(done, ["run1-alpha: stopped"])
+        self.assertFalse((self.round / "runs" / "run1-alpha.json").exists(), "a stopped run writes no record")
+        for path in (stream, stderr):
+            self.assertNotIn(TOKEN, path.read_text())
+        self.assertIn("[REDACTED]", stream.read_text())
+
+    def test_a_run_that_fails_after_the_launch_keeps_no_token_in_its_streams(self):
+        taken = scenario_rounds.take_snapshot
+
+        def fail_after_the_run(workspace, manifest, before=None):
+            if before is not None:
+                raise RuntimeError("the snapshot failed")
+            return taken(workspace, manifest, before)
+
+        with mock.patch.object(scenario_rounds, "take_snapshot", fail_after_the_run):
+            line, record = self.run_job("claude-printenv-1-0", level="none")
+        self.assertEqual(line, "run1-alpha: error RuntimeError: the snapshot failed")
+        self.assertIsNone(record)
+        stream = (self.round / "streams" / "run1-alpha.jsonl").read_text()
+        self.assertIn("[REDACTED]", stream)
+        self.assertNotIn(TOKEN, stream)
 
     def test_a_stream_that_shows_another_model_fails_the_run(self):
         line, _ = self.run_job("claude-mismatch-1-0", level="none")

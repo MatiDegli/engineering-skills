@@ -1489,12 +1489,13 @@ def execute_job(round_dir: Path, job: dict, context: dict, workspace: Path) -> s
     try:
         outcome = launch(arguments, payload, stream, stderr, paths["runs"] / f"{label}.launcher.json", limit, context["sandboxes"])
     finally:
+        # Whatever happened, a stopped run, an exception, or a normal end, the streams never keep a secret.
         if config:
             (config / "key").unlink(missing_ok=True)
+        leaked = scrub([stream, stderr], secret_values)
     if outcome["stopped"]:
         return f"{label}: stopped"
     after = take_snapshot(workspace, manifest, before)
-    leaked = scrub([stream, stderr], secret_values)
     results = stream_results(stream)
     report = report_text(results)
     failures = run_failures(outcome, results, model, spec["minutes"])
