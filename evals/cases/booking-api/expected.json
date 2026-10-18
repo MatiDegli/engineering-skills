@@ -1,0 +1,118 @@
+{
+  "description": "A meeting-room booking API in production at security level 2, with member names and emails, whose README states the business rules. Five logic defects break those rules, three gaps concern the runtime pin, personal data, and recovery, and one documented, tested design choice is not a defect: guests pay a non-refundable 2 EUR booking fee, which stays with the space even when a booking is cancelled before the free deadline. A report that calls that fee a defect is a false flag when scored by hand.",
+  "must_find": {
+    "SEC-02": "POST /bookings trusts the member flag in the request body and calls attendees.map on a value it never checked",
+    "SEC-03": "the request body is read with no size limit and nothing limits attempts; the conflict check also lets a booking that encloses another through",
+    "SEC-12": "bookings and the members table keep names and emails, and the attendees' emails, with no retention or deletion rule",
+    "OPS-02": "the SQLite database lives in a container volume, and nothing backs it up, restores it, or agrees an acceptable loss",
+    "QUAL-02": "TypeScript is never type-checked: tsconfig.json exists, but no script or CI step runs a type checker, and Node strips types without checking them"
+  },
+  "must_not_flag": {
+    "AGENT-04": "no agents contribute",
+    "AGENT-05": "no agents contribute",
+    "SEC-09": "no model or LLM features",
+    "SEC-05": "the key comes from the environment, and the README and tests use obviously fake low-entropy placeholders",
+    "SEC-10": "the request log holds only the method, path, status, and duration, never bodies, emails, or parameters",
+    "SEC-11": "the tests use `test-key`, a low-entropy sentinel",
+    "CI-03": "contents: read permissions and persist-credentials: false",
+    "CI-04": "a job timeout, and only pull request runs are cancelled",
+    "CI-09": "no merge queue",
+    "STRUCT-02": "fewer than 20 files in every directory",
+    "TOOL-01": "no tools, skills, or MCP servers configured"
+  },
+  "must_not_contain": [],
+  "top_priorities": [
+    "SEC-02",
+    "SEC-03"
+  ],
+  "defects": [
+    {
+      "description": "The member discount trusts the member flag in the request body and never checks the members table by email",
+      "ids": [
+        "SEC-02",
+        "TEST-01",
+        "ARCH-02",
+        "REPO-06"
+      ],
+      "at": "src/bookings.ts:30-31",
+      "terms": [
+        "caller",
+        "client",
+        "request body",
+        "body.member",
+        "trusts",
+        "unverified",
+        "self-reported"
+      ]
+    },
+    {
+      "description": "The hold expiry multiplies HOLD_MINUTES by 1000, so a 10-minute hold lasts 10 seconds",
+      "ids": [
+        "ARCH-03",
+        "TEST-01",
+        "REPO-06"
+      ],
+      "at": "src/rules.ts:129",
+      "terms": [
+        "second",
+        "millisecond",
+        "unit mismatch",
+        "units",
+        "wrong unit",
+        "* 1000"
+      ]
+    },
+    {
+      "description": "A missing or non-array attendees raises a TypeError at attendees.map, a 500 instead of a 400",
+      "ids": [
+        "SEC-02",
+        "ARCH-02",
+        "ARCH-05",
+        "TEST-01"
+      ],
+      "at": "src/rules.ts:110",
+      "terms": [
+        "TypeError",
+        "500",
+        "not an array",
+        "attendees.map",
+        "crash"
+      ]
+    },
+    {
+      "description": "The conflict check misses a new booking that fully contains an existing one, a double booking",
+      "ids": [
+        "SEC-03",
+        "ARCH-02",
+        "TEST-01",
+        "REPO-06"
+      ],
+      "at": "src/rules.ts:142-143",
+      "terms": [
+        "overlap",
+        "contain",
+        "enclos",
+        "encompass",
+        "double"
+      ]
+    },
+    {
+      "description": "The free cancellation deadline uses the local-time getters and setters while the container runs in UTC, so it is one or two hours later than 18:00 Madrid time",
+      "ids": [
+        "ARCH-03",
+        "TEST-01",
+        "REPO-06"
+      ],
+      "at": "src/rules.ts:149-150",
+      "terms": [
+        "timezone",
+        "time zone",
+        "UTC",
+        "local time",
+        "madrid",
+        "daylight",
+        "dst"
+      ]
+    }
+  ]
+}
