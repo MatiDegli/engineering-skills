@@ -12,7 +12,6 @@
     "AGENT-05": "no agents contribute",
     "SEC-09": "no model or LLM features",
     "SEC-05": "the key comes from the environment, and the README and tests use obviously fake low-entropy placeholders",
-    "SEC-10": "the request log holds only the method, path, status, and duration, never bodies, emails, or parameters",
     "SEC-11": "the tests use `test-key`, a low-entropy sentinel",
     "CI-03": "contents: read permissions and persist-credentials: false",
     "CI-04": "a job timeout, and only pull request runs are cancelled",
