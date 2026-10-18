@@ -30,6 +30,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import ExitStack, contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from tools.evals import (
     CASES,
@@ -97,37 +98,111 @@ def now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-# One headless round at a time on this machine, for every runner that takes this lock: rounds
-# share the Claude login and the host.
+# One headless round at a time per provider on this machine, for every runner that takes these
+# locks: rounds of one provider share its login or key and its limits. The Claude login's lock,
+# `anthropic`, keeps the file older runners take, so they still exclude each other; another
+# provider's lock is a file beside it. Rounds of different providers run at once on one host.
 ROUND_LOCK = Path.home() / ".cache" / "engineering-skills" / "rounds.lock"
 LOCK_POLL = 5
+ANTHROPIC = "anthropic"
+HOST = re.compile(r"[a-z0-9-]+(\.[a-z0-9-]+)*")
+DEFAULT_PORTS = {"https": 443, "http": 80}
+
+
+def check_host(host: str) -> str:
+    """Return a provider's host, or exit unless it is a lowercase DNS name other than `anthropic`.
+
+    The whole host must match, so `..`, a slash, or a trailing newline never reaches a lock's file
+    name; `anthropic` names the Claude login.
+    """
+    if not HOST.fullmatch(host) or host == ANTHROPIC:
+        raise SystemExit(f"a provider host must be a lowercase DNS name other than {ANTHROPIC}, not {host!r}")
+    return host
+
+
+def provider_resource(url: str) -> str:
+    """Return the resource of a provider's base URL: its host, plus `_<port>` for a port other than
+    the scheme's default, so `https://api.z.ai` and `https://api.z.ai:443` share one lock."""
+    parts = urlsplit(url)
+    try:
+        port = parts.port
+    except ValueError as error:
+        raise SystemExit(f"the provider URL {url!r} has an invalid port: {error}") from None
+    host = check_host(parts.hostname or "")
+    return host if port in (None, DEFAULT_PORTS.get(parts.scheme)) else f"{host}_{port}"
+
+
+def round_resources(models: list[str], providers: dict[str, dict]) -> tuple[str, ...]:
+    """Return the resources a round's models need, sorted and without repeats.
+
+    A model served by the Claude login needs `anthropic`, and one served by `--provider-url` its
+    provider's resource; a provider of a model the round does not run adds nothing.
+    """
+    needed = {provider_resource(providers[m]["url"]) if m in providers else ANTHROPIC for m in models}
+    return tuple(sorted(needed))
+
+
+def lock_path(resource: str) -> Path:
+    """Return a resource's lock file: `ROUND_LOCK` for `anthropic`, `rounds-<resource>.lock` beside
+    it for any other.
+
+    The path comes from `ROUND_LOCK` at every call, so a test that points it elsewhere never
+    touches the live directory.
+    """
+    if resource == ANTHROPIC:
+        return ROUND_LOCK
+    host, _, port = resource.partition("_")
+    if resource != check_host(host) and not re.fullmatch(r"[0-9]+", port):
+        raise SystemExit(f"a round resource is a host, with or without _<port>, not {resource!r}")
+    return ROUND_LOCK.with_name(f"rounds-{resource}.lock")
+
+
+def take_locks(handles: list) -> int | None:
+    """Take every lock without blocking, or none: return the index of one held elsewhere."""
+    for number, handle in enumerate(handles):
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            for taken in handles[:number]:
+                fcntl.flock(taken, fcntl.LOCK_UN)
+            return number
+    return None
 
 
 @contextmanager
-def round_lock(holder: str, wait: float = 0.0):
-    """Hold the machine's round lock while the block runs, or exit naming who holds it.
+def round_lock(holder: str, wait: float = 0.0, resources: tuple[str, ...] = (ANTHROPIC,)):
+    """Hold the round lock of every resource while the block runs, or exit naming who holds one.
 
-    The kernel releases a `flock` when its holder exits, so the lock is never stale; the file's text
-    only says who took it last. Waits at most `wait` seconds for the lock.
+    The kernel releases a `flock` when its holder exits, so a lock is never stale; a file's text
+    only says who took it last. Each attempt takes every lock without blocking, in sorted order, or
+    releases the ones it took and tries again after `LOCK_POLL`, until one deadline `wait` seconds
+    after the first attempt. A round never holds one lock while it waits for another, and writes
+    its text only once it holds them all, so a refused round leaves every file as it was.
+
+    Two costs are accepted. A refused attempt holds a lock for microseconds, and an older runner's
+    attempt or a probe that lands then finds it held and names the previous holder's text. A round
+    that needs two resources can keep losing to rounds that need one of them; waits are bounded
+    and rounds are few.
     """
-    path = ROUND_LOCK
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a+", encoding="utf-8") as handle:
+    resources = sorted(set(resources))
+    paths = [lock_path(resource) for resource in resources]
+    ROUND_LOCK.parent.mkdir(parents=True, exist_ok=True)
+    # Closing a file releases its lock, so every exit frees them all, an interrupted attempt too.
+    with ExitStack() as stack:
+        handles = [stack.enter_context(path.open("a+", encoding="utf-8")) for path in paths]
         deadline = time.monotonic() + wait
-        while True:
-            try:
-                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except BlockingIOError:
-                left = deadline - time.monotonic()
-                if left <= 0:
-                    handle.seek(0)
-                    raise SystemExit(f"another round holds {path}: {handle.read().strip() or 'holder unknown'}")
-                time.sleep(min(LOCK_POLL, left))
-        handle.seek(0)
-        handle.truncate()
-        handle.write(f"{holder}, pid {os.getpid()}, since {now()}\n")
-        handle.flush()
+        while (blocked := take_locks(handles)) is not None:
+            left = deadline - time.monotonic()
+            if left <= 0:
+                handles[blocked].seek(0)
+                text = handles[blocked].read().strip()
+                raise SystemExit(f"another round holds {paths[blocked]}: {text or 'holder unknown'}")
+            time.sleep(min(LOCK_POLL, left))
+        for handle in handles:
+            handle.seek(0)
+            handle.truncate()
+            handle.write(f"{holder}, pid {os.getpid()}, since {now()}, for {', '.join(resources)}\n")
+            handle.flush()
         yield
 
 
@@ -671,10 +746,14 @@ def run(
     `providers` maps a model served by another provider to its base URL and key file. SIGTERM or
     SIGINT stops the process group of every running audit, starts no other, and returns 128 plus
     the signal number; the handlers are restored afterwards. The whole round, warm-up included,
-    holds the round lock, waiting for it at most `lock_wait` seconds.
+    holds the lock of every resource its models need (`round_resources`), waiting for them at most
+    `lock_wait` seconds.
     """
-    with round_lock(f"claude_rounds run {round_dir.resolve()}", lock_wait):
-        return run_audits(round_dir, jobs, timeout, budget, pause, providers, stagger)
+    data = json.loads(round_paths(round_dir)["plan.json"].read_text(encoding="utf-8"))
+    providers = providers or {}
+    resources = round_resources([job["model"] for job in data["jobs"]], providers)
+    with round_lock(f"claude_rounds run {round_dir.resolve()}", lock_wait, resources):
+        return run_audits(round_dir, jobs, timeout, budget, pause, providers, stagger, resources)
 
 
 def run_audits(
@@ -685,13 +764,17 @@ def run_audits(
     pause: tuple[int, int],
     providers: dict[str, dict] | None,
     stagger: float,
+    resources: tuple[str, ...] = (ANTHROPIC,),
 ) -> int:
-    """The body of `run`, under the round lock."""
+    """The body of `run`, under the locks of `resources`."""
     paths = round_paths(round_dir)
     data = json.loads(paths["plan.json"].read_text(encoding="utf-8"))
-    status = subprocess.run(["claude", "auth", "status"], capture_output=True, text=True, timeout=60)
-    if '"loggedIn": true' not in status.stdout:
-        raise SystemExit("claude is not logged in here: run 'claude auth login' first")
+    # A round served only by other providers needs no Claude login; checking it would refuse the
+    # round when the login has expired, and touch the login outside the lock of the rounds using it.
+    if ANTHROPIC in resources:
+        status = subprocess.run(["claude", "auth", "status"], capture_output=True, text=True, timeout=60)
+        if '"loggedIn": true' not in status.stdout:
+            raise SystemExit("claude is not logged in here: run 'claude auth login' first")
     version = subprocess.run(["claude", "--version"], capture_output=True, text=True, timeout=60)
     (round_dir / "cli-version.txt").write_text(version.stdout, encoding="utf-8")
     providers = providers or {}
@@ -1044,7 +1127,8 @@ def main() -> int:
         "--lock-wait-minutes",
         type=float,
         default=0,
-        help="wait this long for another round on this machine to finish; by default, exit at once",
+        help="wait this long for another round on one of this round's providers to finish; by"
+        " default, exit at once",
     )
     for name, text in (
         ("summarize", "score the reports and check what the runs left behind"),

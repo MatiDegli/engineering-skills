@@ -1,5 +1,6 @@
 """Check the headless round runner against a stand-in `claude` that starts no agent."""
 
+import fcntl
 import json
 import os
 import re
@@ -23,6 +24,8 @@ from pathlib import Path
 
 arguments = sys.argv[1:]
 if arguments[:2] == ["auth", "status"]:
+    if os.environ.get("FAKE_STATE"):
+        (Path(os.environ["FAKE_STATE"]) / "auth-status").write_text("asked")
     print(json.dumps({{"loggedIn": True}}, indent=2))
     raise SystemExit(0)
 if arguments == ["--version"]:
@@ -100,6 +103,16 @@ def gone(pid):
     return False
 
 
+def free(path):
+    """Whether a new handle takes the lock on `path` at once; it releases it again on return."""
+    with path.open("a+", encoding="utf-8") as handle:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return False
+        return True
+
+
 class RoundTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
@@ -168,6 +181,15 @@ class RoundTests(unittest.TestCase):
             claude_rounds.plan(round_dir, list(runs), [str(self.case)], "HEAD")
         self.rounds.append(round_dir)
         return round_dir
+
+    def providers(self, *served):
+        """Return the providers of (model, URL) pairs, every model with one key file of mode 600."""
+        key = self.root / "provider" / "key"
+        key.parent.mkdir(exist_ok=True)
+        key.write_text("fake-provider-key\n")
+        key.chmod(0o600)
+        urls = [f"{model}={url}" for model, url in served]
+        return claude_rounds.parse_providers(urls, [f"{model}={key}" for model, _ in served])
 
     def test_a_round_retries_a_failed_login_and_summarizes_every_run(self):
         round_dir = self.plan("round", ("1", "claude-test-1-0"), ("2", "claude-flaky-1-0"))
@@ -511,6 +533,141 @@ class RoundTests(unittest.TestCase):
                 with claude_rounds.round_lock("second", wait=0.05):
                     self.fail("the lock was taken twice")
         self.assertIn("first", str(refusal.exception))
+
+    def test_rounds_on_different_resources_run_at_once_and_on_one_exclude_each_other(self):
+        glm = claude_rounds.ROUND_LOCK.with_name("rounds-api.z.ai.lock")
+        self.assertEqual(claude_rounds.lock_path("anthropic"), claude_rounds.ROUND_LOCK)
+        self.assertEqual(claude_rounds.lock_path("api.z.ai"), glm)
+        with claude_rounds.round_lock("claude round"):
+            with claude_rounds.round_lock("glm round", resources=("api.z.ai",)):
+                self.assertTrue(glm.is_file())
+                self.assertEqual(glm.parent, self.root / "lock")
+                self.assertIn("claude round", claude_rounds.ROUND_LOCK.read_text())
+                self.assertIn("glm round", glm.read_text())
+                with self.assertRaises(SystemExit) as refusal:
+                    with claude_rounds.round_lock("second glm round", resources=("api.z.ai",)):
+                        self.fail("one resource was locked twice")
+                self.assertIn("glm round", str(refusal.exception))
+                self.assertIn("rounds-api.z.ai.lock", str(refusal.exception))
+            with self.assertRaises(SystemExit):
+                with claude_rounds.round_lock("second claude round"):
+                    self.fail("one resource was locked twice")
+
+    def test_free_locks_are_taken_at_once(self):
+        resources = ("api.z.ai", "anthropic")
+        with claude_rounds.round_lock("both", wait=0, resources=resources):
+            for path in map(claude_rounds.lock_path, resources):
+                self.assertIn("both, pid", path.read_text())
+                self.assertIn("for anthropic, api.z.ai", path.read_text())
+                self.assertFalse(free(path))
+
+    def test_duplicate_resources_do_not_refuse_themselves(self):
+        with claude_rounds.round_lock("twice", resources=("api.z.ai", "anthropic", "api.z.ai", "anthropic")):
+            self.assertFalse(free(claude_rounds.lock_path("api.z.ai")))
+
+    def test_a_refused_set_names_the_holder_and_leaves_every_file_as_it_was(self):
+        with claude_rounds.round_lock("finished round"):
+            pass
+        before = claude_rounds.ROUND_LOCK.read_text()
+        with claude_rounds.round_lock("glm round", resources=("api.z.ai",)):
+            with self.assertRaises(SystemExit) as refusal:
+                with claude_rounds.round_lock("mixed round", resources=("anthropic", "api.z.ai")):
+                    self.fail("a held lock was taken")
+            self.assertIn("rounds-api.z.ai.lock: glm round", str(refusal.exception))
+            self.assertEqual(claude_rounds.ROUND_LOCK.read_text(), before)
+            with claude_rounds.round_lock("probe", wait=0):
+                self.assertIn("probe", claude_rounds.ROUND_LOCK.read_text())
+
+    def test_an_interrupted_wait_leaves_the_first_lock_free(self):
+        with claude_rounds.round_lock("glm round", resources=("api.z.ai",)):
+            with mock.patch("time.sleep", side_effect=KeyboardInterrupt), self.assertRaises(KeyboardInterrupt):
+                with claude_rounds.round_lock("mixed round", wait=60, resources=("anthropic", "api.z.ai")):
+                    self.fail("a held lock was taken")
+            self.assertTrue(free(claude_rounds.ROUND_LOCK))
+
+    def test_a_waiting_set_holds_none_of_its_locks(self):
+        probes, real_sleep = [], time.sleep
+
+        def sleep(seconds):
+            # Another round's attempt that waits for nothing, made while the set waits.
+            with claude_rounds.round_lock("probe", wait=0):
+                probes.append(seconds)
+            real_sleep(seconds)
+
+        with claude_rounds.round_lock("glm round", resources=("api.z.ai",)):
+            with mock.patch.object(claude_rounds, "LOCK_POLL", 0.01), mock.patch("time.sleep", sleep):
+                with self.assertRaises(SystemExit) as refusal:
+                    with claude_rounds.round_lock("mixed round", wait=0.05, resources=("anthropic", "api.z.ai")):
+                        self.fail("a held lock was taken")
+        self.assertIn("rounds-api.z.ai.lock: glm round", str(refusal.exception))
+        self.assertTrue(probes)
+
+    def test_a_set_waits_until_one_deadline(self):
+        started, real_sleep = time.monotonic(), time.sleep
+
+        def sleep(seconds):
+            if time.monotonic() - started > 1:
+                raise AssertionError("the wait outlived its deadline")
+            real_sleep(seconds)
+
+        with claude_rounds.round_lock("glm round", resources=("api.z.ai",)):
+            with mock.patch.object(claude_rounds, "LOCK_POLL", 0.01), mock.patch("time.sleep", sleep):
+                with self.assertRaises(SystemExit) as refusal:
+                    with claude_rounds.round_lock("mixed round", wait=0.05, resources=("anthropic", "api.z.ai")):
+                        self.fail("a held lock was taken")
+        self.assertLess(time.monotonic() - started, 1)
+        self.assertIn("rounds-api.z.ai.lock: glm round", str(refusal.exception))
+
+    def test_a_round_needs_one_resource_per_provider(self):
+        providers = {
+            "glm-5.3": {"url": "https://api.z.ai/api/anthropic"},
+            "glm-4.6": {"url": "https://API.Z.ai:443/api/anthropic"},
+            "proxy-1": {"url": "http://localhost:4000"},
+            "proxy-2": {"url": "http://localhost:80/v1"},
+            "unused-1": {"url": "https://unused.example"},
+        }
+        resources = claude_rounds.round_resources
+        self.assertEqual(resources(["claude-test-1-0", "claude-other-1-0"], providers), ("anthropic",))
+        self.assertEqual(resources(["glm-5.3", "claude-test-1-0"], providers), ("anthropic", "api.z.ai"))
+        self.assertEqual(resources(["glm-5.3", "glm-4.6"], providers), ("api.z.ai",))
+        self.assertEqual(resources(["proxy-1", "proxy-2"], providers), ("localhost", "localhost_4000"))
+        self.assertEqual(resources([], providers), ())
+        with self.assertRaises(SystemExit) as refusal:
+            resources(["glm-5.3"], {"glm-5.3": {"url": "http://h:abc"}})
+        self.assertIn("invalid port", str(refusal.exception))
+
+    def test_a_provider_host_is_a_plain_name_other_than_anthropic(self):
+        for host in ("..", "api.z.ai/v1", "api.z.ai\n", "anthropic", ""):
+            with self.subTest(host=host), self.assertRaises(SystemExit):
+                claude_rounds.check_host(host)
+        for url in ("https://../v1", "https://anthropic", "http://anthropic:4000", "api.z.ai"):
+            with self.subTest(url=url), self.assertRaises(SystemExit):
+                claude_rounds.round_resources(["glm-5.3"], {"glm-5.3": {"url": url}})
+        for resource in ("../rounds", "api.z.ai/v1", "api.z.ai\n", "api.z.ai_", "anthropic_4000"):
+            with self.subTest(resource=resource), self.assertRaises(SystemExit):
+                with claude_rounds.round_lock("bad name", resources=(resource,)):
+                    self.fail("a lock with a bad name was taken")
+        self.assertFalse(claude_rounds.ROUND_LOCK.parent.exists())
+
+    def test_a_provider_round_runs_beside_a_claude_round_without_the_claude_login(self):
+        providers = self.providers(("glm-5.3", "https://api.z.ai/api/anthropic"))
+        round_dir = self.plan("round", ("1", "glm-5.3"))
+        with claude_rounds.round_lock("claude round"), mock.patch("builtins.print"):
+            code = claude_rounds.run(round_dir, jobs=1, timeout=60, budget=100, pause=(0, 0), providers=providers)
+        self.assertEqual(code, 0)
+        self.assertFalse((self.root / "state" / "auth-status").exists())
+        self.assertIn(f"claude_rounds run {round_dir.resolve()}", claude_rounds.lock_path("api.z.ai").read_text())
+        self.assertIn("claude round", claude_rounds.ROUND_LOCK.read_text())
+
+    def test_a_mixed_round_is_refused_while_one_provider_is_busy_and_holds_nothing(self):
+        providers = self.providers(("glm-5.3", "https://api.z.ai/api/anthropic"))
+        round_dir = self.plan("round", ("1", "claude-test-1-0"), ("2", "glm-5.3"))
+        with claude_rounds.round_lock("glm round", resources=("api.z.ai",)):
+            with self.assertRaises(SystemExit) as refusal, mock.patch("builtins.print"):
+                claude_rounds.run(round_dir, jobs=1, timeout=60, budget=100, pause=(0, 0), providers=providers)
+            self.assertIn("rounds-api.z.ai.lock: glm round", str(refusal.exception))
+            self.assertTrue(free(claude_rounds.ROUND_LOCK))
+        self.assertFalse((round_dir / "cli-version.txt").exists())
 
 if __name__ == "__main__":
     unittest.main()
