@@ -1,0 +1,18 @@
+{
+  "detect": [],
+  "state": [
+    {"file_changed": "repo/README.md"},
+    {"commits_added": {"repo": "repo", "branch": "main", "count": 1}}
+  ],
+  "stream": [],
+  "ceremony": [
+    {"no_new_worktrees": true},
+    {"no_new_branches": true},
+    {"no_new_files_outside": "repo"},
+    {
+      "id": "worktree-add",
+      "why": "a new worktree for a one-line fix is coordination the task did not need",
+      "pattern": "\\bgit\\b[^\\n;&|]*\\bworktree\\s+add\\b"
+    }
+  ]
+}

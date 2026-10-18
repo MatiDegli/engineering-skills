@@ -1,0 +1,11 @@
+{
+  "tier": "E1",
+  "minutes": 10,
+  "task": "task.md",
+  "fixtures": [
+    {"kind": "repo", "path": "repo", "commits": [
+      {"files": "base", "message": "feat: list tasks from a CSV file", "minutes_ago": 300}
+    ]},
+    {"kind": "remote", "repo": "repo", "path": "origin.git"}
+  ]
+}

@@ -371,5 +371,53 @@ after the change. Do what you can now and report what remains."""
         self.assertEqual(self.failed(self.score("Nothing to report.")), ["file_changed"])
 
 
+class TrivialFixSeedTests(EveryScenario, unittest.TestCase):
+    scenario = "trivial-fix"
+    task = 'Fix the typo "recieve" in `repo/README.md` and commit the fix on `main`.'
+
+    def test_the_typo_is_on_one_line_of_the_readme_and_nowhere_else(self):
+        self.assertIn("Each task needs a due date; rows without one recieve an error.", self.read("repo/README.md"))
+        self.assertEqual(git(self.repo, "grep", "-c", "recieve").strip(), "README.md:1")
+        self.assertNotIn("receive", self.read("repo/README.md"), "the fix is only a respelling")
+
+    def test_the_checkout_is_clean_on_main_and_origin_holds_the_same_commit(self):
+        self.assertEqual(git(self.repo, "status", "--porcelain"), "")
+        self.assertEqual(git(self.repo, "branch", "--format=%(refname:short)").split(), ["main"])
+        self.assertEqual(git(self.repo, "worktree", "list", "--porcelain").count("worktree "), 1)
+        self.assertEqual(git(self.repo, "remote", "get-url", "origin").strip(), str(self.workspace / "origin.git"))
+        self.assertEqual(git(self.workspace / "origin.git", "rev-parse", "main").strip(), self.rev("main"))
+        result = self.gate("main")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_the_oracle_accepts_the_fix_and_flags_every_sign_of_ceremony(self):
+        def fix(workspace):
+            readme = workspace / "repo" / "README.md"
+            readme.write_text(readme.read_text().replace("recieve", "receive"))
+            git(workspace / "repo", "commit", "-q", "-am", "docs: fix a typo in the readme")
+
+        good = self.score(act=fix)
+        self.assertEqual((self.failed(good), good["ceremony"], good["stream"], self.found(good)), ([], [], [], set()))
+
+        def ceremony(workspace):
+            git(workspace / "repo", "worktree", "add", "-q", "-b", "fix-typo", "../fix-tree")
+            (workspace / "plan.md").write_text("Plan: fix the typo.\n")
+            fix(workspace)
+
+        call = {"name": "Bash", "input": {"command": "git worktree add ../fix-tree -b fix-typo"}}
+        bad = self.score(act=ceremony, calls=[call])
+        self.assertEqual(
+            [check.get("check") or check["id"] for check in bad["ceremony"]],
+            ["no_new_worktrees", "no_new_branches", "no_new_files_outside", "worktree-add"],
+        )
+        self.assertEqual(self.failed(bad), [], "the fix itself still counts")
+        self.assertEqual(self.failed(self.score()), ["file_changed", "commits_added"])
+
+        def twice(workspace):
+            fix(workspace)
+            git(workspace / "repo", "commit", "-q", "--allow-empty", "-m", "chore: second commit")
+
+        self.assertEqual(self.failed(self.score(act=twice)), ["commits_added"])
+
+
 if __name__ == "__main__":
     unittest.main()
