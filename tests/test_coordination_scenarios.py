@@ -125,6 +125,8 @@ class Scenario:
         """
         if SANDBOX_PROBLEM:
             self.skipTest(f"bwrap cannot create a sandbox here: {SANDBOX_PROBLEM}")
+        if not shutil.which("pgrep"):
+            self.skipTest("pgrep is not installed, and the scenarios' scripts search with it")
         workspace = self.new_directory()
         manifest = scenario_rounds.prepare_workspace(self.path, workspace, NOW)
         (workspace / "probe.sh").write_text(script, encoding="utf-8")
