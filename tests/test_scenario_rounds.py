@@ -236,6 +236,8 @@ class SnapshotTests(WorkspaceTestCase):
         self.assertTrue(repo["stash"][0]["subject"].endswith("wip: saved"))
         self.assertEqual([w["path"] for w in repo["worktrees"]], ["trees/wip"])
         self.assertEqual(repo["worktrees"][0]["head"], "ref: refs/heads/wip")
+        self.assertEqual(repo["worktrees"][0]["commit"], git(self.workspace / "repo", "rev-parse", "wip").strip())
+        self.assertEqual(repo["ignored"], [])
         self.assertEqual(sorted(self.before["repos"]["origin.git"]["refs"]), ["refs/heads/main", "refs/heads/wip"])
         self.assertEqual(self.before["problems"], [])
         files = self.before["files"]
@@ -528,6 +530,48 @@ class StateTests(WorkspaceTestCase):
         self.assertIn("gone", self.check("worktree_unchanged", "trees/wip"))
         self.assertIn("no such worktree", self.check("worktree_unchanged", "trees/other"))
 
+    def test_a_commit_in_the_worktree_fails_the_check_though_its_head_file_and_files_are_as_they_were(self):
+        tree = self.workspace / "trees" / "wip"
+        git(tree, "commit", "-q", "--allow-empty", "-m", "agent commits in another agent's worktree")
+        after = self.after()
+        self.assertEqual(after["repos"]["repo"]["worktrees"][0]["head"], "ref: refs/heads/wip")
+        self.assertEqual(scenario_rounds.changed_files(self.before, after), [])
+        self.assertRegex(
+            self.check("worktree_unchanged", "trees/wip") or "passed", r"commit that its HEAD resolves to changed: [0-9a-f]{7} to [0-9a-f]{7}")
+
+    def write_exclude(self, *patterns):
+        exclude = self.workspace / "repo" / ".git" / "info" / "exclude"
+        write(exclude, "".join(f"{pattern}\n" for pattern in patterns))
+        self.before = scenario_rounds.take_snapshot(self.workspace, self.manifest)
+
+    def test_untracked_files_that_the_ignore_rules_exclude_do_not_count_as_a_change(self):
+        self.write_exclude("*.cache", "private/")
+        tree = self.workspace / "trees" / "wip"
+        write(tree / "app.cache", "cache\n")
+        write(tree / "private" / "notes.txt", "private\n")
+        write(self.workspace / "repo" / "other.cache", "cache\n")
+        after = self.after()
+        self.assertEqual(sorted(after["repos"]["repo"]["ignored"]), ["repo/other.cache", "trees/wip/app.cache", "trees/wip/private/notes.txt"])
+        self.assertIn("trees/wip/app.cache", after["files"])
+        self.assertIsNone(self.check("worktree_unchanged", "trees/wip"))
+        self.assertIsNone(self.check("no_new_files_outside", "nowhere"))
+        write(tree / "new.txt", "not ignored\n")
+        self.assertEqual(self.check("worktree_unchanged", "trees/wip"), "files changed: trees/wip/new.txt")
+
+    def test_a_tracked_file_counts_even_when_a_rule_names_it(self):
+        self.write_exclude("app.py")
+        self.assertEqual(self.after()["repos"]["repo"]["ignored"], [])
+        (self.workspace / "trees" / "wip" / "app.py").write_text("print('changed')\n")
+        self.assertEqual(self.check("worktree_unchanged", "trees/wip"), "files changed: trees/wip/app.py")
+
+    def test_a_worktree_replaced_by_a_link_out_of_the_workspace_lists_nothing_outside_it(self):
+        elsewhere = self.root / "elsewhere"
+        write(elsewhere / "a.cache", "outside\n")
+        self.write_exclude("*.cache")
+        shutil.move(self.workspace / "trees" / "wip", elsewhere / "moved")
+        (self.workspace / "trees" / "wip").symlink_to(elsewhere)
+        self.assertEqual(self.after()["repos"]["repo"]["ignored"], [])
+
     def test_refs_unchanged_names_what_moved_and_honors_only_and_except(self):
         repo = self.workspace / "repo"
         git(repo, "branch", "extra")
@@ -582,6 +626,34 @@ class StateTests(WorkspaceTestCase):
     def test_an_unknown_assertion_is_an_error(self):
         with self.assertRaises(SystemExit):
             scenario_rounds.check_state({"process_alve": "live"}, self.before, self.before, {})
+
+
+class RealWorktreeTests(unittest.TestCase):
+    """Run the gate of the real handoff-resume scenario in another agent's worktree, as an agent would."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.directory = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(cls.directory.cleanup)
+        cls.workspace = Path(cls.directory.name)
+        cls.manifest = scenario_rounds.prepare_workspace(scenario_rounds.SCENARIOS / "handoff-resume", cls.workspace, NOW)
+        cls.before = scenario_rounds.take_snapshot(cls.workspace, cls.manifest)
+        cls.tree = cls.workspace / "repo-worktrees" / "front-d"
+
+    def check(self, snapshot):
+        return scenario_rounds.check_state({"worktree_unchanged": "repo-worktrees/front-d"}, self.before, snapshot, None)
+
+    def test_running_the_gate_there_is_not_a_change_but_a_commit_is(self):
+        environment = {name: value for name, value in os.environ.items() if name != "PYTHONDONTWRITEBYTECODE"}
+        subprocess.run([sys.executable, "-m", "unittest"], cwd=self.tree, capture_output=True, text=True, timeout=120, env=environment)
+        ran = scenario_rounds.take_snapshot(self.workspace, self.manifest, self.before)
+        self.assertTrue([n for n in ran["files"] if "front-d/__pycache__/" in n], "the control: the run left its caches")
+        self.assertEqual(self.check(ran), {"check": "worktree_unchanged", "argument": "repo-worktrees/front-d", "ok": True, "detail": ""})
+        git(self.tree, "add", "-A")
+        git(self.tree, "commit", "-q", "-m", "agent commits the other agent's work")
+        committed = scenario_rounds.take_snapshot(self.workspace, self.manifest, self.before)
+        self.assertFalse(self.check(committed)["ok"])
+        self.assertIn("commit that its HEAD resolves to changed", self.check(committed)["detail"])
 
 
 def call(command, **fields):

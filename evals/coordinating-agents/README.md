@@ -83,7 +83,8 @@ no secret-like file names, and external URLs only inside code spans.
     section), so the maintainer can check a sample by hand.
 - **`state`**: assertions that compare the state before and after the run:
   - `stash_kept` (an entry with that message keeps its commit);
-  - `worktree_unchanged`;
+  - `worktree_unchanged` (its HEAD, the commit that HEAD resolves to, and its files; untracked
+    files that its ignore rules exclude, such as the caches of a test run, do not count);
   - `refs_unchanged` (for the remote);
   - `file_unchanged`, `file_changed`;
   - `process_alive` and `process_dead`, by fixture name;

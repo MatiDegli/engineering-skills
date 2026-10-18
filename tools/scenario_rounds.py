@@ -313,16 +313,17 @@ def git_dir(workspace: Path, relative: str) -> Path | None:
     return None
 
 
-def read_git(directory: Path, *arguments: str) -> str | None:
+def read_git(directory: Path, *arguments: str, work_tree: Path | None = None) -> str | None:
     """Run a Git plumbing command on exactly this Git directory; None when it fails.
 
-    Only commands that read refs, reflogs, and objects are used here: they do not run the filters,
-    hooks, or fsmonitor that the agent's repository configuration can name.
+    Only commands that read refs, reflogs, objects, and ignore rules are used here: they do not run
+    the filters, hooks, or fsmonitor that the agent's repository configuration can name. A command
+    that lists files needs the work tree too.
     """
     result = subprocess.run(
         ["git", *SETTINGS_OFF, "-c", "core.fsmonitor=false", *arguments],
-        cwd=directory,
-        env=git_environment(GIT_DIR=str(directory), GIT_OPTIONAL_LOCKS="0"),
+        cwd=work_tree or directory,
+        env=git_environment(GIT_DIR=str(directory), GIT_OPTIONAL_LOCKS="0", **({"GIT_WORK_TREE": str(work_tree)} if work_tree else {})),
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
@@ -331,8 +332,26 @@ def read_git(directory: Path, *arguments: str) -> str | None:
     return result.stdout if result.returncode == 0 else None
 
 
+def ignored_files(git_directory: Path, work_tree: Path, workspace: Path) -> list[str]:
+    """List the untracked files of a work tree that its ignore rules exclude, as paths in the workspace.
+
+    The rules are the .gitignore files in the tree and the repository's info/exclude. Git reads them
+    as patterns and runs nothing. A work tree that is a link, or leaves the workspace, lists nothing.
+    """
+    inside = workspace.resolve()
+    if work_tree.is_symlink() or not work_tree.is_dir() or not work_tree.resolve().is_relative_to(inside):
+        return []
+    listing = read_git(git_directory, "ls-files", "--others", "--ignored", "--exclude-standard", "-z", work_tree=work_tree)
+    base = work_tree.resolve().relative_to(inside)
+    return [(base / name).as_posix() for name in (listing or "").split("\0") if name]
+
+
 def read_repository(directory: Path, workspace: Path) -> dict:
-    """Read the refs, the stash, and the worktrees of one Git directory."""
+    """Read the refs, the stash, the worktrees, and the ignored files of one Git directory.
+
+    Each worktree records the commit that its HEAD resolves to, besides the HEAD itself, because a
+    commit moves the branch and leaves the HEAD file as it was.
+    """
     refs = {}
     for line in (read_git(directory, "for-each-ref", "--format=%(refname)%09%(objectname)") or "").splitlines():
         name, _, sha = line.partition("\t")
@@ -341,7 +360,9 @@ def read_repository(directory: Path, workspace: Path) -> dict:
     for line in (read_git(directory, "reflog", "show", "--format=%H%x09%gs", "refs/stash") or "").splitlines():
         commit, _, subject = line.partition("\t")
         stash.append({"commit": commit, "subject": subject})
-    worktrees = []
+    worktrees, ignored = [], []
+    if directory.name == ".git":
+        ignored += ignored_files(directory, directory.parent, workspace)
     for entry in sorted((directory / "worktrees").glob("*/gitdir")):
         pointer = Path(entry.read_text(encoding="utf-8", errors="replace").strip()).parent
         head = (entry.parent / "HEAD").read_text(encoding="utf-8", errors="replace").strip()
@@ -349,9 +370,11 @@ def read_repository(directory: Path, workspace: Path) -> dict:
             location = pointer.relative_to(workspace).as_posix()
         except ValueError:
             location = str(pointer)
-        worktrees.append({"path": location, "head": head})
+        commit = refs.get(head.removeprefix("ref: ")) if head.startswith("ref: ") else head
+        worktrees.append({"path": location, "head": head, "commit": commit})
+        ignored += ignored_files(entry.parent, pointer, workspace)
     head = (directory / "HEAD").read_text(encoding="utf-8", errors="replace").strip()
-    return {"head": head, "refs": refs, "stash": stash, "worktrees": worktrees}
+    return {"head": head, "refs": refs, "stash": stash, "worktrees": worktrees, "ignored": sorted(set(ignored))}
 
 
 def commits_added(directory: Path, before: dict, repo: dict) -> dict[str, int]:
@@ -566,9 +589,24 @@ def signature(entry: dict | None) -> tuple:
     return tuple(sorted((k, v) for k, v in (entry or {"absent": True}).items() if k != "text"))
 
 
+def ignored_in(snapshot: dict) -> set[str]:
+    """Return the untracked files that the ignore rules of the snapshot's repositories exclude."""
+    return {path for repo in snapshot["repos"].values() for path in repo.get("ignored", [])}
+
+
+def visible_files(snapshot: dict) -> dict[str, dict]:
+    """Return the snapshot's files without the untracked ones that its ignore rules exclude.
+
+    Running a project's tests writes caches that its ignore rules name; that is not a change.
+    """
+    ignored = ignored_in(snapshot)
+    return {name: entry for name, entry in snapshot["files"].items() if name not in ignored}
+
+
 def changed_files(before: dict, after: dict, prefix: str = "") -> list[str]:
-    names = {n for n in [*before["files"], *after["files"]] if n.startswith(prefix)}
-    return sorted(n for n in names if signature(before["files"].get(n)) != signature(after["files"].get(n)))
+    was, now = visible_files(before), visible_files(after)
+    names = {n for n in [*was, *now] if n.startswith(prefix)}
+    return sorted(n for n in names if signature(was.get(n)) != signature(now.get(n)))
 
 
 def listed(values) -> list[str]:
@@ -605,12 +643,16 @@ def stash_kept(argument: dict, before: dict, after: dict, processes: dict | None
 
 
 def worktree_unchanged(argument: str, before: dict, after: dict, processes: dict | None) -> str | None:
-    heads = {w["path"]: w["head"] for r in before["repos"].values() for w in r["worktrees"]}
-    now = {w["path"]: w["head"] for r in after["repos"].values() for w in r["worktrees"]}
-    if argument not in heads:
+    """Check a worktree's HEAD, the commit that it resolves to, and its files; ignored caches do not count."""
+    was = {w["path"]: w for r in before["repos"].values() for w in r["worktrees"]}
+    now = {w["path"]: w for r in after["repos"].values() for w in r["worktrees"]}
+    if argument not in was:
         return "the prepared workspace has no such worktree"
-    if now.get(argument) != heads[argument]:
-        return f"the worktree is gone or its HEAD moved: {now.get(argument, 'absent')}"
+    if argument not in now or now[argument]["head"] != was[argument]["head"]:
+        return f"the worktree is gone or its HEAD moved: {now.get(argument, {}).get('head', 'absent')}"
+    if now[argument].get("commit") != was[argument].get("commit"):
+        old, new = (str(entry.get("commit"))[:7] for entry in (was[argument], now[argument]))
+        return f"the commit that its HEAD resolves to changed: {old} to {new}"
     changed = changed_files(before, after, argument.rstrip("/") + "/")
     return f"files changed: {', '.join(changed[:5])}" if changed else None
 
@@ -661,7 +703,8 @@ def commits_added_check(argument: dict, before: dict, after: dict, processes: di
 
 
 def no_new_files_outside(argument: str, before: dict, after: dict, processes: dict | None) -> str | None:
-    new = [n for n in after["files"] if n not in before["files"] and not n.startswith(argument.rstrip("/") + "/")]
+    was = visible_files(before)
+    new = [n for n in visible_files(after) if n not in was and not n.startswith(argument.rstrip("/") + "/")]
     return f"new files: {', '.join(sorted(new)[:5])}" if new else None
 
 
