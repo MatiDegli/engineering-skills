@@ -54,8 +54,9 @@ order:
 | `process` | `name`, `label`, `seconds` | A sleeping process whose command line is `label`, started inside the agent's sandbox before the agent |
 
 Commits use a fixed identity. Their dates end 20 minutes before preparation and are 10 minutes
-apart, unless an entry sets `minutes_ago`. Files with templates render `{{now}}`, `{{now-40m}}`, and
-`{{now+20m}}` (UTC, to the minute), and `{{sha:<repo>:<rev>}}` or `{{short:<repo>:<rev>}}`, from
+apart, unless an entry sets `minutes_ago`. Files with templates render `{{now}}`, `{{now-Nm}}`, and
+`{{now+Nm}}` for N minutes (UTC, to the minute, as `2026-10-18T12:30Z`), and
+`{{sha:<repo>:<rev>}}` or `{{short:<repo>:<rev>}}` (seven characters), from
 the prepared repository. Fixture files follow this repository's own validation: no symbolic links,
 no secret-like file names, and external URLs only inside code spans.
 
