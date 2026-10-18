@@ -1419,3 +1419,100 @@ def provider_setup(round_dir: Path, label: str, model: str, provider: dict) -> t
     key.chmod(0o600)
     environment, settings = provider_launch({"url": provider["url"], "key": key}, model, config)
     return environment, str(settings), config
+
+
+def run_job(round_dir: Path, job: dict, context: dict) -> str:
+    """Prepare a workspace, run one agent in a sandbox, record the run, and delete the workspace.
+
+    The record keeps everything that scoring needs, so `summarize` can score again, after the
+    workspace and the skill export are gone and with an oracle that was fixed meanwhile.
+    """
+    paths, label = round_paths(round_dir), job["label"]
+    if (paths["runs"] / f"{label}.json").exists():
+        return f"{label}: skipped, record exists"
+    if context["sandboxes"].stopped.is_set():
+        return f"{label}: skipped, stopped"
+    if not context["spending"].allows():
+        return f"{label}: skipped, budget reached"
+    context["starts"].wait()
+    recorded = new_directory(WORKSPACE_PREFIX)
+    pending = paths["runs"] / f"{label}.workspace.json"
+    pending.write_text(json.dumps(recorded), encoding="utf-8")
+    try:
+        line = execute_job(round_dir, job, context, Path(recorded["path"]))
+    except Exception as error:  # a defective scenario must not stop the other runs
+        line = f"{label}: error {type(error).__name__}: {error}"
+    reason = delete_directory(recorded)
+    if reason:
+        return f"{line} (workspace kept at {recorded['path']}: {reason})"
+    pending.unlink(missing_ok=True)
+    return line
+
+
+def execute_job(round_dir: Path, job: dict, context: dict, workspace: Path) -> str:
+    paths, label, model = round_paths(round_dir), job["label"], job["model"]
+    scenario = SCENARIOS / job["scenario"]
+    spec = json.loads((scenario / "scenario.json").read_text(encoding="utf-8"))
+    skill = Path(job["skill"]) if job["level"] == "full" else None
+    manifest = prepare_workspace(scenario, workspace)
+    before = take_snapshot(workspace, manifest)
+    provider = context["providers"].get(model)
+    home, read_write, secret_values = context["home"], [workspace], [context["token"]]
+    provider_environment, settings, config = None, '{"disableAllHooks": true}', None
+    if provider:
+        provider_environment, settings, config = provider_setup(round_dir, label, model, provider)
+        read_write.append(config)
+        secret_values = [provider["key"].read_text(encoding="utf-8").strip()]
+    prompt = prompt_for(job["level"], (scenario / spec["task"]).read_text(encoding="utf-8"), skill)
+    limit = spec["minutes"] * 60
+    payload = {
+        "files": {str(home / ".gitconfig"): GIT_CONFIG},
+        "fixtures": manifest["processes"],
+        "command": agent_command(context["executable"], model, skill, settings),
+        "cwd": str(workspace),
+        "environment": agent_environment(home, context["token"], provider_environment),
+        "prompt": prompt,
+        "limit": limit,
+    }
+    stream, stderr = paths["streams"] / f"{label}.jsonl", paths["streams"] / f"{label}.stderr.txt"
+    arguments = sandbox_arguments(
+        home, workspace, [context["executable"], *([skill] if skill else [])], read_write,
+        [INTERPRETER, "-I", LAUNCHER_INSIDE],
+    )
+    try:
+        outcome = launch(arguments, payload, stream, stderr, paths["runs"] / f"{label}.launcher.json", limit, context["sandboxes"])
+    finally:
+        if config:
+            (config / "key").unlink(missing_ok=True)
+    if outcome["stopped"]:
+        return f"{label}: stopped"
+    after = take_snapshot(workspace, manifest, before)
+    leaked = scrub([stream, stderr], secret_values)
+    results = stream_results(stream)
+    report = report_text(results)
+    failures = run_failures(outcome, results, model, spec["minutes"])
+    if leaked:
+        failures.append("secret in the stream: it was redacted")
+    calls = tool_calls(stream)
+    init = init_event(stream) if results else {}
+    notes = [f"the init event lists {key}: {init[key]}" for key in ("skills", "plugins", "mcp_servers") if init.get(key)]
+    notes += [f"snapshot: {problem}" for problem in after["problems"]]
+    if provider and results and init_key_source(stream) != "apiKeyHelper":
+        notes.append(f"the key source is {init_key_source(stream)}, not apiKeyHelper")
+    outside = outside_paths(stream, [workspace, Path(job["skill"]).parent if skill else workspace, round_dir / "providers"]) if results else []
+    record = {
+        "label": label, "job": job, "finished": now(), "workspace": str(workspace), "manifest": manifest,
+        "before": before, "after": after, "launcher": outcome["launcher"], "exit": outcome["exit"],
+        "failures": failures, "notes": notes, "outside": outside,
+        "skill": skill_words(calls, skill) if skill else {"words": 0, "files": {}},
+        "usage": stream_usage(stream, results), "report_chars": len(report), "minutes": spec["minutes"],
+        "cost": max((r.get("total_cost_usd") or 0 for r in results), default=0),
+        "seconds": sum(r.get("duration_ms") or 0 for r in results) / 1000,
+    }
+    context["spending"].add(record["cost"])
+    text = json.dumps(record, indent=2) + "\n"
+    for value in filter(None, secret_values):
+        text = text.replace(value, "[REDACTED]")
+    (paths["reports"] / f"{label}.md").write_text(report, encoding="utf-8")
+    (paths["runs"] / f"{label}.json").write_text(text, encoding="utf-8")
+    return f"{label}: {'failed: ' + '; '.join(failures) if failures else 'ok'}"
