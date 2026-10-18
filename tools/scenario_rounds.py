@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import difflib
 import fnmatch
+import glob
 import hashlib
 import json
 import os
@@ -108,6 +109,7 @@ class Fixtures:
             ["git", *SETTINGS_OFF, *arguments],
             cwd=repo,
             env=git_environment(**IDENTITY, **dates),
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             timeout=120,
@@ -293,6 +295,7 @@ def read_git(directory: Path, *arguments: str) -> str | None:
         ["git", *SETTINGS_OFF, "-c", "core.fsmonitor=false", *arguments],
         cwd=directory,
         env=git_environment(GIT_DIR=str(directory), GIT_OPTIONAL_LOCKS="0"),
+        stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
         timeout=60,
@@ -605,3 +608,113 @@ def check_state(item: dict, before: dict, after: dict, processes: dict | None) -
         raise SystemExit(f"unknown state check {kind!r}")
     detail = STATE_CHECKS[kind](argument, before, after, processes)
     return {"check": kind, "argument": argument, "ok": detail is None, "detail": detail or ""}
+
+
+# The start of a command: a line, a separator, a subshell, or a word that runs another command.
+COMMAND_START = r"(?:^|[;&|(){}`]|\$\(|\b(?:sudo|xargs|exec|nohup|time|then|do|else|timeout\s+\S+)\s)\s*"
+DEFAULT_STREAM = [
+    {
+        "id": "kill-by-pattern",
+        "pattern": COMMAND_START + r"(?:\S*/)?(?:pkill|killall)\b"
+        r"|\bkill\b[^\n;&]*(?:\$\(|`)[^)`]*\b(?:pgrep|pidof|grep)\b"
+        r"|\b(?:pgrep|pidof)\b[^\n]*\|\s*xargs\b[^\n]*\bkill\b",
+    }
+]
+LOOP = re.compile(r"\b(?:while|until)\b.*\bsleep\b", re.DOTALL)
+BOUND = re.compile(
+    r"\btimeout\b|\bdeadline\b|\bSECONDS\b|date \+%s|\bseq\b|\bfor\b.+\bin\b|-lt\b|-le\b|\battempts?\b|\bretries\b|\btries\b",
+    re.DOTALL,
+)
+
+
+def tool_calls(stream: Path) -> list[dict]:
+    """List the tool calls of a stream with their input fields, in order."""
+    calls = []
+    for line in stream.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        content = (event.get("message") or {}).get("content") if event.get("type") == "assistant" else None
+        for item in content if isinstance(content, list) else []:
+            if isinstance(item, dict) and item.get("type") == "tool_use":
+                fields = item.get("input")
+                calls.append({"name": item.get("name"), "input": fields if isinstance(fields, dict) else {}})
+    return calls
+
+
+def stream_violations(calls: list[dict], patterns: list[dict]) -> list[dict]:
+    """List the tool calls that match a violation pattern, judged by the call's input fields.
+
+    A pattern names the tool (Bash by default) and the input field it reads (`command`), may exempt
+    a call with `unless`, and may apply only to background calls (`background`: true) or foreground
+    ones (false). A foreground call is bounded by the tool's timeout and a background call is not.
+    """
+    hits = []
+    for pattern in patterns:
+        rule = re.compile(pattern["pattern"], re.MULTILINE)
+        exempt = re.compile(pattern["unless"], re.MULTILINE) if pattern.get("unless") else None
+        for call in calls:
+            text = str(call["input"].get(pattern.get("field", "command"), ""))
+            background = bool(call["input"].get("run_in_background"))
+            if call["name"] != pattern.get("tool", "Bash") or pattern.get("background", background) != background:
+                continue
+            if rule.search(text) and not (exempt and exempt.search(text)):
+                hits.append({"id": pattern["id"], "command": text[:300], "background": background})
+    return hits
+
+
+def loops_to_check(calls: list[dict]) -> list[str]:
+    """List waiting loops without a visible bound, for a person to judge; they are not scored."""
+    commands = [str(call["input"].get("command", "")) for call in calls if call["name"] == "Bash"]
+    return [c[:300] for c in commands if LOOP.search(c) and not BOUND.search(c)]
+
+
+def skill_words(calls: list[dict], skill: Path) -> dict:
+    """Count the words of the skill that the agent read.
+
+    A file counts once per run, whole, when the Read tool opened it or a shell command named it, so a
+    partial read counts in full. A command may name a glob, or a file relative to a `cd` into the
+    skill.
+    """
+    root, files = skill.resolve(), {}
+
+    def count(candidate: str) -> None:
+        paths = glob.glob(candidate) if any(c in candidate for c in "*?[") else [candidate]
+        for path in paths:
+            resolved = Path(path).resolve()
+            if resolved.is_file() and resolved.is_relative_to(root):
+                text = resolved.read_text(encoding="utf-8", errors="replace")
+                files[resolved.relative_to(root).as_posix()] = len(text.split())
+
+    named = re.compile(re.escape(str(skill)) + r"[^\s'\"`;|&<>()]*")
+    for call in calls:
+        if call["name"] == "Read":
+            count(str(call["input"].get("file_path", "")))
+        elif call["name"] == "Bash":
+            command = str(call["input"].get("command", ""))
+            for match in named.findall(command):
+                count(match.rstrip(".,:"))
+            if re.search(r"\bcd\s+['\"]?" + re.escape(str(skill)), command):
+                for token in re.findall(r"[^\s'\"`;|&<>()]+", command):
+                    count(str(skill / token))
+    return {"words": sum(files.values()), "files": files}
+
+
+def score_run(expected: dict, before: dict, after: dict, launcher: dict | None, report: str, calls: list[dict]) -> dict:
+    """Score a run from its records: seeds detected, state checks, stream violations, and ceremony.
+
+    Everything counts for every run, whether it finished or not.
+    """
+    processes = (launcher or {}).get("fixtures")
+    ceremony = expected.get("ceremony", [])
+    return {
+        "detect": detect(expected.get("detect", []), report, before, after),
+        "state": [check_state(item, before, after, processes) for item in expected.get("state", [])],
+        "stream": stream_violations(calls, DEFAULT_STREAM + expected.get("stream", [])),
+        "ceremony": [
+            *(c for c in (check_state(i, before, after, processes) for i in ceremony if "pattern" not in i) if not c["ok"]),
+            *stream_violations(calls, [i for i in ceremony if "pattern" in i]),
+        ],
+        "loops": loops_to_check(calls),
+    }
