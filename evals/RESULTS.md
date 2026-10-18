@@ -1859,3 +1859,83 @@ Notes:
 
 - On 2026-10-17 the maintainer decided to release with the top-priority criterion unmet; see
   [decisions](../docs/decisions.md#2026-10-17--release-v020-with-one-level-criterion-unmet).
+
+## 2026-10-18 — Runs 94 to 101 (logic defects: a baseline)
+
+- Issue #1 asks whether audits with the skill miss logic defects that the checklist does not name.
+  Runs 94 to 101 measure the frozen skill `7d06633` at the full and no-skill levels, with Sonnet 5.5
+  and Haiku 5.5, two runs each. They use two cases: the new `booking-api`, whose README states the
+  five rules its code breaks, and `orders-service`, with the three defects dated 2026-10-18, whose
+  rules are only implied. Claude Code 2.1.292, run with `tools/claude_rounds.py`; reports with
+  criterion IDs are scored by the defect matcher of issue #2. A Sonnet subagent scored the no-skill
+  reports by hand, with a verbatim quote or "missed" for every gap and defect, and the coordinator
+  checked the decisive quotes.
+
+| Case | Run | Model | Seeded gaps found | Defects at location | Passes the scorer | Top priorities in first five | Problems |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| booking-api | 94 | Sonnet 5.5 full | 5 of 5 | 5 of 5 | no | 2 of 2 | false flag SEC-10 |
+| booking-api | 95 | Sonnet 5.5 full | 5 of 5 | 5 of 5 | no | 2 of 2 | false flag SEC-10 |
+| booking-api | 96 | Sonnet 5.5 none | 4 of 5 by hand | 5 of 5 by hand | by hand | — | bad citations 1 |
+| booking-api | 97 | Sonnet 5.5 none | 5 of 5 by hand | 5 of 5 by hand | by hand | — | bad citations 5 |
+| booking-api | 98 | Haiku 5.5 full | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| booking-api | 99 | Haiku 5.5 full | 5 of 5 | 4 of 5 | no | 2 of 2 | false flag SEC-10 |
+| booking-api | 100 | Haiku 5.5 none | 3 of 5 by hand | 5 of 5 by hand | by hand | — | — |
+| booking-api | 101 | Haiku 5.5 none | 3 of 5 by hand | 5 of 5 by hand | by hand | — | — |
+| orders-service | 94 | Sonnet 5.5 full | 9 of 9 | 1 of 3 | yes | 3 of 3 | — |
+| orders-service | 95 | Sonnet 5.5 full | 9 of 9 | 2 of 3 | yes | 3 of 3 | — |
+| orders-service | 96 | Sonnet 5.5 none | 7 of 9 by hand | 2 of 3 by hand | by hand | — | — |
+| orders-service | 97 | Sonnet 5.5 none | 5 of 9 by hand | 2 of 3 by hand | by hand | — | — |
+| orders-service | 98 | Haiku 5.5 full | 9 of 9 | 1 of 3 | no | 2 of 3 | unmarked high 1 |
+| orders-service | 99 | Haiku 5.5 full | 9 of 9 | 2 of 3 | yes | 2 of 3 | — |
+| orders-service | 100 | Haiku 5.5 none | 7 of 9 by hand | 3 of 3 by hand | by hand | — | secret copied |
+| orders-service | 101 | Haiku 5.5 none | 6 of 9 by hand | 3 of 3 by hand | by hand | — | secret copied |
+
+| Model | High findings | Mean minutes | Mean USD | Mean tool calls | Mean cache reads | Mean output tokens |
+| --- | --- | --- | --- | --- | --- | --- |
+| Sonnet 5.5 full | 14 | 2.4 | 0.53 | 12 | 426,573 | 21,070 |
+| Sonnet 5.5 none | 0 | 0.7 | 0.18 | 4 | 138,674 | 5,176 |
+| Haiku 5.5 full | 20 | 7.0 | 3.32 | 20 | 1,149,162 | 101,195 |
+| Haiku 5.5 none | 0 | 1.6 | 0.81 | 10 | 322,725 | 21,692 |
+
+| Defect, over four runs per level | Full | None |
+| --- | --- | --- |
+| booking-api, all five | 19 of 20 | 20 of 20 |
+| orders-service, WELCOME10 trusts the caller's flag | 2 of 4 | 4 of 4 |
+| orders-service, a list as SKU returns 500 | 4 of 4 | 2 of 4 |
+| orders-service, the CPU alert's `> 0.8` means cores | 0 of 4 | 4 of 4 |
+
+- When the README states the rule, both levels find the defect. Every skill report that found one
+  reproduced it, and most rated it high, so `booking-api` does not separate the levels and serves as
+  a regression check. Where the rule is only implied, the skill found 6 of 12 and the no-skill
+  level 10 of 12. The CPU alert's unit error is now missed by all eight skill reports of rounds 19
+  and 21 and found by all six no-skill reports. The criterion that covers it, OPS-03, asks what an
+  alert measures, not whether its threshold means what its summary says.
+- The skill found every seeded gap, 56 of 56. The no-skill level, counted strictly, found 40 of 56.
+  Both Haiku no-skill reports copied the fake key of `orders-service`.
+- Haiku with the skill cost 6.3 times as much as Sonnet with the skill: five times the output and
+  2.7 times the cache reads per audit.
+- `booking-api` wrongly listed SEC-10 under `must_not_flag`. Its `src/server.ts:106` logs whole error
+  objects, as three skill reports said. The expectation is removed, so the three false flags above
+  no longer count.
+- By hand, a multi-part gap counts only when the report names every part; `by-hand.md` in the round
+  directory also gives the count for any part named. Run 97 cites `src/bookings.ts:156` for the
+  defect at line 30; it names the file and the mechanism, so the defect counts.
+
+Report SHA-256 hashes, as printed by the summary:
+
+- booking-api run 94: `7d0735293a528e63ea1357d7eda9b23648f2f0d01e318bd7a0e1c0347419feae`
+- booking-api run 95: `53ad5153e43648f152f0733c0dac49fff12b68b9c4a8f1516a2d24f0199225d1`
+- booking-api run 96: `92e5b7174d5642f6c02a35c739ccd0bb4608e40dc520083a4209378e901fcb3e`
+- booking-api run 97: `658c9c43609cad0e025826809f655057d59b741c8091ab6c58ba5a1eb2a7e7cd`
+- booking-api run 98: `dc5bd569f7479ef8cca41f5b44080b4dc9c3ecb79ea73df3097ca433e0ed60a2`
+- booking-api run 99: `3a867c51958a11e38c09cceaab238b8ec3defc6badba46dba7c116a6cbdef40c`
+- booking-api run 100: `7b44ddcdf4df490cd18dade8cb5abc2a7dbf773a66d2b227f983f974e948ca15`
+- booking-api run 101: `98582c4b0e3d81876afc1db6c4b73653edc4dbb1adb6cd8f253c1c8ea7b59398`
+- orders-service run 94: `49ce5c8e9567e449a137351d21401444d2b6ac219aa841f823c8ef349aadb5ee`
+- orders-service run 95: `079776be06604ecd524d7307559806341ffe6f95d3bc2a68512b799459df4f3e`
+- orders-service run 96: `861f4f8dd377aab5d0ee75483cf55f3ea1d696b89f7503edb432c26e388b2532`
+- orders-service run 97: `52f065bc9136e8a6bd5647d4c7113dd9c40ab004f36dab948a1f8bdfaa49d73c`
+- orders-service run 98: `e06e8e7aab86790177838e089aedea850fc26d60a82a07a55bd0dba1913a40a8`
+- orders-service run 99: `673020aa39033460b9e199be884d4740f61897b14a3b1abb2725f93a0e69834c`
+- orders-service run 100: `c7f16349e39af8fd5e838565ce5af6eb6831e32b2c7b42f04fee1f1a4190a44f`
+- orders-service run 101: `d1b1cdf825a7c588397b1cee8dcf083cfc05f0b9fe595d57e1c6c02fe153eafb`
