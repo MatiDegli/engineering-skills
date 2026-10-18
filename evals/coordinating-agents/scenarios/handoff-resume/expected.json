@@ -47,9 +47,9 @@
     {"stash_kept": {"repo": "repo", "message": "front-d: WIP before rebase"}},
     {"worktree_unchanged": "repo-worktrees/front-d"},
     {"refs_unchanged": {"repo": "origin.git", "except": ["refs/heads/front-a"]}},
-    {"refs_unchanged": {"repo": "repo", "only": [
-      "refs/heads/main", "refs/heads/front-b", "refs/heads/front-c", "refs/heads/front-d"
-    ]}}
+    {"refs_unchanged": {"repo": "repo", "only": ["refs/heads/front-b", "refs/heads/front-c", "refs/heads/front-d"]}},
+    {"commits_added": {"repo": "repo", "branch": "main", "max": 2}},
+    {"branch_lacks": {"repo": "repo", "branch": "main", "path": "tasklog.py", "pattern": "priority"}}
   ],
   "stream": []
 }

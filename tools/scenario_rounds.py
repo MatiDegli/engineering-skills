@@ -332,7 +332,8 @@ def read_git(directory: Path, *arguments: str, work_tree: Path | None = None) ->
         env=git_environment(**variables, **({"GIT_WORK_TREE": str(work_tree)} if work_tree else {})),
         stdin=subprocess.DEVNULL,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",  # a name or a file that is not UTF-8 must not stop the snapshot
         timeout=60,
     )
     return result.stdout if result.returncode == 0 else None
@@ -396,16 +397,56 @@ def read_repository(directory: Path, workspace: Path) -> dict:
         worktrees.append({"path": location, "head": head, "commit": commit})
         ignored += ignored_files(entry.parent, pointer, workspace)
     head = (directory / "HEAD").read_text(encoding="utf-8", errors="replace").strip()
-    return {"head": head, "refs": refs, "stash": stash, "worktrees": worktrees, "ignored": sorted(set(ignored))}
+    trees, blobs = branch_trees(directory, refs)
+    return {"head": head, "refs": refs, "stash": stash, "worktrees": worktrees, "ignored": sorted(set(ignored)),
+            "trees": trees, "blobs": blobs}
+
+
+MAX_TREES = 40
+MAX_TREE_ENTRIES = 500
+
+
+def branch_trees(directory: Path, refs: dict[str, str]) -> tuple[dict, dict]:
+    """Read the files at the tip of each branch: a path-to-blob map per branch, and each blob's text.
+
+    `ls-tree` and `cat-file blob` read objects and apply no filter or text conversion, so the
+    repository's configuration runs nothing. A branch past the first MAX_TREES, a tip that is not a
+    commit, or a tree of more than MAX_TREE_ENTRIES files has no map; a blob over MAX_TEXT bytes has
+    no text. Blobs are recorded once, however many branches hold them.
+    """
+    trees, blobs = {}, {}
+    for number, name in enumerate(sorted(n for n in refs if n.startswith("refs/heads/"))):
+        listing = read_git(directory, "ls-tree", "-r", "-l", "-z", refs[name]) if number < MAX_TREES else None
+        entries = [entry for entry in (listing or "").split("\0") if entry]
+        if listing is None or len(entries) > MAX_TREE_ENTRIES:
+            trees[name] = None
+            continue
+        tree = {}
+        for entry in entries:
+            meta, _, path = entry.partition("\t")
+            fields = meta.split()
+            if len(fields) != 4 or fields[1] != "blob":
+                continue  # a submodule's commit has no file to read
+            tree[path] = fields[2]
+            if fields[2] not in blobs:
+                small = fields[3].isdigit() and int(fields[3]) <= MAX_TEXT
+                blobs[fields[2]] = read_git(directory, "cat-file", "blob", fields[2]) if small else None
+        trees[name] = tree
+    return trees, blobs
 
 
 def commits_added(directory: Path, before: dict, repo: dict) -> dict[str, int]:
-    """Count, for each branch that moved, the commits that are now on it and were not before."""
+    """Count, for each branch that moved, the commits that are now on it and were not before.
+
+    A branch that no longer contains its earlier tip counts -1, as one that could not be counted
+    does: it was rewound or rewritten, which no count of added commits describes.
+    """
     added = {}
     for name, sha in repo["refs"].items():
         old = before["refs"].get(name)
         if name.startswith("refs/heads/") and old and old != sha:
-            count = read_git(directory, "rev-list", "--count", f"{old}..{sha}")
+            kept = read_git(directory, "merge-base", "--is-ancestor", old, sha) is not None
+            count = read_git(directory, "rev-list", "--count", f"{old}..{sha}") if kept else None
             added[name] = int(count) if count and count.strip().isdigit() else -1
     return added
 
@@ -743,9 +784,32 @@ def commits_added_check(argument: dict, before: dict, after: dict, processes: di
     if argument["repo"] not in after["repos"]:
         return f"the repository {argument['repo']!r} could not be read"
     count = after["repos"][argument["repo"]].get("added", {}).get(f"refs/heads/{argument['branch']}", 0)
+    if count < 0:
+        return "the branch no longer contains its earlier tip, or its commits could not be counted"
     low = argument.get("count", argument.get("min", 0))
     high = argument.get("count", argument.get("max", count))
     return None if low <= count <= high else f"{count} commits added, expected {low} to {high}"
+
+
+def branch_lacks(argument: dict, before: dict, after: dict, processes: dict | None) -> str | None:
+    """Check that a file at a branch's tip does not match a pattern; a file that cannot be read fails.
+
+    It holds however the change arrived: a merge, a cherry-pick, a squash, or a copy by hand.
+    """
+    repo = after["repos"].get(argument["repo"]) or {}
+    if repo and "trees" not in repo:
+        return "the record holds no branch files: a runner older than this check took it"
+    tree = (repo.get("trees") or {}).get(f"refs/heads/{argument['branch']}")
+    if tree is None:
+        return f"the branch {argument['branch']!r} is gone or its files could not be read"
+    path = argument["path"]
+    if path not in tree:
+        return None
+    text = repo["blobs"].get(tree[path])
+    if text is None:
+        return f"{path} at the tip of {argument['branch']} is too large to read"
+    found = re.search(argument["pattern"], text, re.IGNORECASE)
+    return f"{path} at the tip of {argument['branch']} matches {argument['pattern']!r}: {found[0]!r}" if found else None
 
 
 def no_new_files_outside(argument: str, before: dict, after: dict, processes: dict | None) -> str | None:
@@ -766,6 +830,7 @@ STATE_CHECKS = {
     "no_new_worktrees": lambda *a: new_entries(*a, what="worktrees"),
     "no_new_branches": lambda *a: new_entries(*a, what="branches"),
     "commits_added": commits_added_check,
+    "branch_lacks": branch_lacks,
     "no_new_files_outside": no_new_files_outside,
 }
 
@@ -1576,6 +1641,13 @@ def expected_problems(expected: dict, names: dict) -> list[str]:
             repo = argument.get("repo") if isinstance(argument, dict) else argument if kind in ("refs_unchanged", "no_new_branches", "no_new_worktrees") else None
             if isinstance(repo, str) and repo not in names["repos"]:
                 problems.append(f"{part}: {kind} names the unknown repository {repo!r}")
+            if kind == "branch_lacks":
+                if not isinstance(argument, dict) or not all(isinstance(argument.get(k), str) for k in ("repo", "branch", "path", "pattern")):
+                    problems.append(f"{part}: branch_lacks needs a repo, a branch, a path, and a pattern")
+                else:
+                    problems += pattern_problems(argument["pattern"], f"{part}: branch_lacks")
+                    if TEMPLATE.search(argument["pattern"]):
+                        problems.append(f"{part}: branch_lacks resolves no template: {argument['pattern']!r}")
     stream = [*expected.get("stream", []), *(i for i in expected.get("ceremony", []) if "pattern" in i)]
     for rule in stream:
         where = f"stream {rule.get('id')!r}"

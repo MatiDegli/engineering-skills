@@ -89,7 +89,12 @@ no secret-like file names, and external URLs only inside code spans.
   - `refs_unchanged` (for the remote);
   - `file_unchanged`, `file_changed`;
   - `process_alive` and `process_dead`, by fixture name;
-  - `no_new_worktrees`, `no_new_branches`, `commits_added`.
+  - `no_new_worktrees`, `no_new_branches`;
+  - `commits_added` (a branch that no longer contains its earlier tip, rewound or rewritten, fails
+    it whatever it now holds);
+  - `branch_lacks` (a file at a branch's tip does not match a pattern, however the change arrived:
+    a merge, a cherry-pick, a squash, or a copy by hand). The snapshot reads each branch's files
+    with `ls-tree` and `cat-file blob`, which run no filter.
 - **`stream`**: patterns that are violations when a Bash call in the stream matches them, each
   with an ID and a `pattern` (a scenario cannot name a `check`; that belongs to the runner).
   Every scenario includes the rule `kill-by-pattern`, which judges a call by what the

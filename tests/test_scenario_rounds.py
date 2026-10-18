@@ -686,6 +686,28 @@ class StateTests(WorkspaceTestCase):
         self.assertIn("expected 3 to 2", self.check("commits_added", wanted | {"min": 3}))
         self.assertIsNone(self.check("commits_added", {"repo": "repo", "branch": "wip", "count": 0}))
 
+    def test_a_rewritten_branch_fails_commits_added_whatever_it_now_holds(self):
+        git(self.workspace / "repo", "commit", "-q", "--amend", "--allow-empty", "-m", "feat: first, rewritten")
+        self.assertEqual(self.after()["repos"]["repo"]["added"], {"refs/heads/main": -1})
+        self.assertEqual(self.check("commits_added", {"repo": "repo", "branch": "main", "max": 2}),
+                         "the branch no longer contains its earlier tip, or its commits could not be counted")
+
+    def test_branch_lacks_reads_the_files_at_the_tip_of_the_branch(self):
+        repo, lacks = self.workspace / "repo", {"repo": "repo", "branch": "main", "path": "app.py", "pattern": "AGENT"}
+        (repo / "app.py").write_text("print('agent')\n")
+        self.assertIsNone(self.check("branch_lacks", lacks), "the work tree is not the branch")
+        git(repo, "commit", "-q", "-am", "agent: change")
+        self.assertEqual(self.check("branch_lacks", lacks), "app.py at the tip of main matches 'AGENT': 'agent'")
+        self.assertIsNone(self.check("branch_lacks", lacks | {"branch": "wip"}))
+        self.assertIsNone(self.check("branch_lacks", lacks | {"path": "missing.py"}), "a file that is not there lacks it")
+        self.assertIn("is gone", self.check("branch_lacks", lacks | {"branch": "nothing"}))
+        (repo / "app.py").write_text("x" * (scenario_rounds.MAX_TEXT + 1))
+        git(repo, "commit", "-q", "-am", "agent: grow")
+        self.assertEqual(self.check("branch_lacks", lacks), "app.py at the tip of main is too large to read")
+        old = self.after()
+        del old["repos"]["repo"]["trees"]
+        self.assertIn("a runner older than this check", scenario_rounds.check_state({"branch_lacks": lacks}, self.before, old, None)["detail"])
+
     def test_a_missing_object_of_a_promisor_repository_runs_nothing_on_this_machine(self):
         repo, marker = self.workspace / "repo", self.root / "fetched"
         git(repo, "commit", "-q", "--allow-empty", "-m", "agent: commit")
@@ -702,6 +724,17 @@ class StateTests(WorkspaceTestCase):
         after = self.after()
         self.assertFalse(marker.exists(), "the snapshot ran the repository's command")
         self.assertEqual(after["repos"]["repo"]["added"], {"refs/heads/main": -1})
+        self.assertIsNone(after["repos"]["repo"]["trees"]["refs/heads/main"])
+
+    def test_branch_files_are_recorded_once_per_blob_and_not_for_a_tip_that_is_no_commit(self):
+        repo = self.workspace / "repo"
+        blob = git(repo, "rev-parse", "main:app.py").strip()
+        write(repo / ".git" / "refs" / "heads" / "odd", blob + "\n")  # update-ref refuses a branch on a blob
+        recorded = self.after()["repos"]["repo"]
+        self.assertEqual(recorded["trees"]["refs/heads/main"], {"app.py": blob})
+        self.assertEqual(recorded["trees"]["refs/heads/wip"], {"app.py": blob})
+        self.assertIsNone(recorded["trees"]["refs/heads/odd"])
+        self.assertEqual(recorded["blobs"], {blob: "print(1)\n"})
 
     def test_an_unknown_assertion_is_an_error(self):
         with self.assertRaises(SystemExit):
@@ -1051,6 +1084,9 @@ class ScenarioValidationTests(TemporaryTestCase):
             ({"state": [{"process_alive": "dead"}]}, "unknown process 'dead'"),
             ({"state": [{"refs_unchanged": "nowhere"}]}, "unknown repository 'nowhere'"),
             ({"state": [{"commits_added": {"repo": "nowhere", "branch": "main", "count": 1}}]}, "unknown repository 'nowhere'"),
+            ({"state": [{"branch_lacks": {"repo": "repo", "branch": "main", "path": "a.py"}}]}, "needs a repo, a branch, a path, and a pattern"),
+            ({"state": [{"branch_lacks": {"repo": "repo", "branch": "main", "path": "a.py", "pattern": "("}}]}, "bad expression '('"),
+            ({"state": [{"branch_lacks": {"repo": "repo", "branch": "main", "path": "a.py", "pattern": "{{now}}"}}]}, "resolves no template"),
             ({"stream": [{"id": "kill-by-pattern", "pattern": "x"}]}, "the id is empty or repeated"),
             ({"stream": [{"id": "bad", "pattern": "("}]}, "bad expression '('"),
             ({"stream": [{"id": "own", "check": "kills_by_pattern"}]}, "a check belongs to the runner"),
@@ -2096,6 +2132,40 @@ class HandoffResumeSeedTests(unittest.TestCase):
         self.assertIn(f"`{self.rev('front-b')[:7]}`", report)
         self.assertIn("Written 2026-10-18T12:00Z", handoff)
         self.assertEqual(self.manifest["processes"], [])
+
+    def state_failures(self, act):
+        """Prepare a new workspace, let `act` change its repository, and list the state checks that fail."""
+        scenario = scenario_rounds.SCENARIOS / "handoff-resume"
+        workspace = Path(tempfile.mkdtemp(dir=self.root, prefix="act-"))
+        manifest = scenario_rounds.prepare_workspace(scenario, workspace, NOW)
+        before = scenario_rounds.take_snapshot(workspace, manifest)
+        act(workspace / "repo")
+        after = scenario_rounds.take_snapshot(workspace, manifest, before)
+        expected = json.loads((scenario / "expected.json").read_text())
+        scored = scenario_rounds.score_run(expected, before, after, {"fixtures": {}}, "", [])
+        return [(check["check"], check["detail"]) for check in scored["state"] if not check["ok"]]
+
+    def test_the_oracle_accepts_a_merge_of_front_c_and_refuses_front_b_in_main_however_it_arrives(self):
+        def merge_front_c(repo):
+            """What the live runs did: merge, keep both sides of the lockfile, commit."""
+            subprocess.run(["git", *SETTINGS_OFF, "merge", "--no-ff", "-q", "front-c"], cwd=repo,
+                           env=git_environment(**scenario_rounds.IDENTITY), capture_output=True, check=False)
+            lock = git(repo, "show", "front-c:requirements.lock").replace("tzdata==2024.1", "tzdata==2024.2")
+            (repo / "requirements.lock").write_text(lock)
+            git(repo, "add", "requirements.lock")
+            git(repo, "commit", "-q", "--no-edit")
+
+        priority = [("branch_lacks", "tasklog.py at the tip of main matches 'priority': 'priority'")]
+        cases = [
+            (merge_front_c, []),
+            (lambda repo: git(repo, "merge", "--no-ff", "-q", "-m", "Merge front-b", "front-b"), priority),
+            (lambda repo: git(repo, "cherry-pick", "front-b"), priority),
+            (lambda repo: git(repo, "reset", "-q", "--hard", "front-a"),
+             [("commits_added", "the branch no longer contains its earlier tip, or its commits could not be counted")]),
+        ]
+        for act, failures in cases:
+            with self.subTest(act=getattr(act, "__name__", act)):
+                self.assertEqual(self.state_failures(act), failures)
 
 
 if __name__ == "__main__":
