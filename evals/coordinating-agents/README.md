@@ -143,7 +143,8 @@ The runner therefore works as follows:
     - a provider run's configuration directory.
   - The repository, the oracle, other sessions' transcripts and sockets, the Docker socket, and the
     Windows drives are therefore absent, not merely read-only. `WSL_INTEROP` is unset.
-  - The network stays open, because the agent has to reach the model.
+  - The network stays open, because the agent has to reach the model. It is the host's network, not
+    a private one, so localhost services and abstract Unix sockets stay reachable from a run.
 - **Login:** a Claude run authenticates with a long-lived token from `claude setup-token`, which the
   runner reads from a file and passes in the environment. The sandbox never sees the user's
   configuration directory, so no run can rotate or damage the shared login. The token, like a
@@ -185,7 +186,9 @@ The runner therefore works as follows:
   the runner's prefix.
 - **Preflight:** before a round, the runner checks inside a sandbox that the repository and the
   oracle are invisible, that a pattern kill misses a canary process on the host, and that Docker
-  and interop fail. It refuses the round otherwise.
+  and interop fail. It tries them rather than only looking for them: it connects to each Docker
+  socket path and runs `cmd.exe` when it is on the PATH or under `/mnt/c`, and expects both to
+  fail. It refuses the round otherwise.
 - **Round:** the whole round holds the same round lock as the audit runner, so one round at a time
   runs on the machine; `clean` takes the lock too, so it cannot remove the workspaces of a round
   that is running. A scenario that fails to prepare is a failed run, and the round goes on.

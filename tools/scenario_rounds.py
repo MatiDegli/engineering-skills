@@ -1716,15 +1716,37 @@ def now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+# The channels to the host that the sandbox must not leave open: Docker's sockets, and the Windows
+# programs that WSL interop would run. The preflight uses them, and expects every attempt to fail.
+DOCKER_SOCKETS = ("/var/run/docker.sock", "/run/docker.sock")
+INTEROP_PROGRAMS = ("cmd.exe", "/mnt/c/Windows/System32/cmd.exe")
 # Run inside the sandbox before a round; it prints what it found as one JSON object.
 PREFLIGHT = r"""
-import json, os, subprocess, sys
+import json, os, shutil, socket, subprocess, sys
 spec = json.load(sys.stdin)
 found = {"pid": os.getpid(), "hidden": [p for p in spec["hidden"] if os.path.exists(p)]}
 found["home"] = sorted(set(os.listdir(spec["home"])) - set(spec["home_allowed"]))
 found["channels"] = [p for p in ("/var/run/docker.sock", "/run/docker.sock", "/run/user", "/run/WSL") if os.path.exists(p)]
 found["drives"] = [name for name in os.listdir("/mnt") if len(name) == 1]
 found["variables"] = [n for n in ("WSL_INTEROP", "DOCKER_HOST", "SSH_AUTH_SOCK") if n in os.environ]
+found["docker"], found["interop"] = [], []
+for path in spec["sockets"]:
+    probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    probe.settimeout(5)
+    try:
+        probe.connect(path)
+        found["docker"].append(path)
+    except OSError:
+        pass
+    finally:
+        probe.close()
+for program in spec["programs"]:
+    path = shutil.which(program) if "/" not in program else program if os.path.exists(program) else None
+    try:
+        if path and subprocess.run([path, "/c", "exit", "0"], capture_output=True, timeout=20).returncode == 0:
+            found["interop"].append(path)
+    except (OSError, subprocess.SubprocessError):
+        pass
 try:
     found["canary_reached"] = subprocess.run(["pkill", "-f", spec["canary"]], capture_output=True).returncode == 0
 except OSError as error:
@@ -1739,7 +1761,8 @@ def preflight(hidden: list[Path], read_only: list[Path]) -> list[str]:
     A host canary process, started with a unique command line, must survive a pattern kill from the
     sandbox. The paths in `hidden` (the repository, the oracle, the round directory, and the like)
     must not exist inside, and neither may the home directory's contents, the Docker and WSL
-    channels, or the Windows drives.
+    channels, or the Windows drives. It also tries the channels: a connection to each Docker socket
+    and a run of `cmd.exe`, where there is one, must fail.
     """
     home = Path.home()
     marker = f"scenario-canary-{secrets.token_hex(6)}"
@@ -1752,6 +1775,7 @@ def preflight(hidden: list[Path], read_only: list[Path]) -> list[str]:
     try:
         allowed = sorted({p.relative_to(home).parts[0] for p in read_only if p.is_relative_to(home)})
         spec = {"hidden": [str(p) for p in hidden], "home": str(home), "home_allowed": allowed, "canary": marker}
+        spec |= {"sockets": list(DOCKER_SOCKETS), "programs": list(INTEROP_PROGRAMS)}
         command = [INTERPRETER, "-I", "-c", PREFLIGHT]
         result = subprocess.run(
             sandbox_arguments(home, workspace, read_only, [workspace], command), capture_output=True,
@@ -1770,7 +1794,8 @@ def preflight(hidden: list[Path], read_only: list[Path]) -> list[str]:
     if found["pid"] != 1:
         problems.append(f"the first process is PID {found['pid']}, not 1")
     for key, text in (("hidden", "visible inside"), ("home", "left in the home directory"), ("channels", "reachable"),
-                      ("drives", "Windows drive visible"), ("variables", "variable set")):
+                      ("drives", "Windows drive visible"), ("variables", "variable set"),
+                      ("docker", "a Docker socket accepts connections"), ("interop", "a Windows program ran")):
         if found[key]:
             problems.append(f"{text}: {', '.join(found[key])}")
     if found.get("pkill_missing"):

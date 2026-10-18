@@ -10,6 +10,7 @@ import json
 import os
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tarfile
@@ -1317,6 +1318,32 @@ class SandboxTests(unittest.TestCase):
         hidden = [scenario_rounds.ROOT, scenario_rounds.SCENARIOS / "handoff-resume" / "expected.json", self.root]
         self.assertEqual(scenario_rounds.preflight(hidden, []), [])
         self.assertEqual(scenario_rounds.preflight([Path("/etc")], []), ["visible inside: /etc"])
+
+    def test_the_preflight_tries_the_docker_sockets_and_cmd_exe_and_names_the_ones_that_work(self):
+        listening, stale = self.root / "docker.sock", self.root / "stale.sock"
+        server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.addCleanup(server.close)
+        server.bind(str(listening))
+        server.listen(1)
+        gone = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        gone.bind(str(stale))
+        gone.close()
+        works, fails = self.root / "bin" / "cmd.exe", self.root / "other" / "cmd.exe"
+        write(works, "#!/bin/sh\nexit 0\n", 0o755)
+        write(fails, "#!/bin/sh\nexit 1\n", 0o755)
+        patches = lambda sockets, programs: (
+            mock.patch.object(scenario_rounds, "DOCKER_SOCKETS", tuple(map(str, sockets))),
+            mock.patch.object(scenario_rounds, "INTEROP_PROGRAMS", tuple(map(str, programs))),
+        )
+        with contextlib.ExitStack() as stack:
+            for patch in patches([listening, stale, self.root / "absent.sock"], [works, fails, self.root / "absent.exe"]):
+                stack.enter_context(patch)
+            self.assertEqual(scenario_rounds.preflight([], [self.root]), [
+                f"a Docker socket accepts connections: {listening}", f"a Windows program ran: {works}"])
+        with contextlib.ExitStack() as stack:
+            for patch in patches([stale, self.root / "absent.sock"], [fails, self.root / "absent.exe"]):
+                stack.enter_context(patch)
+            self.assertEqual(scenario_rounds.preflight([], [self.root]), [], "every attempt fails, as it must")
 
     def test_stopping_the_sandboxes_ends_the_agent_and_every_fixture(self):
         marker = f"scenario-stop-{os.getpid()}"
