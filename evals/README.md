@@ -99,6 +99,7 @@ Each mechanism answers an incident in this repository's evaluations:
 | --- | --- |
 | An audit that lost its scratch path extracted files into this repository (run 10) | Each run starts in its prepared repository, with the skill exported outside this repository |
 | Parallel runs that found an expired login raced to refresh it, and all failed before their first tool call | One short call per model, one at a time, before the parallel runs; a run whose login refresh fails is retried after a random pause |
+| Two lines of work could start rounds at once on one machine, sharing the login and the host | `run` holds a machine-wide lock, `~/.cache/engineering-skills/rounds.lock`, for the whole round; a second round exits naming the holder, or waits `--lock-wait-minutes` |
 | The `haiku` alias resolved to an older model than intended, and an older CLI did not know the newer model's ID | Full model IDs; the short call stops the round when the CLI does not serve a model, and a run whose stream names another model is marked |
 | An agent started inside a repository loads that repository's agent settings, hooks, skills, and agents | Runs load only user settings, with hooks off, and fix the effort level instead of inheriting it |
 | Rounds kept under `/tmp` lost their scripts and streams when WSL restarted | The round directory keeps the plan, streams, reports, and summary; `plan` warns when it is under the temporary directory |

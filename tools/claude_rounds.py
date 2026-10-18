@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import fcntl
 import io
 import json
 import os
@@ -26,7 +27,7 @@ import threading
 import time
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -93,6 +94,40 @@ PROBLEMS = (
 
 def now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# One headless round at a time on this machine, for every runner that takes this lock: rounds
+# share the Claude login and the host.
+ROUND_LOCK = Path.home() / ".cache" / "engineering-skills" / "rounds.lock"
+LOCK_POLL = 5
+
+
+@contextmanager
+def round_lock(holder: str, wait: float = 0.0):
+    """Hold the machine's round lock while the block runs, or exit naming who holds it.
+
+    The kernel releases a `flock` when its holder exits, so the lock is never stale; the file's text
+    only says who took it last. Waits at most `wait` seconds for the lock.
+    """
+    path = ROUND_LOCK
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a+", encoding="utf-8") as handle:
+        deadline = time.monotonic() + wait
+        while True:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    handle.seek(0)
+                    raise SystemExit(f"another round holds {path}: {handle.read().strip() or 'holder unknown'}")
+                time.sleep(min(LOCK_POLL, left))
+        handle.seek(0)
+        handle.truncate()
+        handle.write(f"{holder}, pid {os.getpid()}, since {now()}\n")
+        handle.flush()
+        yield
 
 
 def claude_command(
@@ -627,13 +662,29 @@ def run(
     pause: tuple[int, int] = (20, 60),
     providers: dict[str, dict] | None = None,
     stagger: float = 0.0,
+    lock_wait: float = 0.0,
 ) -> int:
     """Run every planned audit; return 1 when a model differs or an audit was skipped.
 
     `providers` maps a model served by another provider to its base URL and key file. SIGTERM or
     SIGINT stops the process group of every running audit, starts no other, and returns 128 plus
-    the signal number; the handlers are restored afterwards.
+    the signal number; the handlers are restored afterwards. The whole round, warm-up included,
+    holds the round lock, waiting for it at most `lock_wait` seconds.
     """
+    with round_lock(f"claude_rounds run {round_dir.resolve()}", lock_wait):
+        return run_audits(round_dir, jobs, timeout, budget, pause, providers, stagger)
+
+
+def run_audits(
+    round_dir: Path,
+    jobs: int,
+    timeout: float,
+    budget: float,
+    pause: tuple[int, int],
+    providers: dict[str, dict] | None,
+    stagger: float,
+) -> int:
+    """The body of `run`, under the round lock."""
     paths = round_paths(round_dir)
     data = json.loads(paths["plan.json"].read_text(encoding="utf-8"))
     status = subprocess.run(["claude", "auth", "status"], capture_output=True, text=True, timeout=60)
@@ -939,6 +990,12 @@ def main() -> int:
         metavar="MODEL=KEY_FILE",
         help="read MODEL's API key from this file (mode 600) through an apiKeyHelper",
     )
+    run_parser.add_argument(
+        "--lock-wait-minutes",
+        type=float,
+        default=0,
+        help="wait this long for another round on this machine to finish; by default, exit at once",
+    )
     for name, text in (
         ("summarize", "score the reports and check what the runs left behind"),
         ("clean", "remove the prepared repositories and the skill export"),
@@ -960,6 +1017,7 @@ def main() -> int:
             arguments.budget_usd,
             providers=providers,
             stagger=arguments.stagger_seconds,
+            lock_wait=arguments.lock_wait_minutes * 60,
         )
     if arguments.command == "summarize":
         print(summarize(arguments.round_dir), end="")

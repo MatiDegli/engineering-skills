@@ -125,6 +125,8 @@ class RoundTests(unittest.TestCase):
             del os.environ[name]
         self.repository = mock.patch.object(claude_rounds, "ROOT", self.skill_history())
         self.repository.start()
+        self.lock = mock.patch.object(claude_rounds, "ROUND_LOCK", self.root / "lock" / "rounds.lock")
+        self.lock.start()
         self.rounds = []
 
     def skill_history(self):
@@ -151,6 +153,7 @@ class RoundTests(unittest.TestCase):
         return repository
 
     def tearDown(self):
+        self.lock.stop()
         self.repository.stop()
         self.environment.stop()
         for round_dir in self.rounds:
@@ -398,6 +401,31 @@ class RoundTests(unittest.TestCase):
             self.assertTrue(any(command[i : i + len(flags)] == flags for i in range(len(command))))
         self.assertIn('{"disableAllHooks": true}', command)
 
+
+    def test_a_held_round_lock_stops_a_second_round_before_any_audit(self):
+        round_dir = self.plan("round", ("1", "claude-test-1-0"))
+        with claude_rounds.round_lock("scenario line, round seven"):
+            with self.assertRaises(SystemExit) as refusal, mock.patch("builtins.print"):
+                claude_rounds.run(round_dir, jobs=1, timeout=60, budget=100, pause=(0, 0))
+        self.assertIn("scenario line, round seven", str(refusal.exception))
+        self.assertFalse((round_dir / "cli-version.txt").exists())
+        self.assertFalse(any((round_dir / "streams").glob("*.jsonl")))
+
+    def test_a_round_names_itself_in_the_lock_and_releases_it(self):
+        round_dir = self.plan("round", ("1", "claude-test-1-0"))
+        with mock.patch("builtins.print"):
+            self.assertEqual(claude_rounds.run(round_dir, jobs=1, timeout=60, budget=100, pause=(0, 0)), 0)
+        holder = claude_rounds.ROUND_LOCK.read_text()
+        self.assertIn(f"claude_rounds run {round_dir.resolve()}, pid {os.getpid()}", holder)
+        with claude_rounds.round_lock("next round"):
+            self.assertIn("next round", claude_rounds.ROUND_LOCK.read_text())
+
+    def test_a_bounded_wait_for_the_lock_ends_with_the_holder(self):
+        with claude_rounds.round_lock("first"), mock.patch.object(claude_rounds, "LOCK_POLL", 0.01):
+            with self.assertRaises(SystemExit) as refusal:
+                with claude_rounds.round_lock("second", wait=0.05):
+                    self.fail("the lock was taken twice")
+        self.assertIn("first", str(refusal.exception))
 
 if __name__ == "__main__":
     unittest.main()
