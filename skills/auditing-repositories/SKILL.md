@@ -130,7 +130,9 @@ When you cannot read every maintained file, audit a sample chosen by risk and sa
 | `medium` | A gap that makes defects or security problems more likely to reach users without a direct path to a high outcome, or an unverified control on a high-impact path |
 | `low` | Maintainability, documentation, or hygiene with limited impact at the current stage |
 
-Judge impact first, then likelihood, never the effort of the fix. Raise a finding one level when
+Unverified recovery of production data, such as backups that nothing shows to exist or to have
+been restored, is `high`: its failure shows only once the data is lost. Judge impact first, then
+likelihood, never the effort of the fix. Raise a finding one level when
 the security level is 2 or 3 and the gap affects exposed data or users; lower it one level when the
 project's stage makes the control premature.
 

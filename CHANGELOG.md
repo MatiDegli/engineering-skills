@@ -16,6 +16,9 @@
   variable, or a deployment option, states the condition and whether the repository shows that it
   is met, and software already in production or distributed gets no "before release" timing. With
   Sonnet, no production-case report used that timing, against 4 of 10 before (runs 157 to 176).
+- Unverified recovery of production data, such as backups that nothing shows to exist or to have
+  been restored, is `high`. With Sonnet, reports rated it high and acted on it among the first five
+  actions in 10 of 10, against 1 of 10 before (runs 157 to 176).
 
 ### Evaluations and tooling
 
