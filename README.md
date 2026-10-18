@@ -61,8 +61,9 @@ criterion coverage, missed gaps, and false positives. Recorded runs are in
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md), the [security policy](SECURITY.md), and the
-[decision record](docs/decisions.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md), the [security policy](SECURITY.md), the
+[decision record](docs/decisions.md), and the [agentic workflow lessons](docs/agentic-workflow.md)
+learned while building this repository with coding agents.
 
 ## License
 
