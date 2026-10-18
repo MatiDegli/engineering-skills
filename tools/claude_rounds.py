@@ -101,7 +101,8 @@ def now() -> str:
 # One headless round at a time per provider on this machine, for every runner that takes these
 # locks: rounds of one provider share its login or key and its limits. The Claude login's lock,
 # `anthropic`, keeps the file older runners take, so they still exclude each other; another
-# provider's lock is a file beside it. Rounds of different providers run at once on one host.
+# provider's lock is a file beside it. Rounds of different providers run at once on one host, so
+# each logs the others' locks (`lock_overlaps`).
 ROUND_LOCK = Path.home() / ".cache" / "engineering-skills" / "rounds.lock"
 LOCK_POLL = 5
 ANTHROPIC = "anthropic"
@@ -204,6 +205,118 @@ def round_lock(holder: str, wait: float = 0.0, resources: tuple[str, ...] = (ANT
             handle.write(f"{holder}, pid {os.getpid()}, since {now()}, for {', '.join(resources)}\n")
             handle.flush()
         yield
+
+
+# The kernel's table of file locks; a test points it at a fake.
+PROC_LOCKS = Path("/proc/locks")
+LOCKED_FILE = re.compile(r"([0-9a-f]+):([0-9a-f]+):([0-9]+)")
+
+
+def lock_identity(status: os.stat_result) -> tuple[int, int, int]:
+    """Name a file as /proc/locks does: its device's major and minor numbers, then its inode."""
+    return os.major(status.st_dev), os.minor(status.st_dev), status.st_ino
+
+
+def held_files() -> set[tuple[int, int, int]] | None:
+    """Return the files a process holds a lock on, named as `lock_identity` names them, or None
+    when /proc/locks cannot be read.
+
+    /proc/locks prints device numbers in hex, and marks with `->` a process waiting for a lock.
+    """
+    try:
+        text = PROC_LOCKS.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    held = set()
+    for line in text.splitlines():
+        fields = line.split()
+        if fields[1:2] == ["->"]:
+            continue
+        for field in fields:
+            if found := LOCKED_FILE.fullmatch(field):
+                held.add((int(found[1], 16), int(found[2], 16), int(found[3])))
+                break
+    return held
+
+
+def lock_overlaps(
+    resources: tuple[str, ...], start: dict[str, tuple[str, int]] | None = None
+) -> tuple[list[str], dict[str, tuple[str, int]]]:
+    """Describe the other round lock files for the log, and return each one's text and inode.
+
+    Call it while holding the locks of `resources`. Without `start`, the lines are the round's start
+    lines; given what those read, they are its end lines. A marker line counts the files, then each
+    gets `others <start|end> <name> held=<yes|no|unknown> changed=<yes|no> holder=<text>`, the free
+    text last. A file has changed when its text is not empty and differs from the text at the
+    start, a file absent then counting as empty, or when its inode differs because it was deleted
+    and recreated; this catches a round that ran within this one. A refused round writes nothing,
+    so it changes nothing.
+
+    `held` comes from /proc/locks, which is only read: taking another round's lock to test it, even
+    briefly, could refuse that round's attempt. When /proc/locks cannot be read, or does not show
+    one of this round's own locks, as on a filesystem whose device numbers it prints differently,
+    every `held` is `unknown`. It lists only the locks of this PID namespace, so a round started in
+    a sandbox sees the others as free.
+    """
+    own = [lock_path(resource) for resource in resources]
+    held = held_files()
+    mine = set()
+    for path in own:
+        try:
+            mine.add(lock_identity(path.stat()))
+        except FileNotFoundError:
+            continue
+    if held is not None and not mine & held:
+        held = None
+    found, names = {}, {path.name for path in own}
+    for path in sorted(ROUND_LOCK.parent.glob("rounds*.lock")):
+        if path.name in names:
+            continue
+        try:
+            with path.open(encoding="utf-8", errors="replace") as handle:
+                found[path.name] = (handle.read(), lock_identity(os.fstat(handle.fileno())))
+        except FileNotFoundError:
+            continue
+    phase = "start" if start is None else "end"
+    lines = [f"others {phase}: {len(found)} files"]
+    for name, (text, identity) in found.items():
+        state = "unknown" if held is None else "yes" if identity in held else "no"
+        before, inode = (start or {}).get(name, ("", None))
+        rewritten = bool(text.strip()) and text.strip() != before.strip()
+        changed = start is not None and (rewritten or inode not in (None, identity[2]))
+        fields = f"held={state} changed={'yes' if changed else 'no'}"
+        lines.append(f"others {phase} {name} {fields} holder={' '.join(text.split())}")
+    return lines, {name: (text, identity[2]) for name, (text, identity) in found.items()}
+
+
+def log_overlaps(
+    round_dir: Path, resources: tuple[str, ...], start: dict[str, tuple[str, int]] | None = None
+) -> dict[str, tuple[str, int]]:
+    """Append the lines of `lock_overlaps` to the round's log.txt, and return what they read."""
+    lines, seen = lock_overlaps(resources, start)
+    with round_paths(round_dir)["log.txt"].open("a", encoding="utf-8") as log:
+        log.write("".join(f"{line}\n" for line in lines))
+    return seen
+
+
+def overlap_note(log: str) -> str | None:
+    """Say whether a round overlapped another, from the `others` lines of its log.
+
+    A line that shows another lock held or changed says it did. A line that says `unknown`, or a
+    start marker with no end marker after it, as when the runner was killed, leaves it unknown. A
+    log of an older runner has no such lines and gets no note.
+    """
+    overlapped = unknown = started = False
+    for line in log.splitlines():
+        if marker := re.fullmatch(r"others (start|end): [0-9]+ files", line):
+            unknown |= started and marker[1] == "start"
+            started = marker[1] == "start"
+        elif other := re.match(r"others (?:start|end) \S+ held=(\w+) changed=(\w+) ", line):
+            overlapped |= "yes" in (other[1], other[2])
+            unknown |= other[1] == "unknown"
+    if overlapped:
+        return "Overlapped with another round: its minutes are not comparable."
+    return "Overlap unknown." if unknown or started else None
 
 
 def claude_command(
@@ -748,12 +861,22 @@ def run(
     the signal number; the handlers are restored afterwards. The whole round, warm-up included,
     holds the lock of every resource its models need (`round_resources`), waiting for them at most
     `lock_wait` seconds.
+
+    Rounds of other providers may run meanwhile on the same host, so log.txt describes the other
+    rounds' locks right after this round takes its own and again before it releases them, also
+    when it stops early, and `summarize` marks a round that overlapped another. The probe,
+    `lock_overlaps`, sees only the locks of this PID namespace.
     """
     data = json.loads(round_paths(round_dir)["plan.json"].read_text(encoding="utf-8"))
     providers = providers or {}
     resources = round_resources([job["model"] for job in data["jobs"]], providers)
     with round_lock(f"claude_rounds run {round_dir.resolve()}", lock_wait, resources):
-        return run_audits(round_dir, jobs, timeout, budget, pause, providers, stagger, resources)
+        start = log_overlaps(round_dir, resources)
+        try:
+            return run_audits(round_dir, jobs, timeout, budget, pause, providers, stagger, resources)
+        finally:
+            # Still under the locks: the probe looks for them, and once released every `held` is unknown.
+            log_overlaps(round_dir, resources, start)
 
 
 def run_audits(
@@ -989,6 +1112,7 @@ def summarize(round_dir: Path) -> str:
             hashes.append(scored["hash"])
             notes += scored["notes"]
     notes += leftovers(paths, data)
+    overlap = overlap_note(paths["log.txt"].read_text(encoding="utf-8") if paths["log.txt"].exists() else "")
     # Rounds of cases without dated defects keep the shape of older summaries.
     located = any(scored["defects"] for scored in scored_jobs)
     run_header = ["Case", "Run", "Model", "Seeded gaps found", "Passes the scorer"]
@@ -1009,6 +1133,7 @@ def summarize(round_dir: Path) -> str:
     lines = [
         f"# Round summary ({now()})",
         "",
+        *([overlap, ""] if overlap else []),
         f"Skill `{data['skill_commit']}`, level {data['level']}, planned {data['created']}.",
         "",
         "| " + " | ".join(run_header) + " |",

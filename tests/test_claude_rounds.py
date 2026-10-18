@@ -658,6 +658,10 @@ class RoundTests(unittest.TestCase):
         self.assertFalse((self.root / "state" / "auth-status").exists())
         self.assertIn(f"claude_rounds run {round_dir.resolve()}", claude_rounds.lock_path("api.z.ai").read_text())
         self.assertIn("claude round", claude_rounds.ROUND_LOCK.read_text())
+        log = (round_dir / "log.txt").read_text()
+        self.assertIn("others start rounds.lock held=yes changed=no holder=claude round", log)
+        summary = claude_rounds.summarize(round_dir).splitlines()
+        self.assertEqual(summary[2], "Overlapped with another round: its minutes are not comparable.")
 
     def test_a_mixed_round_is_refused_while_one_provider_is_busy_and_holds_nothing(self):
         providers = self.providers(("glm-5.3", "https://api.z.ai/api/anthropic"))
@@ -668,6 +672,159 @@ class RoundTests(unittest.TestCase):
             self.assertIn("rounds-api.z.ai.lock: glm round", str(refusal.exception))
             self.assertTrue(free(claude_rounds.ROUND_LOCK))
         self.assertFalse((round_dir / "cli-version.txt").exists())
+
+    def other_lock(self, text="glm round, pid 7, since 2026-10-18T08:00:00Z, for api.z.ai\n"):
+        """Leave the lock file of a provider round that is not running; return its path."""
+        path = claude_rounds.ROUND_LOCK.with_name("rounds-api.z.ai.lock")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+        return path
+
+    def probe(self, start=None):
+        """Return the probe's lines for a round on the Claude login, and what they read."""
+        return claude_rounds.lock_overlaps(("anthropic",), start)
+
+    def test_the_probe_sees_a_lock_held_elsewhere_then_free_and_changed(self):
+        glm = self.other_lock("")
+        with claude_rounds.round_lock("this round"):
+            lines, start = self.probe()
+            self.assertEqual(
+                lines, ["others start: 1 files", "others start rounds-api.z.ai.lock held=no changed=no holder="]
+            )
+            with claude_rounds.round_lock("glm round", resources=("api.z.ai",)):
+                lines, _ = self.probe(start)
+                self.assertRegex(lines[1], r"^others end rounds-api.z.ai.lock held=yes changed=yes holder=glm round")
+            lines, _ = self.probe(start)
+            self.assertRegex(lines[1], r"^others end rounds-api.z.ai.lock held=no changed=yes holder=glm round")
+        self.assertIn("glm round", glm.read_text())
+
+    def test_the_probe_counts_a_file_created_mid_round_as_changed_once_written(self):
+        with claude_rounds.round_lock("this round"):
+            lines, start = self.probe()
+            self.assertEqual(lines, ["others start: 0 files"])
+            with claude_rounds.round_lock("glm round", resources=("api.z.ai",)):
+                pass
+            # A refused round creates its file and writes nothing.
+            claude_rounds.ROUND_LOCK.with_name("rounds-refused.example.lock").touch()
+            lines, _ = self.probe(start)
+        self.assertEqual(lines[0], "others end: 2 files")
+        self.assertRegex(lines[1], r"^others end rounds-api.z.ai.lock held=no changed=yes holder=glm round")
+        self.assertEqual(lines[2], "others end rounds-refused.example.lock held=no changed=no holder=")
+
+    def test_the_probe_reports_a_lock_never_taken_as_free_and_unchanged(self):
+        self.other_lock()
+        with claude_rounds.round_lock("this round"):
+            _, start = self.probe()
+            lines, _ = self.probe(start)
+        self.assertEqual(lines[1], "others end rounds-api.z.ai.lock held=no changed=no holder=glm round, pid 7,"
+                         " since 2026-10-18T08:00:00Z, for api.z.ai")
+
+    def test_the_probe_counts_a_file_deleted_and_recreated_as_changed(self):
+        glm = self.other_lock()
+        with claude_rounds.round_lock("this round"):
+            _, start = self.probe()
+            # The new file exists before the old one goes, so it cannot reuse the old inode.
+            new = glm.with_name("recreated")
+            new.write_text(glm.read_text())
+            os.replace(new, glm)
+            lines, _ = self.probe(start)
+        self.assertRegex(lines[1], r"^others end rounds-api.z.ai.lock held=no changed=yes holder=glm round")
+
+    def test_the_probe_says_unknown_without_proc_locks(self):
+        self.other_lock()
+        with claude_rounds.round_lock("this round"):
+            with mock.patch.object(claude_rounds, "PROC_LOCKS", self.root / "missing"):
+                lines, _ = self.probe()
+        self.assertRegex(lines[1], r"^others start rounds-api.z.ai.lock held=unknown changed=no ")
+
+    def test_the_probe_reads_device_numbers_in_hex_and_skips_waiters(self):
+        glm = self.other_lock("glm round\n")
+        with claude_rounds.round_lock("this round"):
+            own, other = (path.stat().st_ino for path in (claude_rounds.ROUND_LOCK, glm))
+            mine = f"1: FLOCK  ADVISORY  WRITE {os.getpid()} 08:30:{own} 0 EOF"
+
+            def identity(status):
+                """Put every file on device 8:48, which /proc/locks prints as 08:30."""
+                return 8, 48, status.st_ino
+
+            holder = f"2: FLOCK  ADVISORY  WRITE 7 08:30:{other} 0 EOF"
+            fakes = {
+                "the other inode on another device": ([mine, holder.replace("08:30", "08:31")], "no"),
+                "a waiter on the other file": ([mine, holder.replace("2: ", "2: -> ")], "no"),
+                "a holder of the other file": ([mine, holder], "yes"),
+                "no lock of this round": ([holder], "unknown"),
+            }
+            for name, (lines, held) in fakes.items():
+                fake = self.root / "locks"
+                fake.write_text("".join(f"{line}\n" for line in lines))
+                fields = f"held={held} changed=no holder=glm round"
+                with self.subTest(name), mock.patch.multiple(claude_rounds, PROC_LOCKS=fake, lock_identity=identity):
+                    self.assertEqual(self.probe()[0][1], f"others start rounds-api.z.ai.lock {fields}")
+
+    def test_a_round_logs_the_other_locks_before_it_starts_and_after_it_ends(self):
+        self.other_lock()
+        round_dir = self.plan("round", ("1", "claude-test-1-0"))
+        with mock.patch("builtins.print"):
+            self.assertEqual(claude_rounds.run(round_dir, jobs=1, timeout=60, budget=100, pause=(0, 0)), 0)
+        log = (round_dir / "log.txt").read_text()
+        for phase in ("start", "end"):
+            lines = f"others {phase}: 1 files\nothers {phase} rounds-api.z.ai.lock held=no changed=no"
+            self.assertIn(f"{lines} holder=glm round", log)
+        self.assertLess(log.index("others start:"), log.index("\nstart "))
+        self.assertLess(log.index("\nend "), log.index("others end:"))
+        self.assertNotIn("Overlap", claude_rounds.summarize(round_dir))
+
+    def test_a_round_alone_still_marks_its_start_and_end(self):
+        round_dir = self.plan("round", ("1", "claude-test-1-0"))
+        with mock.patch("builtins.print"):
+            self.assertEqual(claude_rounds.run(round_dir, jobs=1, timeout=60, budget=100, pause=(0, 0)), 0)
+        log = (round_dir / "log.txt").read_text()
+        self.assertTrue(log.startswith("others start: 0 files\nstart "), log)
+        self.assertTrue(log.endswith("\nothers end: 0 files\n"), log)
+        self.assertNotIn("Overlap", claude_rounds.summarize(round_dir))
+
+    def test_a_round_that_stops_early_still_logs_the_end_of_its_overlaps(self):
+        self.other_lock()
+        code, round_dir, _ = self.stopped_round("claude-stuck-1-0", signal.SIGTERM)
+        self.assertEqual(code, 128 + signal.SIGTERM)
+        end = "others end: 1 files\nothers end rounds-api.z.ai.lock held=no changed=no holder=glm round, pid 7,"
+        self.assertIn(end, (round_dir / "log.txt").read_text())
+        # A failed warm-up exits the round.
+        round_dir = self.plan("failed", ("1", "claude-unknown-1-0"))
+        with mock.patch("builtins.print"), self.assertRaises(SystemExit):
+            claude_rounds.run(round_dir, jobs=1, timeout=60, budget=100, pause=(0, 0))
+        self.assertIn(end, (round_dir / "log.txt").read_text())
+
+    def test_the_summary_marks_a_round_that_overlapped_another_or_may_have(self):
+        round_dir = self.plan("round", ("1", "claude-test-1-0"))
+        with mock.patch("builtins.print"):
+            self.assertEqual(claude_rounds.run(round_dir, jobs=1, timeout=60, budget=100, pause=(0, 0)), 0)
+        audits = "start 2026-10-18T09:00:00Z 0.0.0, budget USD 100\nrun1-case: exit 0\nend 2026-10-18T09:01:00Z\n"
+
+        def lines(phase, held="no", changed="no"):
+            marker = f"others {phase}: 1 files\n"
+            return marker + f"others {phase} rounds-api.z.ai.lock held={held} changed={changed} holder=glm round\n"
+
+        overlapped, unknown = "Overlapped with another round: its minutes are not comparable.", "Overlap unknown."
+        logs = {
+            "clean": (lines("start") + audits + lines("end"), None),
+            "an older runner": (audits, None),
+            "held at the start": (lines("start", held="yes") + audits + lines("end"), overlapped),
+            "held at the end": (lines("start") + audits + lines("end", held="yes"), overlapped),
+            "changed": (lines("start") + audits + lines("end", changed="yes"), overlapped),
+            "changed, held unknown": (lines("start") + audits + lines("end", "unknown", "yes"), overlapped),
+            "unknown": (lines("start", held="unknown") + audits + lines("end", held="unknown"), unknown),
+            "no end": (lines("start") + audits, unknown),
+            "no end, then resumed": (lines("start") + audits + lines("start") + audits + lines("end"), unknown),
+        }
+        for name, (text, note) in logs.items():
+            with self.subTest(name):
+                (round_dir / "log.txt").write_text(text)
+                summary = claude_rounds.summarize(round_dir)
+                if note:
+                    self.assertEqual(summary.splitlines()[1:4], ["", note, ""])
+                else:
+                    self.assertNotIn("Overlap", summary)
 
 if __name__ == "__main__":
     unittest.main()
