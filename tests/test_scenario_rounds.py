@@ -961,7 +961,7 @@ MINI = [
     {"kind": "repo", "path": "repo", "commits": [{"files": "one", "message": "feat: first"}]},
     {"kind": "remote", "repo": "repo", "path": "origin.git"},
     {"kind": "file", "path": "handoff.md", "source": "handoff.md"},
-    {"kind": "process", "name": "live", "label": "sh wait.sh gate front-c", "seconds": 4000},
+    {"kind": "process", "name": "live", "label": f"sh wait.sh gate front-c-{os.getpid()}", "seconds": 4000},
 ]
 MINI_FILES = {"one/app.py": "print(1)\n", "handoff.md": "{{now}} {{short:repo:main}}\n"}
 
@@ -1278,13 +1278,13 @@ class SandboxTests(unittest.TestCase):
         marker = f"scenario-canary-{os.getpid()}"
         canary = subprocess.Popen([marker, "300"], executable="/bin/sleep")
         self.addCleanup(lambda: (canary.kill(), canary.wait()))
-        fixtures = [self.fixture("orphan", "sh wait.sh gate front-a"), self.fixture("live", "python3 -m unittest gate front-c")]
+        fixtures = [self.fixture("orphan", f"sh wait.sh gate front-a-{os.getpid()}"), self.fixture("live", f"python3 -m unittest gate front-c-{os.getpid()}")]
         result = self.launch(f"pkill -f 'gate fron[t]-a'; pkill -f scenario-canar[y]-{os.getpid()}; echo $? > status.txt", fixtures)
         self.assertEqual(result["exit"], 0)
         self.assertEqual(result["launcher"]["fixtures"], {"orphan": {"state": "killed", "signal": "SIGTERM"}, "live": {"state": "alive"}})
         self.assertEqual((self.workspace / "status.txt").read_text().strip(), "1", "pkill found nothing of the host's")
         self.assertIsNone(canary.poll())
-        self.assertEqual(processes_named("gate front-"), [], "the sandbox leaves no process behind")
+        self.assertEqual(processes_named(f"gate front-a-{os.getpid()}") + processes_named(f"gate front-c-{os.getpid()}"), [], "the sandbox leaves no process behind")
 
     def test_the_launcher_ignores_what_the_agent_sends_it(self):
         script = (
@@ -1391,10 +1391,20 @@ class SandboxTests(unittest.TestCase):
 
 
 class LauncherSignalTests(unittest.TestCase):
+    # A shell starts a background job with SIGINT ignored, and Python then installs no handler for it, so
+    # the tests that check what the launcher does with that handler would pass or fail on how they were
+    # started. The child gives SIGINT its default disposition and executes the interpreter, which
+    # installs its handler as it does in the sandbox.
+    START = (
+        "import os, signal, sys\n"
+        "signal.signal(signal.SIGINT, signal.SIG_DFL)\n"
+        "os.execv(sys.executable, [sys.executable, '-c', sys.argv[1]])\n"
+    )
+
     def run_python(self, script):
         return subprocess.run(
-            [sys.executable, "-c", script], cwd=scenario_rounds.ROOT, capture_output=True, text=True, timeout=60,
-            env={"PATH": os.environ["PATH"]},
+            [sys.executable, "-c", self.START, script], cwd=scenario_rounds.ROOT, capture_output=True, text=True,
+            timeout=60, env={"PATH": os.environ["PATH"]},
         )
 
     def test_every_signal_that_python_handles_gets_its_default_disposition_back(self):
@@ -1915,7 +1925,7 @@ class RoundTests(RoundCase):
         self.assertIn("stream violation kill-by-pattern", summary)
 
     def test_a_stop_signal_ends_every_sandbox_and_starts_no_other_run(self):
-        marker = "wait.sh gate front-c"
+        marker = f"wait.sh gate front-c-{os.getpid()}"
         self.plan(*(self.job("claude-hang-1-0", "none", str(number)) for number in (1, 2, 3)))
 
         def send_when_two_agents_run():
