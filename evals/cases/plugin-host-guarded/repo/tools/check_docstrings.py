@@ -2,16 +2,21 @@
 """Fail when a public function, method, or class has no docstring and is not in the baseline.
 
 The baseline, tools/docstring-baseline.json, lists the violations that predate the rule. It can
-only shrink: a new violation fails, and so does a listed symbol that now has a docstring.
+only shrink: a new violation fails, and so does a listed symbol that now has a docstring. With
+`--base REF`, as CI runs it on pull requests, a change that adds baseline entries fails unless the
+baseline is the only file it touches, so the baseline cannot grow with the code it would excuse.
 """
 
+import argparse
 import ast
 import json
+import subprocess
 import sys
 from collections.abc import Iterator
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+BASELINE = "tools/docstring-baseline.json"
 DEFINITIONS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 
 
@@ -38,17 +43,41 @@ def violations(root: Path) -> set[str]:
 
 def check(root: Path, baseline: dict[str, list[str]]) -> list[str]:
     """Return what is wrong: new violations, and baseline entries that no longer apply."""
-    known = {f"{path}::{symbol}" for path, symbols in baseline.items() for symbol in symbols}
+    known = entries(baseline)
     current = violations(root)
     return [f"new violation: {item}" for item in sorted(current - known)] + [
         f"fixed, delete it from the baseline: {item}" for item in sorted(known - current)
     ]
 
 
+def entries(baseline: dict[str, list[str]]) -> set[str]:
+    return {f"{path}::{symbol}" for path, symbols in baseline.items() for symbol in symbols}
+
+
+def growth(base: dict[str, list[str]], head: dict[str, list[str]], changed: list[str]) -> list[str]:
+    """Return what is wrong when the baseline gains entries in a change that touches other files."""
+    added = sorted(entries(head) - entries(base))
+    others = sorted(path for path in changed if path != BASELINE)
+    if not added or not others:
+        return []
+    return [f"baseline entry added beside other changes ({', '.join(others)}): {item}" for item in added]
+
+
+def git(*arguments: str) -> str:
+    return subprocess.run(("git", *arguments), cwd=ROOT, check=True, capture_output=True, text=True).stdout
+
+
 def main() -> int:
-    """Check the repository against tools/docstring-baseline.json."""
-    baseline = json.loads((ROOT / "tools" / "docstring-baseline.json").read_text(encoding="utf-8"))
+    """Check the repository against tools/docstring-baseline.json, and the change against `--base`."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--base", help="the ref a pull request merges into, such as origin/main")
+    args = parser.parse_args()
+    baseline = json.loads((ROOT / BASELINE).read_text(encoding="utf-8"))
     problems = check(ROOT, baseline["violations"])
+    if args.base:
+        before = json.loads(git("show", f"{args.base}:{BASELINE}"))
+        changed = git("diff", "--name-only", f"{args.base}...HEAD").split()
+        problems += growth(before["violations"], baseline["violations"], changed)
     print("\n".join(problems) or "docstrings: OK")
     return 1 if problems else 0
 

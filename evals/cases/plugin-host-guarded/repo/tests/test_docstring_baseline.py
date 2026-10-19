@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.check_docstrings import check
+from tools.check_docstrings import BASELINE, check, growth
 
 UNDOCUMENTED = "def public():\n    pass\n"
 DOCUMENTED = 'def public():\n    """Do the work."""\n'
@@ -41,6 +41,21 @@ class DocstringBaselineTests(unittest.TestCase):
         root = self.package(DOCUMENTED)
         (root / "pluginhost" / "extra.py").write_text(UNDOCUMENTED)
         self.assertEqual(check(root, {}), ["new violation: pluginhost/extra.py::public"])
+
+
+class BaselineGrowthTests(unittest.TestCase):
+    def test_an_entry_added_beside_code_fails(self):
+        self.assertEqual(
+            growth({}, LISTED, [BASELINE, "pluginhost/module.py"]),
+            ["baseline entry added beside other changes (pluginhost/module.py): pluginhost/module.py::public"],
+        )
+
+    def test_an_entry_added_in_a_change_of_its_own_passes(self):
+        self.assertEqual(growth({}, LISTED, [BASELINE]), [])
+
+    def test_a_change_that_adds_no_entry_passes(self):
+        self.assertEqual(growth(LISTED, LISTED, [BASELINE, "pluginhost/module.py"]), [])
+        self.assertEqual(growth(LISTED, {}, [BASELINE, "pluginhost/module.py"]), [])
 
 
 if __name__ == "__main__":

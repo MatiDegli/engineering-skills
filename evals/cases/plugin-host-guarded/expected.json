@@ -6,7 +6,7 @@
     "SEC-07": "the library is published on PyPI, but there is no SECURITY.md or other channel for reporting a vulnerability"
   },
   "must_not_flag": {
-    "QUAL-05": "tools/docstring-baseline.json lists the violations that predate the docstring rule with a reason, an owner, and a removal condition, and tools/check_docstrings.py fails CI when a violation is added or a fixed one stays listed, so the baseline only shrinks and no blanket ignore exists",
+    "QUAL-05": "tools/docstring-baseline.json lists the violations that predate the docstring rule with a reason, an owner, and a removal condition; tools/check_docstrings.py fails CI when a violation is added or a fixed one stays listed, and on a pull request when the baseline gains an entry beside any other change; an entry alone fails as not a violation, so the baseline cannot grow and no blanket ignore exists",
     "STRUCT-04": "skip_private_files is a release flag with a purpose, an owner, and an expiry date in pluginhost/flags.py, and the tests run discovery with the flag off and on",
     "DEL-03": "the package is at 0.9.2, where any release may change the interface, and the 0.9.0 entry of the changelog notes the removal of the --format option; releases are versioned, recorded, and approved by a second maintainer",
     "CI-10": "the issue workflow passes the title through the TITLE environment variable and quotes it, so event data never becomes script text; nothing runs untrusted code, and CI has no secrets and does not publish",

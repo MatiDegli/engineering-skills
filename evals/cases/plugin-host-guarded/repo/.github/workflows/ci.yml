@@ -13,7 +13,13 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: python3 tools/check_docstrings.py && python3 -m unittest discover -s tests -v
+      - name: Baseline entries come in a change of their own
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.base_ref }}
+        run: python3 tools/check_docstrings.py --base "origin/$BASE"

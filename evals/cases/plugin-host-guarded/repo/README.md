@@ -53,8 +53,9 @@ python3 tools/check_docstrings.py && python3 -m unittest discover -s tests -v
 The first command fails when a public function, method, or class has no docstring. The violations
 that predate the rule are listed in `tools/docstring-baseline.json` with their reason, owner, and
 removal condition. The command also fails when a listed symbol gains a docstring, so the baseline
-only shrinks. Adding an entry is a decision of its own and goes in a separate pull request. CI runs
-the same command on every push and pull request.
+only shrinks. CI runs the same command on every push and pull request, and on a pull request it
+also fails when the baseline gains an entry beside the code it would excuse. New code gets its
+docstrings; the baseline is not a way around the rule.
 
 ## Releasing
 
