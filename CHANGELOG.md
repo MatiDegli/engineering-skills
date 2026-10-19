@@ -21,20 +21,40 @@
 - A migration from one pattern to another names its completion condition, and a check rejects new
   uses of the pattern it replaces (QUAL-11), so new code cannot copy the pattern being retired. A
   committed baseline of known violations meets QUAL-05 when it cannot grow without a separate
-  reviewed change, as large-scale changes and frozen architecture rules use it.
+  reviewed change, as large-scale changes and frozen architecture rules use it. With Sonnet, audits
+  found a seeded unfinished migration in 10 of 10 reports against 4 of 10 before (runs 204 to 213
+  and 231 to 240).
 - Release flags and compatibility shims are temporary code under STRUCT-04: each has a purpose, an
   owner, and a removal condition, goes once that is met, and is tested in each state it can ship in
-  until then. Permanent operational and permission toggles are configuration.
+  until then. Permanent operational and permission toggles are configuration. With Sonnet, audits
+  found a flag past its rollout in 10 of 10 reports against 0 of 10 before. Known limit: a flag with
+  an owner, a future expiry date, and tests in both states still got a `low` partial asking for a
+  check that fails once the date passes, in 10 of 10 reports.
 - Past 0.y.z, the version of a library, CLI, or public API signals incompatible changes, and a
   removal follows a deprecation in an earlier release (DEL-03), as Semantic Versioning asks. The
   audit compares the declared interface between the last two releases; internal applications and
-  0.y.z versions are exempt.
+  0.y.z versions are exempt. With Sonnet, a 0.y.z package that removed an option with a changelog
+  note was flagged in 1 of 10 reports against 8 of 10 before, for its release approval, not its
+  version.
 - Untrusted event data, such as a pull request's or an issue's title, never reaches a CI script
   through expression interpolation, where it can run as code with the job's token (CI-10). CI-10
   now also applies to CI that outside events trigger, not only to CI with secrets or publication.
+  Audits had found the seeded case before this change too (runs 204 to 213).
+- The behavior step reads code that measures something, such as experiments, evaluations,
+  benchmarks, and model training, against the results it reports: each number comes from the
+  configuration and data it names, compared runs and variants differ only in what is under test,
+  the sample can detect the differences the decision rules act on, evaluated code cannot read
+  held-out answers, and synthetic data covers the real cases. On a new research case, Sonnet found
+  all six seeded defects in every report with the skill, with the previous skill, and without any
+  skill (runs 214 to 228), so the case shows no effect yet; re-auditing the trial repositories
+  where audits missed such defects is the test that remains.
 
 ### Evaluations and tooling
 
+- Three cases: `plugin-host`, a published library that seeds an unfinished migration, a release flag
+  past its rollout, a minor release that removes an option, and an issue title interpolated into
+  a CI script; `plugin-host-guarded`, its sibling that does the same four practices right; and
+  `review-classifier`, a research repository whose evaluation seeds six logic defects.
 - `tools/claude_rounds.py` takes one round lock per provider instead of one per machine, so rounds
   on different providers, such as Claude and GLM, run at once, and rounds on one provider still run
   one at a time. A round takes all its locks or none, and checks the Claude login only when it uses

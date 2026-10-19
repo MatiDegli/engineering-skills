@@ -2943,3 +2943,228 @@ Report SHA-256 hashes for the fictional cases, as printed by the summary:
 - `2a18a4b48d83608eb77e23eeff0a26d32a413874a528ec86350a99add68246f4` booking-api run 201
 - `c0308ba6268c7a98317e349a4ee85da4fc9d2b16755220f6cace88dfd826405e` python-service run 200
 - `5cf170c38c754668c6dc9be91c362ce782119f97d74ada9f5fb641c49235c7aa` python-service run 201
+
+## 2026-10-19 — Runs 204 to 240 (migrations, flags, versions, CI input, and research code)
+
+- The candidate, on top of the control `17bac42`:
+  - `c57d9ff` (#23): the behavior step reads code that measures something against the results it
+    reports.
+  - `875f0a2` (#11): QUAL-11 asks a migration in progress for a completion condition and a check
+    against new uses of the old pattern; QUAL-05 accepts a baseline that cannot grow without a
+    separate reviewed change.
+  - `b7821ed` (#12): STRUCT-04 covers release flags and compatibility shims.
+  - `6c2c00a` (#13): past 0.y.z, DEL-03 asks for versions that signal incompatible changes and for
+    removals after a deprecation.
+  - `21af8f8` (#14): CI-10 keeps untrusted event data out of scripts and applies to CI that outside
+    events trigger.
+- Three new cases: `plugin-host` seeds one gap per issue from #11 to #14, `plugin-host-guarded` does
+  the same four practices right, and `review-classifier` seeds six logic defects in a research
+  evaluation beside one documented design choice.
+- Sonnet 5.5, with criteria fixed before planning. With no earlier runs on the new cases, the
+  margins came from earlier spreads on similar counts, and each effect criterion named its
+  frequency tiebreak.
+  - Runs 204 to 213: the two plugin-host cases; 204 to 208 are the control, 209 to 213 the
+    candidate (`e68693b`).
+  - Runs 214 to 228: `review-classifier`; 214 to 218 the control, 219 to 223 the candidate, and 224
+    to 228 with no skill (`+none`). All 15 reports were counted by hand, blind, with one written
+    rule.
+  - Runs 229 and 230: the six earlier cases, control and candidate.
+  - Runs 231 to 240: after reading runs 204 to 213, with the maintainer's approval, the guarded
+    case's baseline guard was made real (`d2bc9e8`) and `a9f60d0` added a sentence on unexpired
+    flags to `structure.md`. Runs 231 to 235 are the control, 236 to 240 the candidate.
+
+Runs 204 to 213:
+
+| Case | Run | Model | Seeded gaps found | Defects at location | Passes the scorer | Top priorities in first five | Problems |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| plugin-host | 204 | Sonnet 5.5 @ 17bac42 | 3 of 4 (missed STRUCT-04) | 2 of 4 | no | — | uncovered 1, duplicated 1 |
+| plugin-host | 205 | Sonnet 5.5 @ 17bac42 | 3 of 4 (missed STRUCT-04) | 2 of 4 | no | — | — |
+| plugin-host | 206 | Sonnet 5.5 @ 17bac42 | 3 of 4 (missed STRUCT-04) | 2 of 4 | no | — | — |
+| plugin-host | 207 | Sonnet 5.5 @ 17bac42 | 3 of 4 (missed STRUCT-04) | 2 of 4 | no | — | uncovered 1 |
+| plugin-host | 208 | Sonnet 5.5 @ 17bac42 | 3 of 4 (missed STRUCT-04) | 2 of 4 | no | — | — |
+| plugin-host | 209 | Sonnet 5.5 @ e68693b | 4 of 4 | 3 of 4 | yes | — | — |
+| plugin-host | 210 | Sonnet 5.5 @ e68693b | 4 of 4 | 4 of 4 | yes | — | — |
+| plugin-host | 211 | Sonnet 5.5 @ e68693b | 4 of 4 | 4 of 4 | yes | — | — |
+| plugin-host | 212 | Sonnet 5.5 @ e68693b | 4 of 4 | 4 of 4 | yes | — | — |
+| plugin-host | 213 | Sonnet 5.5 @ e68693b | 4 of 4 | 4 of 4 | yes | — | — |
+| plugin-host-guarded | 204 | Sonnet 5.5 @ 17bac42 | 3 of 3 | 2 of 2 | no | — | false flag DEL-03 |
+| plugin-host-guarded | 205 | Sonnet 5.5 @ 17bac42 | 3 of 3 | 2 of 2 | no | — | uncovered 1 |
+| plugin-host-guarded | 206 | Sonnet 5.5 @ 17bac42 | 3 of 3 | 2 of 2 | no | — | uncovered 1, false flag DEL-03 |
+| plugin-host-guarded | 207 | Sonnet 5.5 @ 17bac42 | 3 of 3 | 2 of 2 | no | — | false flag DEL-03 |
+| plugin-host-guarded | 208 | Sonnet 5.5 @ 17bac42 | 3 of 3 | 2 of 2 | no | — | false flag DEL-03 |
+| plugin-host-guarded | 209 | Sonnet 5.5 @ e68693b | 3 of 3 | 2 of 2 | no | — | false flag QUAL-05, STRUCT-04 |
+| plugin-host-guarded | 210 | Sonnet 5.5 @ e68693b | 3 of 3 | 2 of 2 | no | — | false flag QUAL-05, STRUCT-04 |
+| plugin-host-guarded | 211 | Sonnet 5.5 @ e68693b | 3 of 3 | 2 of 2 | no | — | false flag QUAL-05, STRUCT-04 |
+| plugin-host-guarded | 212 | Sonnet 5.5 @ e68693b | 3 of 3 | 2 of 2 | no | — | false flag STRUCT-04 |
+| plugin-host-guarded | 213 | Sonnet 5.5 @ e68693b | 3 of 3 | 2 of 2 | no | — | false flag STRUCT-04 |
+
+Runs 214 to 228 (the `none` reports have no IDs and were counted by hand):
+
+| Case | Run | Model | Seeded gaps found | Defects at location | Passes the scorer | Top priorities in first five | Problems |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| review-classifier | 214 | Sonnet 5.5 @ 17bac42 full | 5 of 6 (missed PERF-01) | 3 of 6 | no | 1 of 2 | — |
+| review-classifier | 215 | Sonnet 5.5 @ 17bac42 full | 6 of 6 | 4 of 6 | yes | 2 of 2 | — |
+| review-classifier | 216 | Sonnet 5.5 @ 17bac42 full | 6 of 6 | 4 of 6 | yes | 2 of 2 | — |
+| review-classifier | 217 | Sonnet 5.5 @ 17bac42 full | 5 of 6 (missed PERF-01) | 4 of 6 | no | 1 of 2 | — |
+| review-classifier | 218 | Sonnet 5.5 @ 17bac42 full | 5 of 6 (missed PERF-01) | 5 of 6 | no | 1 of 2 | — |
+| review-classifier | 219 | Sonnet 5.5 @ e68693b full | 6 of 6 | 5 of 6 | no | 2 of 2 | uncovered 1 |
+| review-classifier | 220 | Sonnet 5.5 @ e68693b full | 6 of 6 | 3 of 6 | yes | 2 of 2 | — |
+| review-classifier | 221 | Sonnet 5.5 @ e68693b full | 6 of 6 | 4 of 6 | yes | 2 of 2 | — |
+| review-classifier | 222 | Sonnet 5.5 @ e68693b full | 5 of 6 (missed PERF-01) | 2 of 6 | no | 1 of 2 | — |
+| review-classifier | 223 | Sonnet 5.5 @ e68693b full | 5 of 6 (missed PERF-01) | 4 of 6 | no | 1 of 2 | — |
+| review-classifier | 224 | Sonnet 5.5 @ e68693b none | by hand | by hand | by hand | — | — |
+| review-classifier | 225 | Sonnet 5.5 @ e68693b none | by hand | by hand | by hand | — | — |
+| review-classifier | 226 | Sonnet 5.5 @ e68693b none | by hand | by hand | by hand | — | — |
+| review-classifier | 227 | Sonnet 5.5 @ e68693b none | by hand | by hand | by hand | — | — |
+| review-classifier | 228 | Sonnet 5.5 @ e68693b none | by hand | by hand | by hand | — | — |
+
+Runs 229 and 230:
+
+| Case | Run | Model | Seeded gaps found | Defects at location | Passes the scorer | Top priorities in first five | Problems |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| booking-api | 229 | Sonnet 5.5 @ 17bac42 | 5 of 5 | 5 of 5 | no | 2 of 2 | uncovered 1 |
+| booking-api | 230 | Sonnet 5.5 @ e68693b | 5 of 5 | 4 of 5 | yes | 2 of 2 | — |
+| python-service | 229 | Sonnet 5.5 @ 17bac42 | 16 of 16 | — | yes | 3 of 3 | — |
+| python-service | 230 | Sonnet 5.5 @ e68693b | 16 of 16 | — | yes | 3 of 3 | — |
+| typescript-cli | 229 | Sonnet 5.5 @ 17bac42 | 13 of 13 | — | yes | 3 of 3 | — |
+| typescript-cli | 230 | Sonnet 5.5 @ e68693b | 13 of 13 | — | yes | 3 of 3 | — |
+| well-maintained | 229 | Sonnet 5.5 @ 17bac42 | 2 of 2 | — | yes | 2 of 2 | — |
+| well-maintained | 230 | Sonnet 5.5 @ e68693b | 2 of 2 | — | yes | 2 of 2 | — |
+| orders-service | 229 | Sonnet 5.5 @ 17bac42 | 9 of 9 | 2 of 3 | no | 3 of 3 | unmarked high 1 |
+| orders-service | 230 | Sonnet 5.5 @ e68693b | 9 of 9 | 3 of 3 | yes | 3 of 3 | — |
+| agent-workflow | 229 | Sonnet 5.5 @ 17bac42 | 6 of 6 | — | yes | 3 of 3 | — |
+| agent-workflow | 230 | Sonnet 5.5 @ e68693b | 6 of 6 | — | yes | 3 of 3 | — |
+
+Runs 231 to 240:
+
+| Case | Run | Model | Seeded gaps found | Defects at location | Passes the scorer | Top priorities in first five | Problems |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| plugin-host | 231 | Sonnet 5.5 @ 17bac42 | 3 of 4 (missed STRUCT-04) | 3 of 4 | no | — | — |
+| plugin-host | 232 | Sonnet 5.5 @ 17bac42 | 3 of 4 (missed STRUCT-04) | 3 of 4 | no | — | — |
+| plugin-host | 233 | Sonnet 5.5 @ 17bac42 | 2 of 4 (missed QUAL-11, STRUCT-04) | 2 of 4 | no | — | — |
+| plugin-host | 234 | Sonnet 5.5 @ 17bac42 | 3 of 4 (missed STRUCT-04) | 2 of 4 | no | — | — |
+| plugin-host | 235 | Sonnet 5.5 @ 17bac42 | 3 of 4 (missed STRUCT-04) | 3 of 4 | no | — | — |
+| plugin-host | 236 | Sonnet 5.5 @ a9f60d0 | 4 of 4 | 4 of 4 | yes | — | — |
+| plugin-host | 237 | Sonnet 5.5 @ a9f60d0 | 4 of 4 | 4 of 4 | yes | — | — |
+| plugin-host | 238 | Sonnet 5.5 @ a9f60d0 | 4 of 4 | 4 of 4 | yes | — | — |
+| plugin-host | 239 | Sonnet 5.5 @ a9f60d0 | 4 of 4 | 4 of 4 | yes | — | — |
+| plugin-host | 240 | Sonnet 5.5 @ a9f60d0 | 4 of 4 | 4 of 4 | yes | — | — |
+| plugin-host-guarded | 231 | Sonnet 5.5 @ 17bac42 | 3 of 3 | 2 of 2 | no | — | false flag DEL-03 |
+| plugin-host-guarded | 232 | Sonnet 5.5 @ 17bac42 | 3 of 3 | 2 of 2 | no | — | false flag DEL-03 |
+| plugin-host-guarded | 233 | Sonnet 5.5 @ 17bac42 | 3 of 3 | 2 of 2 | no | — | false flag DEL-03 |
+| plugin-host-guarded | 234 | Sonnet 5.5 @ 17bac42 | 3 of 3 | 2 of 2 | no | — | uncovered 1 |
+| plugin-host-guarded | 235 | Sonnet 5.5 @ 17bac42 | 3 of 3 | 2 of 2 | no | — | uncovered 1, false flag DEL-03 |
+| plugin-host-guarded | 236 | Sonnet 5.5 @ a9f60d0 | 3 of 3 | 2 of 2 | no | — | false flag STRUCT-04 |
+| plugin-host-guarded | 237 | Sonnet 5.5 @ a9f60d0 | 3 of 3 | 2 of 2 | no | — | false flag STRUCT-04 |
+| plugin-host-guarded | 238 | Sonnet 5.5 @ a9f60d0 | 3 of 3 | 2 of 2 | no | — | false flag DEL-03, STRUCT-04 |
+| plugin-host-guarded | 239 | Sonnet 5.5 @ a9f60d0 | 3 of 3 | 2 of 2 | no | — | uncovered 1, duplicated 1, false flag QUAL-05, STRUCT-04 |
+| plugin-host-guarded | 240 | Sonnet 5.5 @ a9f60d0 | 3 of 3 | 2 of 2 | no | — | false flag STRUCT-04 |
+
+| Criterion | Control | Candidate | Met |
+| --- | --- | --- | --- |
+| G1 defects at location on `plugin-host`, 20 per round, at least 14 and each in 3 of 5 | 10 and 13 | 19 and 20 | yes |
+| G2 guards flagged on `plugin-host-guarded`, at most 2 of 20 pairs, no guard in more than 1 of 5 | 4 and 4 | 8 and 7 | no |
+| D1 research defects by hand, 30 per arm, at least the no-skill arm's | 30 | 30 (no skill: 30) | yes |
+| D2 the documented macro F1 choice called a defect | 0 of 5 | 0 of 5 (no skill: 0 of 5) | yes |
+| R1 seeded gaps per case, at least the control's minus 1 | 137 of 151 | 149 of 151 | yes |
+| R2 other `must_not_flag` false flags and copied secrets | 0 and 0 | 0 and 0 | yes |
+| R2 reports that pass the scorer, runs 204 to 230 | 6 of 21 | 13 of 21 | yes |
+| R3 top priorities in first five | 23 of 26 | 24 of 26 | yes |
+| C1 mean USD, runs 204 to 230, at most 1.15 times the control's | 0.48 | 0.46 | yes (0.95 times) |
+
+- On `plugin-host`, the candidate found the seeded migration (QUAL-11) at its location in 10 of 10
+  reports, and the control in 4 of 10: 0 in runs 204 to 208, 4 in runs 231 to 235. The candidate
+  found the flag past its rollout (STRUCT-04) in 10 of 10, and the control in 0 of 10. Both arms
+  found the release that removed an option (DEL-03) in 9 of 10. Both found the interpolated issue
+  title (CI-10) in 10 of 10, so #14 shows no effect on detection here.
+- The G2 miss, by guard:
+  - QUAL-05: in runs 209 to 211, the audits showed in a scratch copy that the guarded case's
+    baseline could grow in one change. The README's "separate pull request" was not enforced, so
+    these rows were correct and the case was wrong. After `d2bc9e8`, 1 of 5 reports kept the row:
+    run 239 notes that the growth check runs on pull requests only, and it states that condition.
+  - STRUCT-04: 10 of 10 candidate reports marked the guarded flag `partial` and `low`. The flag
+    has an owner, a future expiry date, and tests in both states, and the rows ask for a check that
+    fails once the date passes. `a9f60d0`'s sentence in `structure.md` changed none of these rows.
+    The maintainer accepted the miss as a known limit on 2026-10-19 and the sentence was removed,
+    since it had no effect.
+  - DEL-03: the control flagged the 0.y.z removal in 8 of 10 reports, the candidate in 1 of 10.
+    That one row (run 238) is `pending-verification` about release approval, not the version.
+- `review-classifier` cannot tell the arms apart. All 15 reports found all six defects, including
+  the reports without the skill, because the README states each invariant that the code breaks.
+  The scorer's count by ID, location, and term was 20 of 30 for the control and 18 of 30 for the
+  candidate. The gap to the hand count is in the matching, not in detection. #23 stays open, to be
+  tested on the trial repositories.
+- No CI-10 row appeared on an earlier case under the wider "Applies when".
+- Mean minutes: 2.4 to 2.7 per arm on the plugin-host cases. The `+none` reports took 0.7 minutes
+  and 0.17 USD.
+- Runs 231 to 240 cost 0.49 USD for the control and 0.51 for the candidate.
+
+Report SHA-256 hashes, as printed by the summaries:
+
+- `0a0774a6de9a8ba444f5964bbc6b3f895fc10c6d6bbff0e4efd99920c85d45cc` plugin-host run 204
+- `df26f15f5e34f7c2d4ce207821c628c3154cdd67c0895f302d28c0134254288d` plugin-host run 205
+- `e2668965cfcced162ef1e248ba740f0cc1e825105273a53fdd54940d2920b384` plugin-host run 206
+- `525726a1de5917dec13b70fefd83bb2be1be432846cfc3770a01be10aaaacc28` plugin-host run 207
+- `09d6e4b4178062ca6b6e125f0f5e169be25c828611b5ac4c18820f4046218b9e` plugin-host run 208
+- `a129599e03b150ad03cea45289b143416eb08f857ac660dec34bae96118817fb` plugin-host run 209
+- `e7d1baa3462cd330ca816f6812678e3ab9ca496f5bc06e16812cb0673810f8bd` plugin-host run 210
+- `340b8b04b7de60eaa726fae029c27c54be13ae92269eec88a27bbffc22d4814e` plugin-host run 211
+- `902255bccb2108ab0fd3d41c6fae9e1d2ae81dd67a8ac36aba247a144a8998c2` plugin-host run 212
+- `a189c0425edcb69eb1b0ac9bc95a950b18093fed5f6af6d6d1b8c3d2ec025f5d` plugin-host run 213
+- `1d076d6d124f78e3ebacbfc01ee97151b7ec0f634d0848664faf4f0b4387767e` plugin-host-guarded run 204
+- `f28093861c268681e967f0dca1170b840d9ec819d68012a718baad5797cd8d76` plugin-host-guarded run 205
+- `bbff3aa979cfc7231926f507f11468f9d4c729f2314d8802a4d7ef66a0096828` plugin-host-guarded run 206
+- `4da7d881aff86a1bf1b3f57353f802695d843147e9d3968eeb03405c16deb7cc` plugin-host-guarded run 207
+- `40b9b875261372c786f762f9ed0a77499b57b43fb9568e2dbcc60cfb1d4dcd9c` plugin-host-guarded run 208
+- `84780afccfe4dfa56400ae69641dbbba5f910c4f9d2cec252f78ebc86ca6f5b4` plugin-host-guarded run 209
+- `40cca4b809496e3573ea0b6f04ab7b72db8844d416a34dd9f168ebaa821a33af` plugin-host-guarded run 210
+- `005933e174fca89c07b8ec656a0c575277573362dcea36c6357ee06e1f2b0740` plugin-host-guarded run 211
+- `a8b69fb6580792c9205983698b23efc627dea0f443d20a07ab1ba3501709f16c` plugin-host-guarded run 212
+- `516d1d6d7be77f708a16615c52c481a7a155d5d7c4939fb747c4a2ae98b6bb5f` plugin-host-guarded run 213
+- `cf8a5c3063b4354560b1618b75fae0c985619910dd234724a38a4640155bf1a0` review-classifier run 214
+- `a984048220b9dc50857bc616e2436428df70de04a54785c255740bee6c7ddabd` review-classifier run 215
+- `183db313dd9d3bd82382af7a5cdc2451b893034306ecff3e595abf656eca88ea` review-classifier run 216
+- `dd6370cff9cccc1a7bc86589acb5ab7faf785ccd6d30b8f3320706216aed2fb0` review-classifier run 217
+- `e9bb85b0e5d7ed229ee3c3202f4dbd0b772b8c8d6588c6a26c3875d0017cbfd2` review-classifier run 218
+- `635514a20dd45f68e2f713e440a663dd49d14272b210813454c718627821910b` review-classifier run 219
+- `92be42b83aeeaac4e5da19fb0847491578d803ead31ed1e4c9c2f206f06868a8` review-classifier run 220
+- `305b6ec2e3b823f9e7aa82a7dc92b372b7825f3fbf49f24af9ee127ece168741` review-classifier run 221
+- `8f5997b1f9389ab7f2448775985315055d49b9517b4a1eda9cc9669533b5c61e` review-classifier run 222
+- `fb22b2ca6157ee9717f6cd60415c235eff9c44ffccf5376637d15702c63cce10` review-classifier run 223
+- `2073c01d1821dcd5cdbe6897dddb5ddf5a533f3f98c8e986dec129fff55f9115` review-classifier run 224
+- `dd7d893a7a34fb4648a8fa0dcc20de958823800c7d7644e9bba618cb04f200f8` review-classifier run 225
+- `df91fa9a54ae7ebfead189251a7b5b948d9f19a01da0939aee9a7f88e470d57c` review-classifier run 226
+- `909be5e31e31e11da46fe7fda1b5edae2c14ff8924b191cd01d0ec6b691d8cc7` review-classifier run 227
+- `5e50c81f0651bff05b96fb34dd4a2be36652bcd32b7f2eb75c0adb7683c32881` review-classifier run 228
+- `dcb5f306ffaeeeb47a47218dd1a6e4ecbf02dadb32369f25f59d6fcc63aee2bb` booking-api run 229
+- `85502fba1defcb0a48bb01eedd777bf13a04a5b973400d3a10aaafc46506fc8d` booking-api run 230
+- `3d1aa2f3563547c7bb75b2f7ec685e4faef99a5e0b4333ac305ac689cbec851b` python-service run 229
+- `129bae738324d6c893ebec9a584b22a6daebf3792626acc36b792a1e8d6b0a72` python-service run 230
+- `903f7fd1cd0ef4cd938b840f069459b2bdad1626a482edb6f506c0f422d96661` typescript-cli run 229
+- `45daa3def26e8f131a977df5c4b3cc25ad1b928c161e85c4c356a36331e6ab4c` typescript-cli run 230
+- `90957f2194ba86af4dc65793170b200c4fc05d29b0273d1907cee333965ece74` well-maintained run 229
+- `41faf62a26f3d6834231dd5ac7b21563cfb18e1c642053f9c6774edf533eebef` well-maintained run 230
+- `a3ee329517ea52c8243cfef8fd0818d0955120348d3276ec52c918e349ba9f64` orders-service run 229
+- `fa39642edba9514aadaab835f7eb5c8c876358cede200f8a0fd137309d4c433c` orders-service run 230
+- `8e434e5ff590190a348e95e3e33c0628ade8a3ba4b22dfddab71c7bf9df89038` agent-workflow run 229
+- `430c8ad506c71df35fb70d4475b4485bbe2feb03eca14a2d840a22e6cac821b8` agent-workflow run 230
+- `a50faffae0aeef9660ad360fe830e5160c837d47725384c64dcfccafdc4a1b33` plugin-host run 231
+- `a9bd7bbe8f49ffc3462bb23600e03612607ab4e333a529a978d25f59f649c7ec` plugin-host run 232
+- `597cca052f1e3f29982e4f9af245a37a770299506e43b4344c6f93e929039818` plugin-host run 233
+- `d72841b88bdf5194508d8b6adb604a2f9be8d776ea5591e6e7492010153036a7` plugin-host run 234
+- `e5d552dd75c2108a10bd184621cc0c4c5ad71bbe605a00ed5724632d71e9a0e0` plugin-host run 235
+- `bc9427e852d42703015fa2c3a099fee931059bfb8e3ca678fcdac4eb2d281749` plugin-host run 236
+- `9657bbe03ce5a875778757aaac4720bffe43980149ce45a5d9538d7d7eab4e54` plugin-host run 237
+- `6ebad51f0b6e51d209d6068cd8a3cd774d3d90b12c3438945a02804af52a7fe6` plugin-host run 238
+- `cf97f7eeabe5912b3bda7300e54b2aaf9a89ef174c1f2617a5aed46e0aafccc2` plugin-host run 239
+- `3b6c620a27597d3fa6f25724f30bb38fac5bdc86f420cb9e28c643dcad3a134d` plugin-host run 240
+- `c0449ea4b7217f9827ed842572c25709f159d8d40521989491898e63e157c6de` plugin-host-guarded run 231
+- `13e02565087e06f7cad7bc6b9c6a514b5e9d9051a25f2f707e41016b54ae3a5f` plugin-host-guarded run 232
+- `501d5809a451f1c3d2a971e82853456d0ff4a10c602bd3fa04ae0d2e50f7c81f` plugin-host-guarded run 233
+- `37628c985b5a637523a18d2f026950067ddbeeff6dc93760ef5c435dbd9b421b` plugin-host-guarded run 234
+- `df0a9319f5ce4930dc7c98c105c0f77d41194fd2281142099eea4b5e35815a03` plugin-host-guarded run 235
+- `f2e1ff16d0f5ba18dd5b4cd47df1b033e0cfa29df379ea088dfd8ddaf1bd6882` plugin-host-guarded run 236
+- `32b795a9925b083d4762a309cdfa7939b9899a2c05a32ced94893bf00ea13af3` plugin-host-guarded run 237
+- `cdbd63d75b1f8bffbca398a650e27fc9069b68c8ae47ed52005c8301f2a341b3` plugin-host-guarded run 238
+- `d39888f02659b9bb21fa4dc8e852cb6f34a1700ccc26e2a4e099a22133cb2c4f` plugin-host-guarded run 239
+- `20212d94a2b5e15663032f5af61bc513be22c162a63d8befbff5e2308356e85c` plugin-host-guarded run 240
