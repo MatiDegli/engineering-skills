@@ -1,5 +1,20 @@
 # Decisions
 
+## 2026-10-19 — Delivery metrics stay out of the audit
+
+The scope decision of 2026-10-18 gave delivery metrics, such as deployment frequency, change failure
+rate, and rework rate, an indirect home in a comparison between audits (#21). The maintainer asked
+whether they were worth it, and they stay out instead. Most of them need production and incident
+records outside the repository, which an audit could reach only with credentials or by asking. DORA
+meant them for a team to compare itself over time, not as a threshold, so one audit's figure says
+little. The capabilities behind them are checked already: deploys from the repository (#15),
+feedback within a budget (#17), a default branch kept green (#18), and releases that record their
+changes (DEL-03). Their sources in the review were weak, a secondary summary and a radar entry.
+A finding that a project does not measure them would be the kind of checklist item the blind
+reviewer of v0.2.0 objected to. A project that already publishes the metrics can cite them as
+evidence for those criteria. #21 keeps only the comparison of findings between audits. Eight of the
+ten practices outside any repository now stay out, and two keep an indirect home.
+
 ## 2026-10-18 — Scope: every practice a repository can show has a destination
 
 A review set 119 practices against the catalog. They came from standards and frameworks such as
@@ -24,7 +39,8 @@ evaluation is ready:
   rate, and code-health trends, through a comparison between successive audits (#21). The other
   six stay out: contributors from several organizations, team cognitive load, team types, and
   graded test-quality programs are properties of the organization, and arc42 and C4 are templates
-  whose content REPO-05 and REPO-06 already require without imposing a format.
+  whose content REPO-05 and REPO-06 already require without imposing a format. (Revised on
+  2026-10-19: delivery metrics and rework rate stay out too; see that day's entry.)
 
 ## 2026-10-18 — v0.2.1 validated with Opus after one fix
 
