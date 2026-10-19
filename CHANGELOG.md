@@ -45,7 +45,12 @@
   HIST-02, whose IDs are retired and never reused. TEAM-03 asks one named owner for work that
   outlives a change: temporary files and code paths, suppressions, recorded debt, dependencies, and
   adopted tools. STRUCT-04, QUAL-05, QUAL-11, DEP-03, and TOOL-01 no longer ask for an owner, so an
-  audit of a one-maintainer repository does not ask that person to name themselves.
+  audit of a one-maintainer repository does not ask that person to name themselves. With Sonnet on
+  fictional cases, the area opened in 10 of 10 reports where three people maintain the project and
+  stayed closed in 5 of 5 where one does; TEAM-03 found an unowned flag and migration in 5 of 5,
+  and no seeded gap was lost (runs 244 to 253). On three one-maintainer repositories, false and
+  moot items fell from 15 to 14 (runs 241 and 254). Known limit: audits still ask one maintainer
+  for some records, such as update proposals, a recorded security level, or a debt register.
 - A finished task's brief need not stay in the repository (AGENT-02): the brief bounds the task
   while it runs and lives where the task is tracked, such as its issue or pull request.
   On three one-maintainer repositories, 6 of the skill's 15 wrong or moot items asked one person for

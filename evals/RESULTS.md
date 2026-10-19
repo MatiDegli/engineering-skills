@@ -3168,3 +3168,119 @@ Report SHA-256 hashes, as printed by the summaries:
 - `cdbd63d75b1f8bffbca398a650e27fc9069b68c8ae47ed52005c8301f2a341b3` plugin-host-guarded run 238
 - `d39888f02659b9bb21fa4dc8e852cb6f34a1700ccc26e2a4e099a22133cb2c4f` plugin-host-guarded run 239
 - `20212d94a2b5e15663032f5af61bc513be22c162a63d8befbff5e2308356e85c` plugin-host-guarded run 240
+## 2026-10-19 — Runs 241 to 243 (final validation of v0.2.2 on three real repositories)
+
+- Skill: commit `6f5084f`. Sonnet 5.5, one run per arm and repository: run 241 with the full skill,
+  run 242 with no skill, and run 243 with the frozen expert prompt (`evals/prompts/expert.md`).
+- Cases: the three repositories of runs 188 to 203, at the same pins, now with their branches no
+  newer than the pin and a snapshot of hosted state. Names, paths, findings, and report hashes stay
+  private.
+- Criteria and a stop rule were fixed before planning. V1, value: the skill's useful items (U plus
+  known but unrecorded) at least the expert's. V2, noise: the skill's false and moot items at most
+  the expert's plus 3. V3, cost: the skill's USD at most 3 times the expert's.
+- Method: a subagent merged each repository's three reports into one list under random labels, 135
+  items in all. Verifiers checked the items new since runs 188 and 189 against clean clones and
+  found none false. Each repository's own Claude session rated every item blind: U (useful), K-rec
+  (known and recorded), K-unrec (known, not recorded), W-false, W-moot (true but not applicable or
+  out of proportion), or W-harness (depends on what the prepared copy lacked).
+
+| Arm | Items | U | K-rec | K-unrec | W-false | W-moot | W-harness | Mean USD |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Skill (run 241) | 87 | 37 | 16 | 17 | 1 | 14 | 2 | 1.43 |
+| No skill (run 242) | 58 | 19 | 13 | 16 | 5 | 5 | 0 | 0.33 |
+| Expert prompt (run 243) | 56 | 29 | 10 | 7 | 0 | 10 | 0 | 0.66 |
+
+- V1, met: 54 useful items against the expert's 36.
+- V3, met: 4.29 USD against a limit of 5.94.
+- V2, missed by 2: 15 false or moot items against a limit of 13. The share was the same in every
+  arm, 17% for the skill and for no skill and 18% for the expert; the skill reported 87 items
+  against 56, and a fixed margin does not grow with the count.
+- The skill's 15: 6 asked one maintainer for process records (owners, finished tasks' briefs, a
+  decision record, and a recorded security level), 3 concerned a code path its maintainer
+  considers retired, 2 asked for hash pins out of proportion, and 4 had other causes; 1 of the 15 was false.
+- Research and evaluation code (#23): the skill found 4 of the 6 such problems that it missed in
+  runs 188 and 189, and each was rated U. It missed a smoke-scale model listed beside trained ones,
+  which no skill and the expert prompt found, and two experiment arms that differed in more than the
+  variable under test, which no arm found.
+- The stop rule sends a miss to a fix of the items behind it; runs 244 to 254 test that fix.
+
+## 2026-10-19 — Runs 244 to 254 (the Team area)
+
+- Change: `ed912ec` moves the criteria that need several maintainers into a Team area (`TEAM-*`),
+  which an audit reads only when several people maintain the project; core rows stop asking for an
+  owner, and AGENT-02 stops asking that a finished task's brief stay in the repository. The
+  maintainer proposed the area after runs 241 to 243 missed V2. Criteria were fixed before
+  planning, in two parts.
+- Part S: Sonnet 5.5, five runs per arm, control `6f5084f` (runs 244 to 248) and candidate
+  `ed912ec` (runs 249 to 253), on `plugin-host` and `plugin-host-guarded` (three maintainers each)
+  and `agent-workflow` (one). `plugin-host` gained a `must_find` TEAM-03: neither its flag nor its
+  migration names an owner.
+
+| Criterion | Control | Candidate | Met |
+| --- | --- | --- | --- |
+| S1, TEAM-03 found on `plugin-host` in at least 4 of 5; Team IDs decided in at least 9 of the 10 three-maintainer reports | — | 5 of 5; 10 of 10 | yes |
+| S2, the Team area closed on `agent-workflow` in at least 4 of 5 | — | 5 of 5 | yes |
+| S3, seeded gaps without TEAM-03, the candidate at least the control's minus 1 per case | 20, 15, 30 | 20, 15, 30 | yes |
+| S4, `plugin-host-guarded` `must_not_flag` false flags at most the control's plus 1 | 7 | 4 | yes |
+
+- On `plugin-host-guarded`, where the flag and the baseline name owners, TEAM-03 was met in 5 of 5.
+  The candidate's 4 false flags are the known STRUCT-04 limit. Both arms cost 0.52 and 0.53 USD a
+  run. The summary scores the control with the candidate's catalog, so its reports show the Team
+  IDs as uncovered and REPO-08 and HIST-02 as unknown; outside the change, the control omitted 2
+  IDs and the candidate 4.
+- Part R: run 254, the candidate once on each repository of runs 241 to 243. Its 68 items that
+  matched that round's list kept their rating; a verifier checked the 11 new ones, and the
+  repositories' sessions rated them.
+
+| Run | Items | U | K-rec | K-unrec | W-false | W-moot | W-harness | Total USD |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 241, skill `6f5084f` | 87 | 37 | 16 | 17 | 1 | 14 | 2 | 4.29 |
+| 254, skill `ed912ec` | 79 | 28 | 17 | 19 | 2 | 12 | 1 | 3.82 |
+
+- R1, value, met: 47 useful items against a bar of 36. R3, cost, met. R2, noise, missed by 1: 14
+  false or moot items against a bar of 13, at the same 18% share.
+- The Team area was closed as one maintainer in all three reports. Of the six process items of run
+  241, three did not return: an owner for deferred work, an old brief, and decision records. Three
+  returned: update proposals, now without an owner; a recorded security level; and briefs, now as
+  pending verification. Three new moot items also asked one person for records: a debt register, a
+  commit-size exception older than the convention, and one configuration constant.
+- One repository holds 11 of the 14, several on a code path that its README calls disabled and its
+  maintainer considers retired, so audits keep reporting on it.
+- The cost fell from 4.29 to 3.82 USD, almost all in one repository whose report had fewer rows;
+  one run cannot attribute that to the change.
+- Research and evaluation code (#23): run 254 found 3 of the 6 items.
+- Decision, as the criteria set: S1 to S4 hold, so the change is integrated, and R2's miss is a
+  known limit: on one-maintainer repositories, audits still ask for some process records.
+
+Report SHA-256 hashes for the fictional cases, as printed by the summary:
+
+- `5d578f36862776630bef6d63bcdc61b045d24ad12c5cef56f45e5a2ea780d395` plugin-host run 244
+- `e20e8471f0f62e9748783d5efd6702a7fd1b26da8033bba49a93d35f80343a6a` plugin-host run 245
+- `3173441b772d90dc8c427b08556e32b058b0a43ed5c055a9c80a472159317c91` plugin-host run 246
+- `783667e5acd208e8bf245e4a7dffbd7a6f8b6d925566409905f0b52a465b27d2` plugin-host run 247
+- `66f06c96ad65c065d6d01aee89396b84bb6d04107c2430cd164f53c3fa06f038` plugin-host run 248
+- `309c31abff0b9f018046ea3755a7efe91f2af9a8e10bec04d44ecc2e3d9fbed8` plugin-host run 249
+- `301abf4604e957dab4cc7f01250af7ce5ea084bec6bbb30318703dbd14fb10e9` plugin-host run 250
+- `6d7173746a08fa68edfe0e268cf161f9a678008466fc1388d0e4572992255835` plugin-host run 251
+- `3046f3c78295e6454d3773a42a988e7a46c9e6ff58b151c59c08b5fb3d8a44c7` plugin-host run 252
+- `c62e2adfd79968e179f53fff17ec3017ad4b92e5a5a5d8571618b87f95429b4f` plugin-host run 253
+- `8ca6bdf8d2832534f6a570481c63db920afc2abf8c5f14891a1eb4b13c19b371` plugin-host-guarded run 244
+- `5631eb4fe20b7c48a15571169e4ba98f3d96fb969e3cf460ae97470ed5349658` plugin-host-guarded run 245
+- `55e398efb15ec937024e36a36d0cd0f8095a3f426809603fb3b1d54b0f5f3f4a` plugin-host-guarded run 246
+- `21f2327ed3d20e9b0b4a9d5acf82637d34c64a397d60ae617cf71984fdc24047` plugin-host-guarded run 247
+- `21145431c8b1b24a930ed36bcb8b1c29dd2e3bb04a1cb775c7442add74b5dcba` plugin-host-guarded run 248
+- `a29fda8cfd3b28c3e52837fbec180baa1c3b30506ea29c4389578d7c3c0a8f8f` plugin-host-guarded run 249
+- `b742909d124f048fe74a248a2983ec1312b11c35152413535b0fcebd39ed6b8f` plugin-host-guarded run 250
+- `4f22ecc8898108c00dba3d99411b1c514007cd51a51da81bc17b3dd75b0856b2` plugin-host-guarded run 251
+- `8f1e244e61e52b939ae8ef8229c3453b0145955d8738c2f659a759a089abc26f` plugin-host-guarded run 252
+- `add8f52d7529ee8349768658320e4fcceea0efeebfc096a1b977fc1935c2dd66` plugin-host-guarded run 253
+- `baa112570aff15610d9ad1f099f4a2f0b027297983a7692950626f9a51b0ee13` agent-workflow run 244
+- `e4c5ce9eab996d92b5af36445bc20282e8a071909aecfea41d92f712c9855ed1` agent-workflow run 245
+- `935102654b33ce068960112aa8a2dbd9b1d766f932280095701e8bc052b128da` agent-workflow run 246
+- `244c6450e33bfed2c6925d7a395fbfad048d6602cd94a472425d7de958870195` agent-workflow run 247
+- `4b70ea7df57276dc18560ff6e38f2eabd36621931c5698d7c01a5d6f17dec3f7` agent-workflow run 248
+- `4dada116c54af5b7290d42e2f1e8ec8a83878e61aea5069cec7f32ae530317bf` agent-workflow run 249
+- `c859c7cf2b14e1e4e53904d60b4ed85f77196bb155fbf2821f8655f3f7989f63` agent-workflow run 250
+- `9ca863be06aad36e953017e1f001265bd0b403c233a24cf57d319232eeec9c49` agent-workflow run 251
+- `9f6f01d5ba2f03ca0932689c85f5b9cbe3e7e976bac87f03e1de6000da4ee549` agent-workflow run 252
+- `141f805a99bebfa0d97f26d9a26d37f5b12bdb4092a4d076ad0fa90da2d97558` agent-workflow run 253

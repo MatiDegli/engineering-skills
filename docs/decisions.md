@@ -1,5 +1,25 @@
 # Decisions
 
+## 2026-10-19 — Team criteria as an area; v0.2.2 with one noise check missed by one
+
+The final validation of v0.2.2 on three of the maintainer's repositories (runs 241 to 243) met
+value and cost and missed noise by 2: the skill had 15 false or moot items against the expert
+prompt's 10 plus 3, at the same 17% share. Six of the 15 asked one maintainer for process records.
+Rather than a fourth one-maintainer exception, the maintainer proposed loading team criteria
+separately. `ed912ec` moves them to a Team area (`TEAM-*`), read only when several people maintain
+the project, as the agent, delivery, and operations areas are: an audit cannot over-apply a file it
+does not open, and the file costs no context there. REPO-08 and HIST-02 became TEAM-01 and TEAM-02
+and are retired; the owner that five core rows asked for became TEAM-03; AGENT-02 stopped asking
+that a finished task's brief stay in the repository. STRUCT-03 stays in the core, since a
+documented boundary or a cycle matters to one maintainer too.
+
+On fictional cases the area opened where three people maintain the project and stayed closed with
+one, with no seeded gap lost (runs 244 to 253). On the real repositories noise fell to 14 against a
+bar of 13 (run 254). As the criteria fixed before the round set, the change was merged and the miss
+recorded as a known limit: audits still ask one maintainer for some records, and one repository's
+paused code path draws items its maintainer considers moot. Rewording stops there, at the point of
+diminishing returns the maintainer set for v0.2.x.
+
 ## 2026-10-19 — Project shape merged with one check missed by one
 
 In the usefulness trial on three of the maintainer's repositories (runs 188 and 189), 21% of the
