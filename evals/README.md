@@ -76,8 +76,8 @@ the scorer counts that entry for every ID of the area. A wildcard for a prefix t
 counts as an unknown ID.
 
 After an audit, `python3 -m tools.evals verify <case> <destination>` checks that the prepared
-repository is unchanged: the same revision as a fresh preparation, and no modified, untracked, or
-ignored files.
+repository is unchanged: the same revision as a fresh preparation, the same branches and tags, and
+no modified, untracked, or ignored files.
 
 `top_priorities` lists, in order, the gaps a reviewer should act on first, and `max_high` caps the
 high findings a case justifies. The maintainer fixes both before reading any report. The scorer
@@ -169,8 +169,8 @@ another path, as after a rename, when a seed would leave a commit empty, or when
 nothing; seed the other path too, or pick another file. A new file lands in the last commit that
 changed a file in its directory. No commit is added, the
 history is rewritten in a temporary clone so that every file in the prepared tree has the same age,
-and the result keeps one branch, unless `branches` below says otherwise, and no remote, reflog, or
-unreachable objects. Git runs without the
+and the result keeps one branch, unless `branches` below says otherwise, the tags the pin already
+had (below), and no remote, reflog, or unreachable objects. Git runs without the
 caller's Git variables, hooks, and user or system settings, so a hook's exported index or a global
 setting cannot reach another repository or change the revision. The source repository is only read,
 and a failed preparation leaves no destination.
@@ -194,6 +194,15 @@ the pinned commit's is kept, so nothing committed after the pin leaks in; `main`
 pinned branch, and a remote's `HEAD` are left out. Seeds are refused with `branches`, since seeding
 rewrites `main` only. The result still has no remote, reflog, or unreachable objects, and `verify`
 also checks that each kept branch is where the preparation left it.
+
+In both modes, the prepared repository keeps the source's tags that the pin already had: each tag
+whose target commit is the pin, an ancestor of the pin, or an ancestor of a kept branch head, and
+whose date is not later than the pinned commit's committer date: the tagger date for an annotated
+tag, the target commit's committer date for a lightweight one. Annotated tags stay annotated and
+every other tag is absent, so an audit that compares the last two release tags sees the releases
+the pinned commit knew and none made later. A case with seeds keeps no tags: the seed rewrite
+would leave them naming the original commits. `verify` reports a tag that was added, removed, or
+moved.
 
 With `"github"`, `claude_rounds plan` reads the host once per case with the `gh` login of the user
 who plans the round, writes `<round>/hosted/<case name>.json`, and copies it to `hosted-state.json`

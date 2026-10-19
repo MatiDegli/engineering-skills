@@ -264,6 +264,36 @@ def source_branches(git, commit: str) -> dict[str, str]:
     return branches
 
 
+def source_tags(git, commit: str, heads: dict[str, str]) -> dict[str, str]:
+    """Return the source's tags that the pin already had, by name, with the object each names.
+
+    A tag is kept when its target is a commit that is the pin, an ancestor of the pin, or an
+    ancestor of a kept branch head, and its date is not later than the pinned commit's committer
+    date: the tagger date for an annotated tag, the target commit's committer date for a
+    lightweight one, so no tag made after the pin reaches the destination. A tag of anything but
+    a commit, and one that carries no date, cannot be placed before the pin, so both are dropped.
+    The value is the object the ref itself names, so an annotated tag stays annotated.
+    """
+    pinned = int(git("log", "-1", "--format=%ct", commit))
+    ancestors = set(git("rev-list", commit, *heads.values()).split())
+    fields = (
+        "--format=%(refname)|%(objecttype)|%(objectname)|%(*objecttype)|%(*objectname)"
+        "|%(taggerdate:unix)|%(committerdate:unix)"
+    )
+    tags: dict[str, str] = {}
+    for line in git("for-each-ref", fields, "refs/tags").splitlines():
+        ref, kind, named, peeled, target, tagger, committed = line.split("|")
+        if kind == "commit":
+            date, at = committed, named
+        elif kind == "tag" and peeled == "commit":
+            date, at = tagger, target
+        else:
+            continue
+        if at in ancestors and date and int(date) <= pinned:
+            tags[ref.removeprefix("refs/tags/")] = named
+    return tags
+
+
 def prepare_from_source(case: Path, destination: Path) -> None:
     """Clone a pinned commit of a local repository and fold the case's seeded changes into it.
 
@@ -274,13 +304,16 @@ def prepare_from_source(case: Path, destination: Path) -> None:
     commit is refused too. The history is rewritten in a temporary bare clone, which the
     destination then clones, so the work tree is written once and every file has the same age, and
     no rewrite leftovers reach the destination. The source is only read. The destination keeps one
-    branch and no remote, reflog, or unreachable objects, so nothing in it leads back to the
-    original files. Commit metadata is kept; signatures and encoding headers are dropped from every
+    branch, the tags the pin already had (`source_tags`), and no remote, reflog, or unreachable
+    objects, so nothing in it leads back to the original files or past the pin; a case with seeds,
+    which rewrites the history, keeps no tags, since they would still name the original commits.
+    Commit metadata is kept; signatures and encoding headers are dropped from every
     commit alike. The destination is created exclusively, and any later failure removes it.
 
     With `"branches": true`, the destination also keeps, as local branches, the source's other
-    branches whose heads are no newer than the pin (`source_branches`). Seeds are then refused,
-    since seeding rewrites `main` only and the other branches would keep the original content.
+    branches whose heads are no newer than the pin (`source_branches`), which `source_tags` then
+    follows to tags on their history too. Seeds are then refused, since seeding rewrites `main`
+    only and the other branches would keep the original content.
     """
     source = json.loads((case / "source.json").read_text(encoding="utf-8"))
     origin = Path(source["repository"]).expanduser()
@@ -291,7 +324,8 @@ def prepare_from_source(case: Path, destination: Path) -> None:
     keep_branches = source.get("branches", False)
     if not isinstance(keep_branches, bool):
         raise SystemExit("`branches` in source.json must be true or false")
-    if keep_branches and ((case / "seed").exists() or {"remove", "executable"} & source.keys()):
+    seeded = (case / "seed").exists() or {"remove", "executable"} & source.keys()
+    if keep_branches and seeded:
         raise SystemExit("source.json cannot keep `branches` with seeds, which rewrite main only")
     if target == origin or origin in target.parents or target in origin.parents:
         raise SystemExit(f"The destination must be outside the source repository: {destination}")
@@ -308,6 +342,7 @@ def prepare_from_source(case: Path, destination: Path) -> None:
             if (work / "shallow").exists():
                 raise SystemExit("The source repository is shallow; its history is incomplete")
             branches = source_branches(git, source["commit"]) if keep_branches else {}
+            tags = {} if seeded else source_tags(git, source["commit"], branches)
             git("update-ref", "refs/heads/main", source["commit"])
             git("symbolic-ref", "HEAD", "refs/heads/main")
             for ref in git("for-each-ref", "--format=%(refname)").split():
@@ -315,6 +350,8 @@ def prepare_from_source(case: Path, destination: Path) -> None:
                     git("update-ref", "-d", ref)
             for name, head in branches.items():
                 git("update-ref", f"refs/heads/{name}", head)
+            for name, named in tags.items():
+                git("update-ref", f"refs/tags/{name}", named)
             operations, checks = seed_operations(case, source, git)
             shapes = commit_shapes(git)
             if operations:
@@ -362,7 +399,8 @@ def verify(case: Path, destination: Path) -> list[str]:
     """Return how a prepared repository differs from a fresh preparation of the same case.
 
     Besides HEAD and the work tree, each other branch that the preparation keeps must be where it
-    left it; a branch added since is not reported.
+    left it; a branch added since is not reported. The tags must match the reference's: one that
+    was added, removed, or moved to another object is reported.
     """
 
     def git(directory: Path, *arguments: str) -> str:
@@ -374,11 +412,18 @@ def verify(case: Path, destination: Path) -> list[str]:
         lines = git(directory, "for-each-ref", fields, "refs/heads").splitlines()
         return {name: head for name, head in map(str.split, lines) if name != "main"}
 
+    def tags(directory: Path) -> dict[str, str]:
+        """Return each tag with the object it names, which for an annotated tag is the tag."""
+        fields = "--format=%(refname:lstrip=2) %(objectname)"
+        lines = git(directory, "for-each-ref", fields, "refs/tags").splitlines()
+        return dict(map(str.split, lines))
+
     with tempfile.TemporaryDirectory() as directory:
         reference = Path(directory) / "reference"
         prepare(case, reference)
         expected = git(reference, "rev-parse", "HEAD").strip()
         kept = branches(reference)
+        wanted = tags(reference)
     head = git(destination, "rev-parse", "HEAD").strip()
     problems = [f"HEAD is {head[:7]}, expected {expected[:7]}"] if head != expected else []
     held = branches(destination) if kept else {}
@@ -386,6 +431,14 @@ def verify(case: Path, destination: Path) -> list[str]:
         if held.get(name) != commit:
             found = held[name][:7] if name in held else "missing"
             problems.append(f"branch {name} is {found}, expected {commit[:7]}")
+    held_tags = tags(destination)
+    for name, named in wanted.items():
+        if held_tags.get(name) != named:
+            found = held_tags[name][:7] if name in held_tags else "missing"
+            problems.append(f"tag {name} is {found}, expected {named[:7]}")
+    for name, named in held_tags.items():
+        if name not in wanted:
+            problems.append(f"tag {name} is {named[:7]}, unexpected")
     status = git(destination, "status", "--porcelain", "--ignored", "--untracked-files=all")
     return problems + [f"changed: {line}" for line in status.splitlines()]
 

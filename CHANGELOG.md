@@ -52,6 +52,10 @@
   `gh api` when the round is planned and placed beside each prepared repository, with a sentence in
   every level's prompt that names it. Audits of real repositories could not read these before (runs
   188 and 189). Cases without the keys are prepared and prompted as before.
+- A case prepared from a source repository keeps the tags the pin already had: those on the pin's
+  history, or on a kept branch's, dated no later than the pin, a lightweight tag by its commit's
+  date. Audits of real repositories could not compare releases by tag before. A case with seeds
+  keeps none, and `verify` reports a tag that was added, removed, or moved.
 
 ## v0.2.1 — 2026-10-18
 

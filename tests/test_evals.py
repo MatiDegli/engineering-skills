@@ -783,7 +783,8 @@ class SourceCaseTests(unittest.TestCase):
         self.write_source(commit=pinned)
         prepare(self.case, self.root / "plain")
         plain = run_git(self.root / "plain", "for-each-ref", "--format=%(refname)")
-        self.assertEqual(plain, "refs/heads/main\n")
+        # v1, the fixture's lightweight tag, names an ancestor of the pin.
+        self.assertEqual(plain, "refs/heads/main\nrefs/tags/v1\n")
         self.write_source(commit=pinned, branches=True)
         destination = self.root / "audit"
         prepare(self.case, destination)
@@ -795,7 +796,9 @@ class SourceCaseTests(unittest.TestCase):
         # names the pinned branch; the local side wins over the remote's.
         kept = {"main": pinned, "release": older, "side": side, "stable": pinned}
         listed = "".join(f"refs/heads/{name} {head}\n" for name, head in kept.items())
-        self.assertEqual(git("for-each-ref", "--format=%(refname) %(objectname)"), listed)
+        self.assertEqual(
+            git("for-each-ref", "--format=%(refname) %(objectname)"), listed + f"refs/tags/v1 {older}\n"
+        )
         self.assertEqual(git("rev-parse", "HEAD").strip(), pinned)
         self.assertEqual(git("remote"), "")
         self.assertEqual(git("reflog", "--all"), "")
@@ -808,6 +811,76 @@ class SourceCaseTests(unittest.TestCase):
         moved = f"branch release is {pinned[:7]}, expected {older[:7]}"
         deleted = f"branch stable is missing, expected {pinned[:7]}"
         self.assertEqual(verify(self.case, destination), [moved, deleted])
+
+    def test_tags_are_kept_as_of_the_pin(self):
+        shutil.rmtree(self.case / "seed")
+        commit = lambda name: run_git(self.source, "rev-parse", name).strip()
+        # An offshoot branch that the pin does not reach, with a commit of its own.
+        run_git(self.source, "checkout", "-q", "-b", "offshoot", commit("main~3"))
+        commit_files(self.source, "offshoot", {"off.txt": "off\n"}, "2026-01-04T00:00:00Z")
+        run_git(self.source, "checkout", "-q", "main")
+        # A commit dated in June that the pin, dated in January, descends from.
+        commit_files(self.source, "future dated", {"future.txt": "f\n"}, "2026-06-01T00:00:00Z")
+        run_git(self.source, "tag", "unreleased")
+        commit_files(self.source, "pin here", {"pin.txt": "p\n"}, "2026-01-08T00:00:00Z")
+        pinned, readme = commit("main"), commit("main~4")
+        run_git(self.source, "tag", "release", pinned)
+        run_git(
+            self.source, "tag", "-a", "-m", "release two", "v2", commit("main~5"),
+            date="2026-01-02T00:00:00Z",
+        )
+        run_git(self.source, "tag", "-a", "-m", "dated late", "late", readme, date="2026-06-01T00:00:00Z")
+        run_git(self.source, "tag", "offwork", commit("offshoot"))
+        self.write_source(commit=pinned)
+        prepare(self.case, self.root / "audit")
+
+        def git(*arguments):
+            return run_git(self.root / "audit", *arguments)
+
+        # Kept: v1 and `release` are lightweight, v2 annotated, all on the pin's history and
+        # dated no later than it. Absent: `late` is dated after the pin, `unreleased` names a
+        # future-dated ancestor, and `offwork` names a commit no kept branch reaches.
+        v2 = run_git(self.source, "rev-parse", "v2").strip()
+        fields = "--format=%(refname) %(objecttype) %(objectname) %(contents:subject)"
+        self.assertEqual(
+            git("for-each-ref", fields, "refs/tags"),
+            f"refs/tags/release commit {pinned} pin here\n"
+            f"refs/tags/v1 commit {readme} change readme\n"
+            f"refs/tags/v2 tag {v2} release two\n",
+        )
+        self.assertEqual(verify(self.case, self.root / "audit"), [])
+        self.write_source(commit=pinned, branches=True)
+        prepare(self.case, self.root / "with-branches")
+        offshoot = run_git(self.root / "with-branches", "for-each-ref", "--format=%(refname)", "refs/tags")
+        # With the offshoot branch kept, its tag reaches the destination too.
+        self.assertEqual(offshoot, "refs/tags/offwork\nrefs/tags/release\nrefs/tags/v1\nrefs/tags/v2\n")
+
+    def test_verify_reports_tags_that_differ(self):
+        shutil.rmtree(self.case / "seed")
+        commit = lambda name: run_git(self.source, "rev-parse", name).strip()
+        pinned, readme = commit("main~1"), commit("main~2")
+        run_git(self.source, "tag", "-a", "-m", "release", "v2", pinned, date="2026-01-06T00:00:00Z")
+        self.write_source(commit=pinned)
+        destination = self.root / "audit"
+        prepare(self.case, destination)
+        self.assertEqual(verify(self.case, destination), [])
+
+        def git(*arguments):
+            return run_git(destination, *arguments)
+
+        v2 = run_git(self.source, "rev-parse", "v2").strip()
+        git("tag", "extra", pinned)
+        git("tag", "-d", "v1")
+        git("tag", "-d", "v2")
+        git("tag", "v2", pinned)
+        self.assertEqual(
+            verify(self.case, destination),
+            [
+                f"tag v1 is missing, expected {readme[:7]}",
+                f"tag v2 is {pinned[:7]}, expected {v2[:7]}",
+                f"tag extra is {pinned[:7]}, unexpected",
+            ],
+        )
 
     def test_branches_are_refused_with_seeds(self):
         variants = {"seed": {}, "remove": {"remove": ["b/two.txt"]}}
