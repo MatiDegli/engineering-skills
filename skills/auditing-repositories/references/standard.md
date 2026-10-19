@@ -72,7 +72,13 @@ users, or permissions change. At every applicable level:
 3. Verify the artifact contains no secrets, private fixtures, caches, or local configuration.
 4. For services: document configuration, health, logs, migrations, and rollback.
 5. For persistent data: test backup and restoration, and agree on acceptable data loss and downtime.
-6. Publish with project authorization, an identifiable version, and recorded changes.
+6. Publish with project authorization, an identifiable version, and recorded changes. For a library,
+   a CLI, or a public or cross-team API past 0.y.z, the version signals incompatible changes, and a
+   removal follows a deprecation in an earlier release. A change is incompatible when a consumer's
+   correct use of the declared interface stops working, for example a removed or renamed export,
+   option, endpoint, or field, or a new required input; compare the declared interface, such as
+   exports, OpenAPI or protobuf files, or a CLI reference, between the last two releases by tag or
+   changelog. Internal applications and 0.y.z versions, where anything may change, are exempt.
 7. For distributed artifacts: publish build provenance that identifies the source revision and the
    build, and a software bill of materials, in formats consumers can verify.
 8. For services in operation: set service level objectives on user-visible indicators, alert on
@@ -94,4 +100,5 @@ Sources checked on 2026-10-17 against the claims they support:
 [symptoms and actionable pages](https://sre.google/sre-book/monitoring-distributed-systems/),
 [alerting on objectives](https://sre.google/workbook/alerting-on-slos/),
 [playbooks](https://sre.google/workbook/on-call/),
-[canarying](https://sre.google/workbook/canarying-releases/).
+[canarying](https://sre.google/workbook/canarying-releases/); and on 2026-10-19:
+[semantic versioning](https://semver.org/).
