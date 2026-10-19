@@ -105,9 +105,10 @@ The evaluation runner's mechanisms, each with its incident, are listed under
   list, and a ninth cited another line of the same file.
   *Follow-up:* every criterion a correct row can use goes in a defect's `ids`.
 - **Margins must exceed the noise.** The same skill text found one defect in 2 of 5 runs and, two
-  rounds later, in 4 of 5. A margin of one defect in 40 then reads chance as a regression.
-  *Follow-up:* derive each margin from the observed spread, or name a frequency tiebreak in the
-  criteria file before the round.
+  rounds later, in 4 of 5. A margin of one defect in 40 then reads chance as a regression. It
+  recurred in runs 190 to 193: a fixed margin of two useful IDs missed by one, while the
+  candidate's own two runs differed by four. *Follow-up:* derive each margin from the observed
+  spread, or name a frequency tiebreak in the criteria file before the round.
 - **Five runs per arm, and a control in every round.** Two runs per arm made a variant look better
   that five runs showed equal, and the control's own results move between rounds.
   *Mechanism:* the control arm in the same plan

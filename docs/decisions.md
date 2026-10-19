@@ -1,5 +1,19 @@
 # Decisions
 
+## 2026-10-19 — Project shape merged with one check missed by one
+
+In the usefulness trial on three of the maintainer's repositories (runs 188 and 189), 21% of the
+skill's items were wrong or not applicable, against a limit of 10%, and 15 of those 22 applied a
+criterion where the project's shape makes it moot. `dad6b06` has step 2 record the maintainers, the
+software's reach, and whether it is a library, and the rows that depend on them say so. In runs 190
+to 195, with Sonnet and two runs per arm, it cut the moot rows in Findings from 20 to 2 and all rows
+from 224 to 198. It lost no seeded gap, top priority, or `must_not_flag` check on the fictional
+cases, at 1.04 times the cost. It missed one check by one: the criteria of earlier useful findings
+had a row 42 times against 45, with a margin of 2. None of the IDs it lacked is a row the change
+touches. Most came from one outlier report, and the candidate's own two runs differed by twice the
+margin. The maintainer merged it after seeing the rows behind the miss. One pattern is left to
+watch: TEST-03 in the library was in both control reports and in neither candidate report.
+
 ## 2026-10-19 — Delivery metrics stay out of the audit
 
 The scope decision of 2026-10-18 gave delivery metrics, such as deployment frequency, change failure

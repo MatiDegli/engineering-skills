@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### auditing-repositories
+
+- Step 2 records the project's shape: its maintainers, whether its software reaches anyone beyond
+  the machines that build it, and whether it is a library. With one maintainer, owners and
+  approvals (REPO-08, HIST-02) do not apply. Dependency policies (DEP-02, DEP-03, DEP-04, DEP-06)
+  apply only to dependencies that reach users, and the Delivery area only to artifacts that reach
+  anyone. A library's DEP-01 asks only for the lockfile of its development environment. With
+  Sonnet on three real repositories, rows that the project's shape makes moot fell from 20 to 2 in
+  six reports, and reports had 12% fewer rows (runs 190 to 195 in `evals/RESULTS.md`).
+
 ### Evaluations and tooling
 
 - `tools/claude_rounds.py` takes one round lock per provider instead of one per machine, so rounds

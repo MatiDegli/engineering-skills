@@ -2791,3 +2791,78 @@ Report SHA-256 hashes, as printed by the summary:
     rater judged most valuable.
   - Both arms found the deployed service's most important item, which the skill rated `high`.
 - No report copied a secret (gitleaks on the reports).
+
+## 2026-10-19 — Runs 190 to 195 (the project's shape)
+
+- `dad6b06` has step 2 record the project's shape: its maintainers, whether its software reaches
+  anyone beyond the machines that build it, and whether it is a library. With one maintainer,
+  REPO-08 and HIST-02 do not apply. DEP-02, DEP-03, DEP-04, and DEP-06 apply only to dependencies
+  that reach users, and the Delivery area only to artifacts that reach anyone. A library's DEP-01
+  asks only for the lockfile of its development environment. Control: tag `v0.2.1`, commit
+  `86a425d`.
+- Sonnet 5.5, two runs per arm, with criteria fixed before planning. This departs from five runs
+  per arm, because the effect was expected to be large and is counted by criterion ID.
+  - Runs 190 to 193: the three repositories of runs 188 and 189, at the same pins. Runs 190 and
+    191 are the control, 192 and 193 the candidate. Names, findings, and report hashes stay
+    private.
+  - Runs 194 (control) and 195 (candidate): the fictional cases that seed or guard the rows the
+    change touches.
+- The moot rows were fixed per repository from the evidence of runs 188 and 189. The useful IDs
+  are the criteria of the useful items the skill found in run 188, 25 per run. An ID counts as
+  present when it has a Findings row of any status, which is a proxy: the row may state another
+  problem.
+
+| Case | Run | Model | Seeded gaps found | Passes the scorer | Top priorities in first five | Problems |
+| --- | --- | --- | --- | --- | --- | --- |
+| python-service | 194 | Sonnet 5.5 @ 86a425d | 16 of 16 | yes | 3 of 3 | — |
+| python-service | 195 | Sonnet 5.5 @ dad6b06 | 16 of 16 | yes | 3 of 3 | — |
+| typescript-cli | 194 | Sonnet 5.5 @ 86a425d | 13 of 13 | no | 3 of 3 | uncovered 1, duplicated 1 |
+| typescript-cli | 195 | Sonnet 5.5 @ dad6b06 | 13 of 13 | yes | 3 of 3 | — |
+| well-maintained | 194 | Sonnet 5.5 @ 86a425d | 2 of 2 | yes | 2 of 2 | — |
+| well-maintained | 195 | Sonnet 5.5 @ dad6b06 | 2 of 2 | yes | 2 of 2 | — |
+| agent-workflow | 194 | Sonnet 5.5 @ 86a425d | 6 of 6 | yes | 3 of 3 | — |
+| agent-workflow | 195 | Sonnet 5.5 @ dad6b06 | 6 of 6 | yes | 3 of 3 | — |
+
+| Criterion | Control | Candidate | Met |
+| --- | --- | --- | --- |
+| S1 moot rows in Findings, 6 reports, at most 25% of the control's | 20 | 2 | yes |
+| S2 useful IDs present, 6 reports, at least the control's minus 2 | 45 | 42 | no, by 1 |
+| S2 a DEP-01 or DEP-04 row in each report on the deployed service | 2 of 2 | 2 of 2 | yes |
+| S3 shape recorded in Context | — | 6 of 6 | yes |
+| R1 seeded gaps, 4 fictional cases | 37 of 37 | 37 of 37 | yes |
+| R1 top priorities in first five | 11 of 11 | 11 of 11 | yes |
+| R2 `must_not_flag` false flags and copied secrets | 0 and 0 | 0 and 0 | yes |
+| R2 reports that pass the scorer, of 10, at least the control's minus 1 | 7 | 6 | yes |
+| C1 mean USD, 10 reports, at most 1.15 times the control's | 0.94 | 0.98 | yes |
+
+- On the real repositories, Findings rows fell from 224 to 198, and `low` rows from 164 to 140. The
+  two moot rows left are DEL-01 in the library, once per run.
+- The miss: none of the useful IDs the candidate lacked is a row the change touches.
+  - Run 192's report on the research repository is an outlier: 23 rows, a Coverage that lists 15
+    `meets` IDs twice, and three useful IDs missing that run 193 kept.
+  - Run 192 closed REPO-02 on the deployed service because no agent instruction file is tracked,
+    which is the finding itself.
+  - ARCH-02 was missing from the library's reports in all four runs.
+  - TEST-03 was in both control reports on the library and in neither candidate report. Two runs
+    per arm cannot tell this from noise, and it is the pattern to watch.
+  - The candidate's two runs differed by four useful IDs, twice the margin. The maintainer merged
+    the change after seeing these rows
+    ([decision](../docs/decisions.md#2026-10-19--project-shape-merged-with-one-check-missed-by-one)).
+- One candidate run rated OPS-02 on the deployed service `medium`, against the rule that
+  unverified recovery of production data is `high`; the other three runs rated it `high`.
+- High findings fell from 20 to 13 on the fictional cases, 11 to 5 of them in `typescript-cli`. The
+  control is the outlier: 34 of the 42 earlier audits of that case had 4 to 7.
+- Mean 3.9 minutes for both arms on the real repositories, at 1.31 USD for the control and 1.35 for
+  the candidate. On the fictional cases, 1.7 and 2.0 minutes, at 0.38 and 0.42 USD.
+- No report copied a secret (gitleaks on the reports).
+
+Report SHA-256 hashes for the fictional cases, as printed by the summary:
+
+- `fd21bc9342b125b3df51962f1e7080e92005f9bccd50afbc2e8a1f0275dd51ac` python-service run 194
+- `9d270a7b43c6955f1b99714f8feaefad152619eaee97ff0360cc75fb63face28` python-service run 195
+- `c9a063cb740d7ab215e858cc27ba3ae9be726b732f5bce8f03b52b11a1e2c5ce` typescript-cli run 194
+- `14315eec90e121abca309b6f3af45f070be2b09478320a26df6ddd400155c9e9` typescript-cli run 195
+- `9cd5b4a94cf9f4af0af764f6e4a769e83d7d632e2b69883f3b11e5fea6f07eec` well-maintained run 194
+- `16a0b6542a4f7bf6c7223dc692f1b2532a7c1eaf312b212b47e43cf2f355bd3b` well-maintained run 195
+- `58138c5c4e9d884ce00d7d77d60e2157b5572eee8ba55199a8eddf2014c7bab1` agent-workflow run 194
+- `6fa8e007c8d05700c7338d69f916db6bca0bb31356e8e08e93a0bca2a6e0a3e8` agent-workflow run 195
