@@ -4,6 +4,7 @@ import contextlib
 import io
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -768,6 +769,56 @@ class SourceCaseTests(unittest.TestCase):
         self.assertNotIn(str(self.source), (destination / ".git" / "config").read_text())
         self.assertEqual(git("status", "--porcelain", "--ignored"), "")
         self.assertEqual(verify(self.case, destination), [])
+
+    def test_branches_keeps_the_source_branches_not_newer_than_the_pin_as_local_branches(self):
+        shutil.rmtree(self.case / "seed")
+        commit = lambda name: run_git(self.source, "rev-parse", name).strip()
+        # The pin is the merge, which the local main and draft branches postdate.
+        pinned, side, older = commit("main~1"), commit("side"), commit("main~2")
+        upstream = "refs/remotes/upstream"
+        remote = {"release": older, "stable": pinned, "side": commit("main~4"), "main": older}
+        for name, head in (remote | {"next": commit("main")}).items():
+            run_git(self.source, "update-ref", f"{upstream}/{name}", head)
+        run_git(self.source, "symbolic-ref", f"{upstream}/HEAD", f"{upstream}/main")
+        self.write_source(commit=pinned)
+        prepare(self.case, self.root / "plain")
+        plain = run_git(self.root / "plain", "for-each-ref", "--format=%(refname)")
+        self.assertEqual(plain, "refs/heads/main\n")
+        self.write_source(commit=pinned, branches=True)
+        destination = self.root / "audit"
+        prepare(self.case, destination)
+
+        def git(*arguments):
+            return run_git(destination, *arguments)
+
+        # Local main and draft, and the remote's next, are newer than the pin; the remote's main
+        # names the pinned branch; the local side wins over the remote's.
+        kept = {"main": pinned, "release": older, "side": side, "stable": pinned}
+        listed = "".join(f"refs/heads/{name} {head}\n" for name, head in kept.items())
+        self.assertEqual(git("for-each-ref", "--format=%(refname) %(objectname)"), listed)
+        self.assertEqual(git("rev-parse", "HEAD").strip(), pinned)
+        self.assertEqual(git("remote"), "")
+        self.assertEqual(git("reflog", "--all"), "")
+        self.assertEqual(git("fsck", "--unreachable", "--no-reflogs"), "")
+        self.assertNotIn(str(self.source), (destination / ".git" / "config").read_text())
+        self.assertEqual(git("status", "--porcelain", "--ignored"), "")
+        self.assertEqual(verify(self.case, destination), [])
+        git("update-ref", "refs/heads/release", pinned)
+        git("update-ref", "-d", "refs/heads/stable")
+        moved = f"branch release is {pinned[:7]}, expected {older[:7]}"
+        deleted = f"branch stable is missing, expected {pinned[:7]}"
+        self.assertEqual(verify(self.case, destination), [moved, deleted])
+
+    def test_branches_are_refused_with_seeds(self):
+        variants = {"seed": {}, "remove": {"remove": ["b/two.txt"]}}
+        for name, fields in (variants | {"executable": {"executable": ["x"]}}).items():
+            with self.subTest(name=name):
+                if name != "seed":
+                    shutil.rmtree(self.case / "seed", ignore_errors=True)
+                self.write_source(branches=True, **fields)
+                with self.assertRaisesRegex(SystemExit, "`branches` with seeds"):
+                    prepare(self.case, self.root / f"audit-{name}")
+                self.assertFalse((self.root / f"audit-{name}").exists())
 
     def test_preparation_is_deterministic_and_refuses_unpinned_sources(self):
         heads = []

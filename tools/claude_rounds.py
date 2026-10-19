@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Run evaluation rounds headless with Claude Code, and summarize them.
 
-`plan` exports the skill and prepares one repository per run; `run` makes the audits, so run it
-yourself; `summarize` scores the reports and checks what the runs left behind; `clean` removes the
-prepared repositories and the skill export. A round directory keeps the plan, streams, reports, and
-summary. Keep it outside this repository and outside /tmp, which a restart may clear.
+`plan` exports the skill and prepares one repository per run, with a snapshot of GitHub's state
+beside it when the case names its GitHub repository; `run` makes the audits, so run it yourself;
+`summarize` scores the reports and checks what the runs left behind; `clean` removes the prepared
+repositories and the skill export. A round directory keeps the plan, hosted-state snapshots,
+streams, reports, and summary. Keep it outside this repository and outside /tmp, which a restart
+may clear.
 """
 
 from __future__ import annotations
@@ -30,7 +32,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import ExitStack, contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from tools.evals import (
     CASES,
@@ -88,6 +90,17 @@ PROMPTS = {
 }
 # Levels that give the agent neither the skill nor the catalog: their reports have no criterion IDs.
 WITHOUT_CATALOG = ("none", "expert")
+# Added to every level's prompt for a job whose case has a snapshot of its hosted state. Every
+# level says not to read other paths, so the sentence allows that file by name.
+HOSTED_PROMPT = (
+    "The repository has no remote. GitHub's state for it, read when this round was planned, is in"
+    " `{path}`, which you may read: the CI runs and checks on the audited commit, and the default"
+    " branch's protection and rules. Use it in place of the host."
+)
+GITHUB_NAME = re.compile(r"[A-Za-z0-9-]+/(?!\.\.?$)[A-Za-z0-9._-]+")
+# The fields of each listed run that a snapshot keeps; the API's other fields stay out.
+CHECK_RUN_FIELDS = ("name", "status", "conclusion", "started_at", "completed_at")
+WORKFLOW_RUN_FIELDS = ("name", "event", "status", "conclusion", "created_at", "head_branch")
 LOGIN_FAILURE = "Failed to refresh OAuth token"
 ATTEMPTS = 3
 TEMPORARY = re.compile(r"(audit|skill|catalog)\.[A-Za-z0-9_]{8}")
@@ -422,6 +435,7 @@ def case_path(case: str) -> Path:
 
 def round_paths(round_dir: Path) -> dict[str, Path]:
     names = ("plan.json", "streams", "reports", "log.txt", "summary.md", "tmp-before.txt")
+    names += ("hosted",)
     return {name: round_dir / name for name in names}
 
 
@@ -480,6 +494,13 @@ def job_material(data: dict, job: dict) -> Path | None:
     return Path(job["catalog"] if level == "catalog" else job_skill(data, job))
 
 
+def job_prompt(data: dict, job: dict) -> str:
+    """Return a job's prompt: its level's, then where to read its snapshot of the hosted state."""
+    prompt = PROMPTS[job_level(data, job)].format(path=job_material(data, job))
+    hosted = job.get("hosted")
+    return f"{prompt}\n\n{HOSTED_PROMPT.format(path=hosted)}" if hosted else prompt
+
+
 def job_revision(data: dict, job: dict) -> str:
     return job.get("revision") or data["skill_commit"]
 
@@ -490,12 +511,126 @@ def skill_exports(data: dict) -> list[Path]:
     return skills + [Path(path) for path in (data.get("catalogs") or {}).values()]
 
 
+class HostError(Exception):
+    """A GitHub API read that failed, with what `gh` said."""
+
+
+def case_github(case: Path) -> tuple[str, str] | None:
+    """Return the GitHub repository and pinned commit of a case whose `source.json` names one."""
+    path = case / "source.json"
+    source = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    if "github" not in source:
+        return None
+    name, commit = source["github"], str(source.get("commit", ""))
+    if not isinstance(name, str) or not GITHUB_NAME.fullmatch(name):
+        raise SystemExit(f"`github` in {path} must be a repository's owner/name, not {name!r}")
+    if not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise SystemExit(f"{path} must pin a full 40-character commit SHA")
+    return name, commit
+
+
+def gh_api(path: str):
+    """Return one GitHub API response, read with the runner's `gh` login, or raise HostError."""
+    try:
+        result = subprocess.run(["gh", "api", path], capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise HostError(str(error)) from error
+    if result.returncode:
+        raise HostError(" ".join(result.stderr.split()) or f"gh exited with {result.returncode}")
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise HostError(f"gh returned no JSON: {error}") from error
+
+
+def picked(value: dict, fields: tuple[str, ...]) -> dict:
+    return {field: value.get(field) for field in fields}
+
+
+def without_links(value):
+    """Return a JSON value without the API's links and node IDs, at every depth."""
+    if isinstance(value, dict):
+        return {
+            key: without_links(item)
+            for key, item in value.items()
+            if key not in ("url", "node_id") and not key.endswith("_url")
+        }
+    return [without_links(item) for item in value] if isinstance(value, list) else value
+
+
+def hosted_state(repository: str, commit: str) -> dict:
+    """Read a GitHub repository's state for a pinned commit with `gh api`, as audits use it.
+
+    The snapshot holds the repository's default branch, visibility, and archive flag; the check
+    runs, Actions runs, and commit statuses on the commit, each list with its total count; and the
+    default branch's protection and rules, without the API's links. Issues, pull requests, alerts,
+    and other settings stay out: the snapshot covers what audits of prepared repositories could
+    not read (runs 188 and 189), and issues would change what counts as known. An endpoint that
+    fails is recorded as `{"error": message}` and the others are still read, since a 404 such as
+    "Branch not protected" is information.
+    """
+    base = f"repos/{repository}"
+    state: dict = {"github": repository, "commit": commit, "taken_at": now()}
+
+    def read(key: str, path: str, keep) -> None:
+        try:
+            state[key] = keep(gh_api(path))
+        except HostError as error:
+            state[key] = {"error": str(error)}
+
+    def listed(key: str, fields: tuple[str, ...], *summary: str):
+        def keep(response: dict) -> dict:
+            items = [picked(item, fields) for item in response.get(key) or []]
+            # GitHub gives a commit with no statuses the combined state "pending", which an audit
+            # would read as CI still running, so a summary is kept only for a list with items.
+            kept = summary if response.get("total_count") else ()
+            return picked(response, ("total_count", *kept)) | {key: items}
+
+        return keep
+
+    read("repository", base, lambda r: picked(r, ("default_branch", "visibility", "archived")))
+    checks = f"{base}/commits/{commit}/check-runs?per_page=100"
+    read("check_runs", checks, listed("check_runs", CHECK_RUN_FIELDS))
+    runs = f"{base}/actions/runs?head_sha={commit}&per_page=100"
+    read("workflow_runs", runs, listed("workflow_runs", WORKFLOW_RUN_FIELDS))
+    statuses = f"{base}/commits/{commit}/status?per_page=100"
+    read("commit_status", statuses, listed("statuses", ("context", "state"), "state"))
+    default = state["repository"].get("default_branch")
+    branch = quote(default) if default else None
+    for key, path in (
+        ("branch_protection", f"{base}/branches/{branch}/protection"),
+        ("branch_rules", f"{base}/rules/branches/{branch}"),
+    ):
+        if branch:
+            read(key, path, without_links)
+        else:
+            state[key] = {"error": "not read: the default branch is unknown"}
+    return state
+
+
+def write_hosted_state(case: Path, hosted: Path) -> Path | None:
+    """Write `<hosted>/<case name>.json` for a case whose `source.json` has `github`."""
+    github = case_github(case)
+    if not github:
+        return None
+    state = hosted_state(*github)
+    hosted.mkdir(exist_ok=True)
+    path = hosted / f"{case.name}.json"
+    path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+    failed = [key for key, value in state.items() if isinstance(value, dict) and "error" in value]
+    if failed:
+        print(f"{case.name}: gh api failed for {', '.join(failed)}; see {path}")
+    return path
+
+
 def plan(round_dir: Path, runs: list[tuple], cases: list[str], revision: str) -> dict:
     """Export each skill revision and prepare a fresh repository for every run of every case.
 
     A run may name its own revision, so a control and a candidate share one round. Jobs are listed
     case by case with every run of a case together, so the arms run side by side in time instead
-    of hours apart, when the service may have changed.
+    of hours apart, when the service may have changed. A case whose `source.json` names its
+    GitHub repository has its hosted state read once (`hosted_state`), and each of its jobs gets a
+    copy beside the prepared repository, never inside it.
     """
     check_round_dir(round_dir)
     paths = round_paths(round_dir)
@@ -504,6 +639,7 @@ def plan(round_dir: Path, runs: list[tuple], cases: list[str], revision: str) ->
     for case in cases:
         if not (case_path(case) / "expected.json").is_file():
             raise SystemExit(f"unknown case: {case}")
+        case_github(case_path(case))
     specs = []
     for number, model, *rest in runs:
         wanted = rest[0] if rest and rest[0] else revision
@@ -523,6 +659,7 @@ def plan(round_dir: Path, runs: list[tuple], cases: list[str], revision: str) ->
     catalogs = {commit: str(export_catalog(commit)) for commit in wanted_catalogs}
     jobs = []
     for case in cases:
+        hosted = write_hosted_state(case_path(case), paths["hosted"])
         for run, model, commit, level in specs:
             directory = Path(tempfile.mkdtemp(prefix="audit."))
             name = case_path(case).name
@@ -531,6 +668,8 @@ def plan(round_dir: Path, runs: list[tuple], cases: list[str], revision: str) ->
             job |= {"revision": commit, "level": level}
             job |= {"skill": skills[commit]} if level == "full" else {}
             job |= {"catalog": catalogs[commit]} if level == "catalog" else {}
+            if hosted:
+                job["hosted"] = str(shutil.copyfile(hosted, directory / "hosted-state.json"))
             jobs.append(job)
     revisions = ", ".join(dict.fromkeys(s[2] for s in specs))
     levels = ", ".join(dict.fromkeys(s[3] for s in specs))
@@ -555,7 +694,8 @@ def audit_environment(round_dir: Path) -> dict[str, str]:
 
     A prepared repository is not the hosted one: a rewritten history has no hosted runs, and live
     hosting state changes between rounds. With an empty `gh` configuration and no tokens, an audit
-    reports remote settings as unverified, the same way in every round.
+    reports remote settings as unverified, the same way in every round, unless its case has a
+    snapshot of the hosted state that `plan` read once for every run (`hosted_state`).
     """
     config = round_dir / "gh-config"
     config.mkdir(exist_ok=True)
@@ -829,7 +969,7 @@ def audit(round_dir: Path, data: dict, job: dict, launch: dict) -> str:
     provider = launch["providers"].get(job["model"])
     stream, stderr = paths["streams"] / f"{label}.jsonl", paths["streams"] / f"{label}.stderr.txt"
     material = job_material(data, job)
-    prompt = PROMPTS[job_level(data, job)].format(path=material)
+    prompt = job_prompt(data, job)
     directories = [material] if material else []
     environment, settings = audit_environment(round_dir), None
     if provider:

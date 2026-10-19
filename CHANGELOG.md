@@ -31,6 +31,12 @@
 - An expert-prompt level, `+expert`, runs audits with a prompt for a repository audit that a model
   wrote without tools, context, or the catalog, so rounds can tell what the skill adds beyond a good
   prompt as well as beyond a bare request.
+- A real-repository case can keep the source's branches no newer than its pin (`"branches": true`
+  in `source.json`) and get a snapshot of its GitHub state (`"github": "owner/name"`): the CI runs
+  and checks on the pinned commit and the default branch's protection and rules, read once with
+  `gh api` when the round is planned and placed beside each prepared repository, with a sentence in
+  every level's prompt that names it. Audits of real repositories could not read these before (runs
+  188 and 189). Cases without the keys are prepared and prompted as before.
 
 ## v0.2.1 — 2026-10-18
 

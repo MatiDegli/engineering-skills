@@ -242,6 +242,28 @@ def commit_shapes(git) -> list[tuple[str, bool]]:
     return [(subject, not first or trees[first[0]] != tree) for _, tree, first, subject in rows]
 
 
+def source_branches(git, commit: str) -> dict[str, str]:
+    """Return the source's branches, other than `main`, whose head is not newer than the pin.
+
+    A branch is kept when its head's committer date is not later than the pinned commit's, so
+    nothing committed after the pin reaches the destination. Local branches come first, then
+    remote-tracking ones (`refs/remotes/<remote>/<name>`), and the first branch of a name that is
+    kept wins. `main` is left out because it names the pinned branch, and `HEAD` because it only
+    names a remote's default branch.
+    """
+    pinned = int(git("log", "-1", "--format=%ct", commit))
+    fields = "--format=%(refname) %(objecttype) %(objectname) %(committerdate:unix)"
+    branches: dict[str, str] = {}
+    for prefix in ("refs/heads/", "refs/remotes/"):
+        for line in git("for-each-ref", fields, prefix).splitlines():
+            ref, kind, head, *date = line.split()
+            name = ref.removeprefix(prefix)
+            name = name.partition("/")[2] if prefix == "refs/remotes/" else name
+            if kind == "commit" and name not in ("", "main", "HEAD") and int(date[0]) <= pinned:
+                branches.setdefault(name, head)
+    return branches
+
+
 def prepare_from_source(case: Path, destination: Path) -> None:
     """Clone a pinned commit of a local repository and fold the case's seeded changes into it.
 
@@ -255,6 +277,10 @@ def prepare_from_source(case: Path, destination: Path) -> None:
     branch and no remote, reflog, or unreachable objects, so nothing in it leads back to the
     original files. Commit metadata is kept; signatures and encoding headers are dropped from every
     commit alike. The destination is created exclusively, and any later failure removes it.
+
+    With `"branches": true`, the destination also keeps, as local branches, the source's other
+    branches whose heads are no newer than the pin (`source_branches`). Seeds are then refused,
+    since seeding rewrites `main` only and the other branches would keep the original content.
     """
     source = json.loads((case / "source.json").read_text(encoding="utf-8"))
     origin = Path(source["repository"]).expanduser()
@@ -262,6 +288,11 @@ def prepare_from_source(case: Path, destination: Path) -> None:
     target = destination.resolve()
     if not re.fullmatch(r"[0-9a-f]{40}", str(source.get("commit", ""))):
         raise SystemExit("source.json must pin a full 40-character commit SHA")
+    keep_branches = source.get("branches", False)
+    if not isinstance(keep_branches, bool):
+        raise SystemExit("`branches` in source.json must be true or false")
+    if keep_branches and ((case / "seed").exists() or {"remove", "executable"} & source.keys()):
+        raise SystemExit("source.json cannot keep `branches` with seeds, which rewrite main only")
     if target == origin or origin in target.parents or target in origin.parents:
         raise SystemExit(f"The destination must be outside the source repository: {destination}")
     if target.exists():
@@ -271,15 +302,19 @@ def prepare_from_source(case: Path, destination: Path) -> None:
     try:
         with tempfile.TemporaryDirectory() as scratch:
             work = Path(scratch) / "work.git"
-            clone(origin, work, "--bare", "--template=")
+            # A bare clone copies only branches and tags; a mirror also has remote-tracking refs.
+            clone(origin, work, "--mirror" if keep_branches else "--bare", "--template=")
             git = partial(git_at, work)
             if (work / "shallow").exists():
                 raise SystemExit("The source repository is shallow; its history is incomplete")
+            branches = source_branches(git, source["commit"]) if keep_branches else {}
             git("update-ref", "refs/heads/main", source["commit"])
             git("symbolic-ref", "HEAD", "refs/heads/main")
             for ref in git("for-each-ref", "--format=%(refname)").split():
                 if ref != "refs/heads/main":
                     git("update-ref", "-d", ref)
+            for name, head in branches.items():
+                git("update-ref", f"refs/heads/{name}", head)
             operations, checks = seed_operations(case, source, git)
             shapes = commit_shapes(git)
             if operations:
@@ -306,6 +341,9 @@ def prepare_from_source(case: Path, destination: Path) -> None:
             created = True
             clone(work, target)
         git = partial(git_at, target / ".git", work_tree=target)
+        # The clone has the other branches only as remote-tracking refs, which go with the remote.
+        for name, head in branches.items():
+            git("update-ref", f"refs/heads/{name}", head)
         git("remote", "remove", "origin")
         git("config", "core.fileMode", "false")
         for name in ("ORIG_HEAD", "FETCH_HEAD"):
@@ -321,17 +359,33 @@ def prepare_from_source(case: Path, destination: Path) -> None:
 
 
 def verify(case: Path, destination: Path) -> list[str]:
-    """Return how a prepared repository differs from a fresh preparation of the same case."""
+    """Return how a prepared repository differs from a fresh preparation of the same case.
+
+    Besides HEAD and the work tree, each other branch that the preparation keeps must be where it
+    left it; a branch added since is not reported.
+    """
 
     def git(directory: Path, *arguments: str) -> str:
         return git_at(directory / ".git", *arguments, work_tree=directory)
+
+    def branches(directory: Path) -> dict[str, str]:
+        """Return each branch but `main`, which HEAD covers, with its commit."""
+        fields = "--format=%(refname:lstrip=2) %(objectname)"
+        lines = git(directory, "for-each-ref", fields, "refs/heads").splitlines()
+        return {name: head for name, head in map(str.split, lines) if name != "main"}
 
     with tempfile.TemporaryDirectory() as directory:
         reference = Path(directory) / "reference"
         prepare(case, reference)
         expected = git(reference, "rev-parse", "HEAD").strip()
+        kept = branches(reference)
     head = git(destination, "rev-parse", "HEAD").strip()
     problems = [f"HEAD is {head[:7]}, expected {expected[:7]}"] if head != expected else []
+    held = branches(destination) if kept else {}
+    for name, commit in kept.items():
+        if held.get(name) != commit:
+            found = held[name][:7] if name in held else "missing"
+            problems.append(f"branch {name} is {found}, expected {commit[:7]}")
     status = git(destination, "status", "--porcelain", "--ignored", "--untracked-files=all")
     return problems + [f"changed: {line}" for line in status.splitlines()]
 

@@ -83,6 +83,41 @@ usage = {{"inputTokens": 10, "cacheReadInputTokens": 1000, "outputTokens": 200}}
 print(json.dumps({{"type": "result", "result": report, "duration_ms": 60000, "total_cost_usd": 0.5,
                   "modelUsage": {{used: usage}}}}))
 '''
+FAKE_GH = r'''#!{python}
+"""A stand-in for the GitHub CLI: `gh api` answers from the test's file and reaches no host."""
+import json, os, sys
+from pathlib import Path
+
+state = Path(os.environ["FAKE_STATE"])
+with open(state / "gh-calls", "a") as record:
+    record.write(json.dumps(sys.argv[1:]) + "\n")
+responses = json.loads((state / "gh-responses.json").read_text())
+code, answer = responses.get(sys.argv[2].partition("?")[0], [1, "Not Found (HTTP 404)"])
+if code:
+    print(json.dumps({"message": answer}))
+    print("gh: " + answer, file=sys.stderr)
+    raise SystemExit(code)
+print(json.dumps(answer))
+'''
+
+
+def hosted_responses(commit):
+    """Return the fake GitHub's answer to each path a snapshot reads, with fields it must drop."""
+    base = "repos/owner/name"
+    run = {"name": "test", "status": "completed", "conclusion": "success", "html_url": "https://x"}
+    check = run | {"started_at": "t1", "completed_at": "t2"}
+    workflow = run | {"event": "push", "created_at": "t0", "head_branch": "main"}
+    status = {"context": "ci", "state": "error", "id": 2}
+    combined = {"state": "pending", "total_count": 1, "statuses": [status]}
+    rule = {"type": "deletion", "ruleset_id": 7, "ruleset_source": "owner/name", "url": "u"}
+    return {
+        base: [0, {"default_branch": "main", "visibility": "public", "archived": False, "id": 1}],
+        f"{base}/commits/{commit}/check-runs": [0, {"total_count": 1, "check_runs": [check]}],
+        f"{base}/actions/runs": [0, {"total_count": 1, "workflow_runs": [workflow]}],
+        f"{base}/commits/{commit}/status": [0, combined],
+        f"{base}/branches/main/protection": [1, "Branch not protected (HTTP 404)"],
+        f"{base}/rules/branches/main": [0, [rule]],
+    }
 
 
 def alive(pid):
@@ -128,6 +163,9 @@ class RoundTests(unittest.TestCase):
         bin_dir.mkdir()
         (bin_dir / "claude").write_text(FAKE_CLAUDE.format(python=sys.executable))
         (bin_dir / "claude").chmod(0o755)
+        # Every test gets the stand-in, so no test can reach GitHub through the real CLI.
+        (bin_dir / "gh").write_text(FAKE_GH.replace("{python}", sys.executable))
+        (bin_dir / "gh").chmod(0o755)
         (self.root / "state").mkdir()
         self.environment = mock.patch.dict(
             os.environ,
@@ -193,6 +231,164 @@ class RoundTests(unittest.TestCase):
         key.chmod(0o600)
         urls = [f"{model}={url}" for model, url in served]
         return claude_rounds.parse_providers(urls, [f"{model}={key}" for model, _ in served])
+
+    def source_case(self, name, **fields):
+        """Make a case pinned to a one-commit source repository; return it and the commit."""
+        source = self.root / f"{name}-source"
+        source.mkdir()
+        identity = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid"}
+        identity |= {"GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.invalid"}
+
+        def git(*arguments):
+            return subprocess.run(
+                ["git", *arguments], cwd=source, env=git_environment(**identity),
+                capture_output=True, check=True, text=True,
+            ).stdout
+
+        git("init", "-q", "-b", "main")
+        (source / "README.md").write_text("# Source\n")
+        git("add", "-A")
+        git("commit", "-q", "-m", "first")
+        commit = git("rev-parse", "HEAD").strip()
+        case = self.root / name
+        case.mkdir()
+        (case / "expected.json").write_text('{"must_find": ["REPO-01"], "must_not_flag": []}')
+        source_json = {"repository": str(source), "commit": commit, **fields}
+        (case / "source.json").write_text(json.dumps(source_json))
+        return case, commit
+
+    def gh_answers(self, responses):
+        (self.root / "state" / "gh-responses.json").write_text(json.dumps(responses))
+
+    def gh_calls(self):
+        calls = self.root / "state" / "gh-calls"
+        lines = calls.read_text().splitlines() if calls.exists() else []
+        return [json.loads(line) for line in lines]
+
+    def test_a_github_case_gets_one_snapshot_copied_beside_each_prepared_repository(self):
+        case, commit = self.source_case("hosted", github="owner/name")
+        self.gh_answers(hosted_responses(commit))
+        round_dir = self.root / "round"
+        runs = [("1", "claude-test-1-0"), ("2", "claude-test-1-0")]
+        with mock.patch("builtins.print") as printed:
+            data = claude_rounds.plan(round_dir, runs, [str(case)], "HEAD")
+        self.rounds.append(round_dir)
+        base = "repos/owner/name"
+        paths = [
+            base,
+            f"{base}/commits/{commit}/check-runs?per_page=100",
+            f"{base}/actions/runs?head_sha={commit}&per_page=100",
+            f"{base}/commits/{commit}/status?per_page=100",
+            f"{base}/branches/main/protection",
+            f"{base}/rules/branches/main",
+        ]
+        self.assertEqual(self.gh_calls(), [["api", path] for path in paths])
+        snapshot = round_dir / "hosted" / "hosted.json"
+        state = json.loads(snapshot.read_text())
+        self.assertRegex(state.pop("taken_at"), r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
+        run = {"name": "test", "status": "completed", "conclusion": "success"}
+        check = run | {"started_at": "t1", "completed_at": "t2"}
+        workflow = run | {"event": "push", "created_at": "t0", "head_branch": "main"}
+        statuses = [{"context": "ci", "state": "error"}]
+        rule = {"type": "deletion", "ruleset_id": 7, "ruleset_source": "owner/name"}
+        expected = {
+            "github": "owner/name",
+            "commit": commit,
+            "repository": {"default_branch": "main", "visibility": "public", "archived": False},
+            "check_runs": {"total_count": 1, "check_runs": [check]},
+            "workflow_runs": {"total_count": 1, "workflow_runs": [workflow]},
+            "commit_status": {"total_count": 1, "state": "pending", "statuses": statuses},
+            "branch_protection": {"error": "gh: Branch not protected (HTTP 404)"},
+            "branch_rules": [rule],
+        }
+        self.assertEqual(state, expected)
+        self.assertIn("branch_protection", " ".join(str(c) for c in printed.call_args_list))
+        copies = [Path(job["dir"]) / "hosted-state.json" for job in data["jobs"]]
+        self.assertEqual([job["hosted"] for job in data["jobs"]], [str(copy) for copy in copies])
+        for job, copy in zip(data["jobs"], copies):
+            self.assertEqual(copy.read_bytes(), snapshot.read_bytes())
+            repo = Path(job["dir"]) / job["name"]
+            self.assertFalse((repo / "hosted-state.json").exists())
+            self.assertTrue(claude_rounds.repository_clean(repo))
+        written = [p.read_text() for p in [*round_dir.rglob("*"), *copies] if p.is_file()]
+        self.assertFalse(any("fake-token" in text for text in written))
+
+    def test_a_commit_without_statuses_gets_no_combined_state(self):
+        commit = "a" * 40
+        empty = {f"repos/owner/name/commits/{commit}/status": [0, {"state": "pending", "total_count": 0}]}
+        self.gh_answers(hosted_responses(commit) | empty)
+        state = claude_rounds.hosted_state("owner/name", commit)
+        self.assertEqual(state["commit_status"], {"total_count": 0, "statuses": []})
+
+    def test_a_failed_read_is_recorded_and_the_reads_that_need_it_are_left_out(self):
+        commit = "a" * 40
+        failing = {"repos/owner/name": [1, "Not Found (HTTP 404)"]}
+        self.gh_answers(hosted_responses(commit) | failing)
+        state = claude_rounds.hosted_state("owner/name", commit)
+        self.assertEqual(state["repository"], {"error": "gh: Not Found (HTTP 404)"})
+        unknown = {"error": "not read: the default branch is unknown"}
+        self.assertEqual((state["branch_protection"], state["branch_rules"]), (unknown, unknown))
+        self.assertEqual(state["check_runs"]["total_count"], 1)
+        self.assertEqual(len(self.gh_calls()), 4)
+        missing = FileNotFoundError(2, "No such file or directory", "gh")
+        with mock.patch.object(claude_rounds.subprocess, "run", side_effect=missing):
+            state = claude_rounds.hosted_state("owner/name", commit)
+        self.assertEqual(
+            [key for key, value in state.items() if isinstance(value, dict) and "error" in value],
+            ["repository", "check_runs", "workflow_runs", "commit_status"]
+            + ["branch_protection", "branch_rules"],
+        )
+
+    def test_a_github_name_must_be_owner_and_name(self):
+        for number, name in enumerate(("owner", "owner/name/extra", "../name", "owner/..", 7)):
+            with self.subTest(name=name):
+                case, _ = self.source_case(f"case-{number}", github=name)
+                round_dir = self.root / f"round-{number}"
+                with self.assertRaises(SystemExit), mock.patch("builtins.print"):
+                    claude_rounds.plan(round_dir, [("1", "claude-test-1-0")], [str(case)], "HEAD")
+                self.assertFalse(round_dir.exists())
+        self.assertEqual(self.gh_calls(), [])
+
+    def test_a_case_without_github_reads_no_host_and_gets_no_snapshot(self):
+        plain, _ = self.source_case("plain")
+        round_dir = self.root / "round"
+        cases = [str(plain), str(self.case)]
+        with mock.patch("builtins.print"):
+            data = claude_rounds.plan(round_dir, [("1", "claude-test-1-0")], cases, "HEAD")
+        self.rounds.append(round_dir)
+        self.assertFalse((round_dir / "hosted").exists())
+        self.assertEqual(self.gh_calls(), [])
+        for job in data["jobs"]:
+            self.assertNotIn("hosted", job)
+            self.assertEqual(os.listdir(job["dir"]), [job["name"]])
+
+    def test_every_level_tells_where_the_snapshot_is_only_when_the_case_has_one(self):
+        hosted, commit = self.source_case("hosted", github="owner/name")
+        plain, _ = self.source_case("plain")
+        self.gh_answers(hosted_responses(commit))
+        levels = ["", "+catalog", "+none", "+expert"]
+        specs = [f"{n}=claude-test-1-0{level}" for n, level in enumerate(levels, 1)]
+        runs = claude_rounds.parse_runs(specs)
+        round_dir = self.root / "round"
+        with mock.patch("builtins.print"):
+            data = claude_rounds.plan(round_dir, runs, [str(hosted), str(plain)], "HEAD")
+            self.rounds.append(round_dir)
+            code = claude_rounds.run(round_dir, jobs=4, timeout=60, budget=100, pause=(0, 0))
+        self.assertEqual(code, 0)
+        for job in data["jobs"]:
+            recorded = self.root / "state" / f"args-{Path(job['dir']).name}"
+            prompt, _ = json.loads(recorded.read_text())
+            material = claude_rounds.job_material(data, job)
+            level = claude_rounds.PROMPTS[job["level"]].format(path=material)
+            sentence = (
+                "The repository has no remote. GitHub's state for it, read when this round was"
+                f" planned, is in `{job['dir']}/hosted-state.json`, which you may read: the CI runs"
+                " and checks on the audited commit, and the default branch's protection and rules."
+                " Use it in place of the host."
+            )
+            expected = f"{level}\n\n{sentence}" if job["name"] == "hosted" else level
+            with self.subTest(case=job["name"], level=job["level"]):
+                self.assertEqual(prompt, expected)
 
     def test_a_round_retries_a_failed_login_and_summarizes_every_run(self):
         round_dir = self.plan("round", ("1", "claude-test-1-0"), ("2", "claude-flaky-1-0"))

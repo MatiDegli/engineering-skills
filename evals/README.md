@@ -142,6 +142,7 @@ Each mechanism answers an incident in this repository's evaluations:
 | Rounds kept under `/tmp` lost their scripts and streams when WSL restarted | The round directory keeps the plan, streams, reports, and summary; `plan` warns when it is under the temporary directory |
 | The same skill cost 43% more in the afternoon than in the morning, and the rise was first blamed on a rule (runs 59 to 63) | A control arm in the same round, with jobs interleaved case by case |
 | Audits of a rewritten private clone queried the hosted repository with the maintainer's GitHub login, found that its history did not match, and one run reported three of ten gaps (run 56) | Runs see no GitHub CLI login or token, so remote settings are unverified the same way in every round |
+| Audits of real repositories could not read CI runs, branch protection, or other branches, because a prepared case has one branch, no remote, and no GitHub login (runs 188 and 189) | A case's `source.json` may keep the source's branches no newer than the pin and ask for a snapshot of the hosted state, read once when the round is planned (see [Cases from a pinned repository](#cases-from-a-pinned-repository)) |
 
 Each run also has a time limit and its own process group, which is stopped as a whole when the limit
 passes or when the runner receives SIGTERM or SIGINT; the runner then starts no other audit, logs the
@@ -168,10 +169,44 @@ another path, as after a rename, when a seed would leave a commit empty, or when
 nothing; seed the other path too, or pick another file. A new file lands in the last commit that
 changed a file in its directory. No commit is added, the
 history is rewritten in a temporary clone so that every file in the prepared tree has the same age,
-and the result keeps one branch and no remote, reflog, or unreachable objects. Git runs without the
+and the result keeps one branch, unless `branches` below says otherwise, and no remote, reflog, or
+unreachable objects. Git runs without the
 caller's Git variables, hooks, and user or system settings, so a hook's exported index or a global
 setting cannot reach another repository or change the revision. The source repository is only read,
 and a failed preparation leaves no destination.
+
+Two optional keys give an audit of a real repository what its host knows; a case without them is
+prepared and prompted as before:
+
+```json
+{
+  "repository": "~/Projects/example",
+  "commit": "<full 40-character SHA>",
+  "github": "owner/name",
+  "branches": true
+}
+```
+
+With `"branches": true`, the prepared repository also keeps the source's other branches as local
+branches: its local branches first, then its remote-tracking ones (`refs/remotes/<remote>/<name>`),
+and the first of a name wins. Only a branch whose head commit's committer date is not later than
+the pinned commit's is kept, so nothing committed after the pin leaks in; `main`, which is the
+pinned branch, and a remote's `HEAD` are left out. Seeds are refused with `branches`, since seeding
+rewrites `main` only. The result still has no remote, reflog, or unreachable objects, and `verify`
+also checks that each kept branch is where the preparation left it.
+
+With `"github"`, `claude_rounds plan` reads the host once per case with the `gh` login of the user
+who plans the round, writes `<round>/hosted/<case name>.json`, and copies it to `hosted-state.json`
+beside each prepared repository of the case, never inside it. Each level's prompt then ends with
+the same short paragraph, which names that file, allows reading it although every level says not
+to read other paths, and says to use it in place of the host. The snapshot holds the pinned
+`commit`, `taken_at` in UTC, the repository's default branch, visibility, and archive flag, the
+check runs, Actions runs, and commit statuses on the pinned commit with their total counts, and
+the default branch's protection and rules without the API's links. An endpoint
+that fails is recorded as `{"error": message}` and the plan goes on, since "Branch not protected"
+is information. Issues, pull requests, security alerts, and other settings stay out: issues would
+change what counts as known. The snapshot is the host's state when the round was planned, not when
+the pinned commit was made, and it is the same for every run of the round. It holds no token.
 
 Such a case can live outside this repository: pass its directory path wherever a command takes a
 case name, as in `python3 -m tools.evals prepare ~/cases/large /tmp/audit-large`. `score` and
