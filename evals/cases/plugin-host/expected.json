@@ -1,10 +1,11 @@
 {
-  "description": "A small plugin library with a command line, published on PyPI by three maintainers at version 1.5.0, with a changelog, a CI workflow, and tests. Four gaps are seeded, each at one place: a migration from config_loader to settings.read that nothing ends or checks, a rollout flag that outlived its rollout, a minor release that removed a command-line option without a deprecation, and an issue workflow that writes the issue title into a shell command.",
+  "description": "A small plugin library with a command line, published on PyPI by three maintainers at version 1.5.0, with a changelog, a CI workflow, and tests. Four gaps are seeded, each at one place: a migration from config_loader to settings.read that nothing ends or checks, a rollout flag that outlived its rollout, a minor release that removed a command-line option without a deprecation, and an issue workflow that writes the issue title into a shell command. With three maintainers, neither the flag nor the migration names an owner.",
   "must_find": {
     "QUAL-11": "docs/decisions.md retires config_loader with no completion condition and no check against new uses, and hooks.py, the newest module, still calls config_loader.load()",
     "STRUCT-04": "the lazy_load rollout ended in 1.3.0, yet the setting still reaches the eager path in loader.py, which no test runs",
     "DEL-03": "1.4.0, a minor release of a package past 1.0, removed the --format option of list with no earlier deprecation",
-    "CI-10": "the issues-opened workflow writes github.event.issue.title into a shell command through an expression, so an outsider's title runs with the job's token"
+    "CI-10": "the issues-opened workflow writes github.event.issue.title into a shell command through an expression, so an outsider's title runs with the job's token",
+    "TEAM-03": "three people maintain the project, and neither the lazy_load setting nor the config_loader migration names an owner"
   },
   "must_not_flag": {
     "AGENT-04": "no agents contribute",

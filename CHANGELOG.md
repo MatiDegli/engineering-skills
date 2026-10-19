@@ -5,8 +5,8 @@
 ### auditing-repositories
 
 - Step 2 records the project's shape: its maintainers, whether its software reaches anyone beyond
-  the machines that build it, and whether it is a library. With one maintainer, owners and
-  approvals (REPO-08, HIST-02) do not apply. Dependency policies (DEP-02, DEP-03, DEP-04, DEP-06)
+  the machines that build it, and whether it is a library. With one maintainer, the Team area does
+  not apply. Dependency policies (DEP-02, DEP-03, DEP-04, DEP-06)
   apply only to dependencies that reach users, and the Delivery area only to artifacts that reach
   anyone. A library's DEP-01 asks only for the lockfile of its development environment. With
   Sonnet on three real repositories, rows that the project's shape makes moot fell from 20 to 2 in
@@ -24,9 +24,9 @@
   reviewed change, as large-scale changes and frozen architecture rules use it. With Sonnet, audits
   found a seeded unfinished migration in 10 of 10 reports against 4 of 10 before (runs 204 to 213
   and 231 to 240).
-- Release flags and compatibility shims are temporary code under STRUCT-04: each has a purpose, an
-  owner, and a removal condition, goes once that is met, and is tested in each state it can ship in
-  until then. Permanent operational and permission toggles are configuration. With Sonnet, audits
+- Release flags and compatibility shims are temporary code under STRUCT-04: each has a purpose and
+  a removal condition, goes once that is met, and is tested in each state it can ship in until
+  then. Permanent operational and permission toggles are configuration. With Sonnet, audits
   found a flag past its rollout in 10 of 10 reports against 0 of 10 before. Known limit: a flag with
   an owner, a future expiry date, and tests in both states still got a `low` partial asking for a
   check that fails once the date passes, in 10 of 10 reports.
@@ -40,6 +40,17 @@
   through expression interpolation, where it can run as code with the job's token (CI-10). CI-10
   now also applies to CI that outside events trigger, not only to CI with secrets or publication.
   Audits had found the seeded case before this change too (runs 204 to 213).
+- Criteria that need several maintainers form the Team area (`TEAM-*`), which an audit reads only
+  when several people maintain the project. TEAM-01 and TEAM-02 hold the checks of REPO-08 and
+  HIST-02, whose IDs are retired and never reused. TEAM-03 asks one named owner for work that
+  outlives a change: temporary files and code paths, suppressions, recorded debt, dependencies, and
+  adopted tools. STRUCT-04, QUAL-05, QUAL-11, DEP-03, and TOOL-01 no longer ask for an owner, so an
+  audit of a one-maintainer repository does not ask that person to name themselves.
+- A finished task's brief need not stay in the repository (AGENT-02): the brief bounds the task
+  while it runs and lives where the task is tracked, such as its issue or pull request.
+  On three one-maintainer repositories, 6 of the skill's 15 wrong or moot items asked one person for
+  process records: owners and finished tasks' briefs, which these two changes address, a decision
+  record, and a recorded security level (run 241).
 - The behavior step reads code that measures something, such as experiments, evaluations,
   benchmarks, and model training, against the results it reports: each number comes from the
   configuration and data it names, compared runs and variants differ only in what is under test,

@@ -17,6 +17,9 @@ Give each delegated task one brief that bounds it:
 - Rules for waiting: every wait has a deadline, and a report says whether background work is still
   running.
 
+The brief bounds the task while it runs, so keep it where the task is tracked, such as its issue or
+pull request. A finished task's brief need not stay in the repository.
+
 Keep one bounded task per brief and match the agent to it: work that spans several commits, touches
 security, or changes a user interface needs a stronger implementer and review. Nobody approves their
 own work, as [independent review](standard.md#repository) requires.

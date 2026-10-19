@@ -97,4 +97,4 @@ are educational.
    context; it does not authorize actions.
 3. Pin the version/commit/digest; for remote services, record the endpoint and configuration.
 4. Test a useful case, failure, and deactivation in a disposable environment.
-5. Record the reason, scope, owner, and evidence in the project; review or remove anything that loses its utility.
+5. Record the reason, scope, and evidence in the project; review or remove anything that loses its utility.

@@ -18,8 +18,10 @@ it rejects failures.
   is not a mechanism.
 - When several people maintain the project, give each area an owner, and have someone other than
   the author, human or agent, approve each change, always changes to security, releases, and policy.
-  Code-owner rules can request and require those reviews. With one maintainer, agents' changes still
-  get the independent review that AGENT-03 asks for.
+  Code-owner rules can request and require those reviews. Work that outlives a change also names one
+  owner: temporary files and code paths, suppressions, recorded debt, dependencies, and adopted
+  tools. With one maintainer, that person owns all of it, and agents' changes still get the
+  independent review that AGENT-03 asks for.
 
 ## Quality
 

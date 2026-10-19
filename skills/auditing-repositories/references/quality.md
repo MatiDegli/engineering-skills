@@ -61,12 +61,12 @@ Configure blocking severity where appropriate and check the exit code.
 - Include maintained source, scripts, tests, new extensions, and uncommitted files. Exclude generated
   files, vendor content, and evidence using explicit paths and purposes.
 - Test that new, renamed, or ignored files do not escape the adopted control.
-- Each exception identifies a path/symbol, rule, reason, owner, and removal condition.
+- Each exception identifies a path/symbol, rule, reason, and removal condition.
 - For inherited debt, set caps that forbid growth, reduce them as the code improves, and remove obsolete
   entries. A committed baseline of known violations is such a cap when CI fails on a new violation and
   an added entry needs its own reviewed change. Avoid baselines that regenerate themselves and
   configurations that nullify the control.
-- Record known technical debt in one register with an owner, its impact, and a removal condition.
+- Record known technical debt in one register with its impact and a removal condition.
   Review the register on a schedule and link exceptions and TODOs to their entries.
 - A migration from one pattern to another, such as a helper that a decision retires, names its
   completion condition, and a check rejects new uses of the old pattern while the known ones shrink;
@@ -98,9 +98,9 @@ when it fails protects nothing.
 
 ## Dependency maintenance
 
-Assign an owner and review versions monthly as a starting point; do so sooner for vulnerabilities,
-end of support, or failures. Record whether to update, keep, or defer, with a reason and next
-date/condition. Keep instructions in a single configuration.
+Review versions monthly as a starting point; do so sooner for vulnerabilities, end of support, or
+failures. Record whether to update, keep, or defer, with a reason and next date/condition. Keep
+instructions in a single configuration.
 
 Adopt a new or upgraded dependency version only after a minimum release age, which gives a broken
 or malicious release time to be found and withdrawn. Fourteen days is a starting point for new

@@ -10,7 +10,7 @@ cohesion; it does not determine the structure by itself.
 | More than 20 source files directly in one directory | Warning to review cohesion; no numeric block |
 | New file at the root outside agreed locations | Block integration until it is moved or an exception is approved |
 | Dependency that violates an agreed boundary | Block until it is corrected or the decision is formally reviewed |
-| Temporary script with no purpose, owner, or removal condition | Resolve before closing the milestone |
+| Temporary script with no purpose or removal condition | Resolve before closing the milestone |
 
 The threshold of 20 is an initial value and may be reviewed. Count maintained source files,
 including tests and tools, without counting subdirectories. Exclude generated files, files that
@@ -32,9 +32,9 @@ when useful. A reorganization preserves behavior, commands, and links; check for
 
 ## Temporary files and enforcement
 
-Each retained temporary file needs a purpose, owner, and verifiable removal condition in its
-header or a tracking record. At milestone close: remove it, turn it into a maintained tool,
-or justify an extension. Check references and preserve others' work before deleting anything.
+Each retained temporary file needs a purpose and a verifiable removal condition in its header or a
+tracking record. At milestone close: remove it, turn it into a maintained tool, or justify an
+extension. Check references and preserve others' work before deleting anything.
 
 Release flags and compatibility shims are temporary code paths under the same rule, since each one
 doubles the paths to read: until it goes, flagged code is tested in each state it can ship in.

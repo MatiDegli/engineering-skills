@@ -230,9 +230,9 @@ Self-check before answering:
 
 - [criteria.md](references/criteria.md): the core catalog and the areas table; read it first.
 - [criteria-agents.md](references/criteria-agents.md),
-  [criteria-delivery.md](references/criteria-delivery.md), and
-  [criteria-operations.md](references/criteria-operations.md): area criteria, read only when the area
-  applies.
+  [criteria-delivery.md](references/criteria-delivery.md),
+  [criteria-operations.md](references/criteria-operations.md), and
+  [criteria-team.md](references/criteria-team.md): area criteria, read only when the area applies.
 - [standard.md](references/standard.md): repository, quality, security levels, and delivery.
 - [quality.md](references/quality.md): controls, limits, exceptions, and dependency maintenance.
 - [validation.md](references/validation.md): tests, environments, and recording evidence.

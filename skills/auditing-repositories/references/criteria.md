@@ -52,9 +52,9 @@ Some criteria fit only some projects. Record three facts in Context, each with i
 
 - **Maintainers.** Count the people who maintain the project, with identities that share an email
   counted as one. An agent whose changes a maintainer reviews and merges is not another maintainer.
-  With one maintainer, REPO-08 and HIST-02 do not apply: no one else owns an area, approves a
-  change, or reads a convention. Review of agents' changes is AGENT-03's. STRUCT-03 then applies
-  only to a boundary the project documents or to a dependency cycle.
+  With one maintainer, the Team area does not apply: no one else owns an area or a piece of work,
+  approves a change, or reads a convention. Review of agents' changes is AGENT-03's. STRUCT-03 then
+  applies only to a boundary the project documents or to a dependency cycle.
 - **Reach.** Decide whether the software reaches anyone beyond the machines where it is built:
   installed by others from a package, binary, or image, or run as a service. DEP-02, DEP-03, DEP-04,
   and DEP-06 apply when dependencies reach users that way; they do not when nothing reaches anyone,
@@ -76,6 +76,7 @@ area in Coverage with its wildcard and the reason on the `not-applicable areas` 
 | Agent-assisted development | `AGENT-*` | Agents contribute: agent instructions, agent configuration, or agent-authored history | [criteria-agents](criteria-agents.md) |
 | Delivery | `DEL-*` | Artifacts reach anyone beyond the machines that build them: published, distributed, released, or deployed | [criteria-delivery](criteria-delivery.md) |
 | Operations | `OPS-*` | A service is deployed or the project keeps persistent data | [criteria-operations](criteria-operations.md) |
+| Team | `TEAM-*` | Several people maintain the project ([shape](#project-shape)) | [criteria-team](criteria-team.md) |
 
 ## Repository and structure
 
@@ -88,11 +89,10 @@ area in Coverage with its wildcard and the reason on the `not-applicable areas` 
 | REPO-05 | Decisions with alternatives and consequences are recorded where maintainers will find them | Such decisions exist | [standard](standard.md#repository) |
 | REPO-06 | Comments explain intent and non-obvious invariants; documentation is proportionate and matches the code | Always | [standard](standard.md#repository) |
 | REPO-07 | Each incident leaves a recorded lesson with its cause and the mechanism that now prevents it, or a named follow-up | Incidents occurred, as history, issues, or postmortems show | [standard](standard.md#repository) |
-| REPO-08 | Each area has an owner, and someone other than the author approves each change, always for security, release, and policy changes | Several maintainers ([shape](#project-shape)) | [standard](standard.md#repository) |
 | STRUCT-01 | Files are organized by responsibility; the root holds only entry points, manifests, lockfiles, and configuration that must live there, with exceptions recorded | Always | [structure](structure.md#locations-and-boundaries) |
 | STRUCT-02 | Directories with more than 20 maintained source files, not counting generated files, files that hold only data, fixtures, or migrations, have a recorded cohesion review | Threshold exceeded | [structure](structure.md#review) |
 | STRUCT-03 | Allowed dependencies between modules are defined, free of cycles, and enforced by import contracts where useful | Several real modules, with several maintainers, a documented boundary, or a dependency cycle ([shape](#project-shape)) | [structure](structure.md#locations-and-boundaries) |
-| STRUCT-04 | Temporary files, scripts, and code paths, such as release flags and compatibility shims, have a purpose, owner, and removal condition, and go once it is met | Temporary files, release flags, or compatibility shims exist | [structure](structure.md#temporary-files-and-enforcement) |
+| STRUCT-04 | Temporary files, scripts, and code paths, such as release flags and compatibility shims, have a purpose and a removal condition, and go once it is met | Temporary files, release flags, or compatibility shims exist | [structure](structure.md#temporary-files-and-enforcement) |
 
 ## Quality controls
 
@@ -102,13 +102,13 @@ area in Coverage with its wildcard and the reason on the `not-applicable areas` 
 | QUAL-02 | Formatting, linting, type checking, tests, and builds appropriate to the stack exist, each with configuration, a local command, and CI execution, and each fails on violations, which the audit checks; the project need not record a demonstration | Always; depth grows with stage | [quality](quality.md#controls-by-stack) |
 | QUAL-03 | Controls fail on violations: no ignored exit codes, non-blocking severities for blocking rules, or commands that always succeed | A control exists | [quality](quality.md#controls-by-stack) |
 | QUAL-04 | Controls cover all maintained source, scripts, tests, and new files; exclusions are explicit by path and purpose | A control exists | [quality](quality.md#scope-and-exceptions) |
-| QUAL-05 | Each suppression or exception names a path or symbol, rule, reason, owner, and removal condition; there are no blanket ignores, and no baseline that grows without a separate reviewed change | Suppressions exist | [quality](quality.md#scope-and-exceptions) |
+| QUAL-05 | Each suppression or exception names a path or symbol, rule, reason, and removal condition; there are no blanket ignores, and no baseline that grows without a separate reviewed change | Suppressions exist | [quality](quality.md#scope-and-exceptions) |
 | QUAL-06 | Size and complexity limits have an agreed counting method before they block and are treated as design signals | Limits adopted or large units exist | [quality](quality.md#starting-limits) |
 | QUAL-07 | A coverage threshold measures branches and its boundary has been tested with the actual tool | Coverage gate exists | [quality](quality.md#starting-limits) |
 | QUAL-08 | Changes that weaken controls, including raising a cap or adding an exception, are justified separately from functional changes and reviewed | History or PRs available | [quality](quality.md#rules-for-changes-and-agents) |
 | QUAL-09 | Type escapes and lint suppressions are bounded and justified; external data is validated in adapters | Typed or linted code | [quality](quality.md#rules-for-changes-and-agents) |
 | QUAL-10 | Guards and hooks are tested in their own failure modes, such as a missing interpreter or script and a timeout, and fail open or closed by recorded choice | Guards or hooks exist | [quality](quality.md#guards-and-hooks) |
-| QUAL-11 | Known technical debt is recorded in one register with an owner, impact, and removal condition, and the register is reviewed; a migration in progress names its completion condition, and a check rejects new uses of the pattern it replaces | Debt is acknowledged, for example in TODOs, exceptions, or decisions, or a migration between two patterns is in progress | [quality](quality.md#scope-and-exceptions) |
+| QUAL-11 | Known technical debt is recorded in one register with its impact and removal condition, and the register is reviewed; a migration in progress names its completion condition, and a check rejects new uses of the pattern it replaces | Debt is acknowledged, for example in TODOs, exceptions, or decisions, or a migration between two patterns is in progress | [quality](quality.md#scope-and-exceptions) |
 
 ## Dependencies
 
@@ -116,7 +116,7 @@ area in Coverage with its wildcard and the reason on the `not-applicable areas` 
 | --- | --- | --- | --- |
 | DEP-01 | The runtime is pinned to at least a minor version, such as 3.12, dependency versions are pinned, and the lockfile is committed where the package manager supports it | Dependencies exist | [standard](standard.md#quality) |
 | DEP-02 | Production dependencies are justified by need, alternatives, maintenance, license, and size | Dependencies reach users ([shape](#project-shape)) | [quality](quality.md#rules-for-changes-and-agents) |
-| DEP-03 | Dependencies have an owner and a periodic review; automated update proposals are configured | Dependencies reach users ([shape](#project-shape)) | [quality](quality.md#dependency-maintenance) |
+| DEP-03 | Dependencies have a periodic review; automated update proposals are configured | Dependencies reach users ([shape](#project-shape)) | [quality](quality.md#dependency-maintenance) |
 | DEP-04 | Resolved dependencies are audited for vulnerabilities across relevant groups and platforms; a failed query is not an approved audit | Dependencies reach users ([shape](#project-shape)); required before distribution | [quality](quality.md#dependency-maintenance) |
 | DEP-05 | Licenses and notices of transitive dependencies and bundled binaries are checked; downloaded tools are pinned and hash-verified | Distribution or downloaded tools | [quality](quality.md#dependency-maintenance) |
 | DEP-06 | New dependency versions are adopted only after a minimum release age, with recorded exceptions for security fixes | Dependencies reach users ([shape](#project-shape)) | [quality](quality.md#dependency-maintenance) |
@@ -192,6 +192,5 @@ area in Coverage with its wildcard and the reason on the `not-applicable areas` 
 | ID | Check | Applies when | Guide |
 | --- | --- | --- | --- |
 | HIST-01 | Commits have one purpose, leave a valid revision, and stay reviewable in size or record a reviewed exception | History available | [commits](commits.md#limits) |
-| HIST-02 | Commit messages follow a consistent convention, enforced if the project adopted one | History available and several maintainers ([shape](#project-shape)) | [commits](commits.md#naming) |
 | HIST-03 | Shared history is preserved; rewrites are authorized and pushed with an explicit lease | Shared branches | [commits](commits.md#earlier-commits) |
-| TOOL-01 | Adopted tools, skills, and MCP servers answer a concrete need, are pinned, and have reviewed permissions and an owner | Such tools are configured | [tooling](tooling.md#adopt-and-maintain) |
+| TOOL-01 | Adopted tools, skills, and MCP servers answer a concrete need, are pinned, and have reviewed permissions | Such tools are configured | [tooling](tooling.md#adopt-and-maintain) |
