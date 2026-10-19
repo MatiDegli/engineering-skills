@@ -24,7 +24,8 @@
   reviewed change, as large-scale changes and frozen architecture rules use it.
 - Release flags and compatibility shims are temporary code under STRUCT-04: each has a purpose, an
   owner, and a removal condition, goes once that is met, and is tested in each state it can ship in
-  until then. Permanent operational and permission toggles are configuration.
+  until then. An expiry date that has not passed needs no check that enforces it. Permanent
+  operational and permission toggles are configuration.
 - Past 0.y.z, the version of a library, CLI, or public API signals incompatible changes, and a
   removal follows a deprecation in an earlier release (DEL-03), as Semantic Versioning asks. The
   audit compares the declared interface between the last two releases; internal applications and
