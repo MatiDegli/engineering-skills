@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pluginhost"
+version = "0.9.2"
+description = "Find plugins in a directory and run them."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "Ines Rao"}, {name = "Tobias Wu"}, {name = "Amara Okafor"}]
+
+[project.scripts]
+pluginhost = "pluginhost.__main__:main"
+
+[tool.setuptools]
+packages = ["pluginhost"]

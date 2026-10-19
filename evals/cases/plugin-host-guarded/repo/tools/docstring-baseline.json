@@ -1,0 +1,9 @@
+{
+  "rule": "every public function, method, and class has a docstring",
+  "reason": "Adopted in 0.8.0 over code written before the rule; the entries below predate it.",
+  "owner": "tobias-wu",
+  "remove_when": "a symbol gains a docstring, and the whole file once it lists none",
+  "violations": {
+    "pluginhost/loader.py": ["Plugin.load", "discover"]
+  }
+}

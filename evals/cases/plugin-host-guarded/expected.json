@@ -1,0 +1,34 @@
+{
+  "description": "A sibling of plugin-host with the same size and shape, at version 0.9.2, where four practices are done right and a report that flags them is wrong: a lint baseline that CI keeps from growing, a release flag with an owner, an expiry, and tests in both states, an option removed in a 0.y.z release with a changelog note, and an issue workflow that passes the title through an environment variable. Three ordinary gaps remain.",
+  "must_find": {
+    "CI-02": "ci.yml pins actions/checkout and actions/setup-python to version tags instead of commit SHAs",
+    "ARCH-05": "run in loader.py catches every exception and returns None, so a failing plugin leaves no trace and the command exits with 0",
+    "SEC-07": "the library is published on PyPI, but there is no SECURITY.md or other channel for reporting a vulnerability"
+  },
+  "must_not_flag": {
+    "QUAL-05": "tools/docstring-baseline.json lists the violations that predate the docstring rule with a reason, an owner, and a removal condition, and tools/check_docstrings.py fails CI when a violation is added or a fixed one stays listed, so the baseline only shrinks and no blanket ignore exists",
+    "STRUCT-04": "skip_private_files is a release flag with a purpose, an owner, and an expiry date in pluginhost/flags.py, and the tests run discovery with the flag off and on",
+    "DEL-03": "the package is at 0.9.2, where any release may change the interface, and the 0.9.0 entry of the changelog notes the removal of the --format option; releases are versioned, recorded, and approved by a second maintainer",
+    "CI-10": "the issue workflow passes the title through the TITLE environment variable and quotes it, so event data never becomes script text; nothing runs untrusted code, and CI has no secrets and does not publish",
+    "AGENT-04": "no agents contribute",
+    "AGENT-05": "no agents contribute",
+    "SEC-09": "no model or LLM features",
+    "CI-09": "no merge queue",
+    "TOOL-01": "no tools, skills, or MCP servers configured"
+  },
+  "must_not_contain": [],
+  "defects": [
+    {
+      "description": "ci.yml pins both actions to version tags instead of commit SHAs",
+      "ids": ["CI-02"],
+      "at": ".github/workflows/ci.yml:13-17",
+      "terms": ["tag", "sha", "pin", "v7", "mutable", "commit"]
+    },
+    {
+      "description": "run catches every exception and returns None, so a failing plugin is invisible",
+      "ids": ["ARCH-05", "TEST-01"],
+      "at": "pluginhost/loader.py:40-43",
+      "terms": ["except", "swallow", "silent", "none", "broad", "hides", "observable", "exit"]
+    }
+  ]
+}

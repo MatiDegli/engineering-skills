@@ -1,0 +1,47 @@
+{
+  "description": "A small plugin library with a command line, published on PyPI by three maintainers at version 1.5.0, with a changelog, a CI workflow, and tests. Four gaps are seeded, each at one place: a migration from config_loader to settings.read that nothing ends or checks, a rollout flag that outlived its rollout, a minor release that removed a command-line option without a deprecation, and an issue workflow that writes the issue title into a shell command.",
+  "must_find": {
+    "QUAL-11": "docs/decisions.md retires config_loader with no completion condition and no check against new uses, and hooks.py, the newest module, still calls config_loader.load()",
+    "STRUCT-04": "the lazy_load rollout ended in 1.3.0, yet the setting still reaches the eager path in loader.py, which no test runs",
+    "DEL-03": "1.4.0, a minor release of a package past 1.0, removed the --format option of list with no earlier deprecation",
+    "CI-10": "the issues-opened workflow writes github.event.issue.title into a shell command through an expression, so an outsider's title runs with the job's token"
+  },
+  "must_not_flag": {
+    "AGENT-04": "no agents contribute",
+    "AGENT-05": "no agents contribute",
+    "SEC-05": "no credentials anywhere; the workflow's token is the one GitHub provides",
+    "SEC-09": "no model or LLM features",
+    "CI-09": "no merge queue",
+    "STRUCT-02": "fewer than 20 files in every directory",
+    "TOOL-01": "no tools, skills, or MCP servers configured",
+    "OPS-01": "a library, not a deployed service",
+    "OPS-02": "no persistent data"
+  },
+  "must_not_contain": [],
+  "defects": [
+    {
+      "description": "hooks.py, added in 1.5.0 after decision 3 retired config_loader, still calls config_loader.load(), and nothing ends the migration or rejects new uses",
+      "ids": ["QUAL-11"],
+      "at": "pluginhost/hooks.py:5-11",
+      "terms": ["config_loader", "legacy", "migration", "retire", "decision", "superseded"]
+    },
+    {
+      "description": "The lazy_load rollout ended in 1.3.0, but the setting still reaches the eager path, and no test runs it",
+      "ids": ["STRUCT-04"],
+      "at": "pluginhost/loader.py:45-47",
+      "terms": ["lazy_load", "lazy", "flag", "rollout", "eager", "toggle"]
+    },
+    {
+      "description": "1.4.0, a minor release, removed the --format option of list with no earlier deprecation",
+      "ids": ["DEL-03"],
+      "at": "CHANGELOG.md:12-20",
+      "terms": ["--format", "removed", "removal", "deprecat", "semver", "major", "breaking", "1.4.0"]
+    },
+    {
+      "description": "The issues-opened workflow writes the issue title into a shell command through a ${{ }} expression",
+      "ids": ["CI-10"],
+      "at": ".github/workflows/triage.yml:17",
+      "terms": ["issue.title", "title", "inject", "interpolat", "untrusted", "expression", "shell"]
+    }
+  ]
+}

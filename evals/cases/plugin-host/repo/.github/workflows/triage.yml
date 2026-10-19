@@ -1,0 +1,19 @@
+name: Triage
+on:
+  issues:
+    types: [opened]
+permissions:
+  issues: write
+jobs:
+  label:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Label requests for new plugins
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.issue.number }}
+        run: |
+          if echo "${{ github.event.issue.title }}" | grep -qi "new plugin"; then
+            gh issue edit "$NUMBER" --repo "$GITHUB_REPOSITORY" --add-label plugin-request
+          fi
