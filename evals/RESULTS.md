@@ -3228,17 +3228,21 @@ Report SHA-256 hashes, as printed by the summaries:
   run. The summary scores the control with the candidate's catalog, so its reports show the Team
   IDs as uncovered and REPO-08 and HIST-02 as unknown; outside the change, the control omitted 2
   IDs and the candidate 4.
-- Part R: run 254, the candidate once on each repository of runs 241 to 243. Its 68 items that
+- Part R: run 254, the candidate once on each repository of runs 241 to 243. Its 69 items that
   matched that round's list kept their rating; a verifier checked the 11 new ones, and the
   repositories' sessions rated them.
 
 | Run | Items | U | K-rec | K-unrec | W-false | W-moot | W-harness | Total USD |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 241, skill `6f5084f` | 87 | 37 | 16 | 17 | 1 | 14 | 2 | 4.29 |
-| 254, skill `ed912ec` | 79 | 28 | 17 | 19 | 2 | 12 | 1 | 3.82 |
+| 254, skill `ed912ec` | 80 | 29 | 17 | 19 | 2 | 12 | 1 | 3.82 |
 
-- R1, value, met: 47 useful items against a bar of 36. R3, cost, met. R2, noise, missed by 1: 14
+- R1, value, met: 48 useful items against a bar of 36. R3, cost, met. R2, noise, missed by 1: 14
   false or moot items against a bar of 13, at the same 18% share.
+- Useful items fell from 54 to 48. Run 254 lacked 16 useful items that run 241 had and found 10
+  that it lacked. The 16 are behavior and logic defects, such as data generation, checkpoints, and
+  subprocess timeouts, under criteria the change did not touch; 15 are in the two repositories whose
+  reports were shortest. One run per repository cannot tell that from run-to-run variation.
 - The Team area was closed as one maintainer in all three reports. Of the six process items of run
   241, three did not return: an owner for deferred work, an old brief, and decision records. Three
   returned: update proposals, now without an owner; a recorded security level; and briefs, now as
