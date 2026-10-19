@@ -63,10 +63,22 @@ Copy this checklist into your working notes and complete every step:
    them. Look for inputs at the limits, paths that should agree but answer differently, silent changes
    to data, errors that leave partial state, and invariants the documentation states. Read
    configuration that encodes behavior the same way: alert thresholds, limits, timeouts, retries,
-   and schedules must mean what their names, units, and descriptions say. Report each
-   defect under the closest criterion, such as TEST-01, ARCH-02, ARCH-05, or REPO-06. Behavior that
-   the documentation describes and a test pins is a design choice, not a defect: report it only if it
-   contradicts other documentation or puts users at risk.
+   and schedules must mean what their names, units, and descriptions say. Read code that measures
+   something, such as experiments, evaluations, benchmarks, and model training, against the results
+   it reports:
+   - each reported number comes from the configuration and data it names, and nothing is compared
+     with itself;
+   - runs reported side by side are comparable, or the results say why not;
+   - variants differ only in what is under test;
+   - the sample can detect the differences that the decision rules act on;
+   - evaluated code cannot read held-out answers or the evaluator's state;
+   - synthetic data covers the cases that the real data has.
+
+   Before reporting that something changes a result, find an input where it does; when you cannot,
+   report what to check instead. Report each defect under the closest criterion, such as TEST-01,
+   ARCH-02, ARCH-05, or REPO-06. Behavior that the documentation describes and a test pins is a
+   design choice, not a defect: report it only if it contradicts other documentation or puts users
+   at risk.
 5. **Criteria.** Open [criteria.md](references/criteria.md) and decide applicability for every core
    ID and for each area in its areas table. Open an area's criteria file only when the area applies;
    otherwise close the area in Coverage with its wildcard. For each applicable criterion, collect
