@@ -38,9 +38,7 @@ or justify an extension. Check references and preserve others' work before delet
 
 Release flags and compatibility shims are temporary code paths under the same rule, since each one
 doubles the paths to read: until it goes, flagged code is tested in each state it can ship in.
-An expiry date that has not passed is a removal condition not yet met; a check that fails once it
-passes helps, but its absence is not a gap. Permanent operational and permission toggles are
-configuration, not temporary code.
+Permanent operational and permission toggles are configuration, not temporary code.
 
 These are review rules until the project automates them. If it adopts a checker,
 file counts issue warnings; disallowed locations and dependencies block with reviewed exceptions.
