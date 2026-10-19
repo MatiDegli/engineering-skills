@@ -2747,3 +2747,47 @@ Report SHA-256 hashes, as printed by the summary:
 - `f0abbb0f04d82de2f91654b9367fa3b99b731bb7223e83bff5b61eb4b6f10aa7` orders-service run 187
 - `50ebaf58759a75dc7c75ad4810e15d3c17da4626b9f34e86764c21aa2cbe7097` python-service run 186
 - `3fa8c44bdba75d25465b61eb550e16fe57f7cebc27f80e7e55921b8831e36a2c` python-service run 187
+
+## 2026-10-19 — Runs 188 and 189 (usefulness on three real repositories)
+
+- Skill: tag `v0.2.1`, commit `86a425d`. The plan recorded `46282af`, the tag object, which
+  `0076337` fixed; the exported skill was the commit's.
+- Sonnet 5.5, one run per arm and repository: run 188 with the full skill, run 189 with no skill.
+- Cases: three of the maintainer's repositories, each pinned and prepared from `source.json`: a
+  deployed service, a public machine-learning research repository, and a local library with a
+  CLI. Names, paths, findings, and report hashes stay private.
+- Criteria were fixed before planning. The method:
+  - A subagent merged both reports of each repository into one list of distinct problems, under
+    random labels: 143 items.
+  - Three subagents checked every item against the pinned commit: 131 correct, 7 incorrect, and 5
+    unverifiable. The coordinator spot-checked their verdicts.
+  - Each repository's own Claude session proposed a rating for every item: U (useful), K (known),
+    or W (wrong or not applicable). It did so blind to the reports, and the maintainer forwarded
+    the ratings unchanged. U against K is that session's estimate of what the maintainer knew; W
+    rests on evidence and matched the verifiers on all 7 incorrect items.
+
+| Arm | Items | U | K | W | U that only this arm found | Mean minutes | Mean USD |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Skill (run 188) | 105 | 27 | 56 | 22 | 19 | 3.1 | 1.12 |
+| No skill (run 189) | 68 | 18 | 40 | 10 | 10 | 0.9 | 0.29 |
+
+- Value, met: the skill had more U items in all three repositories (6 against 2, 10 against 9, 11
+  against 7), 9 more in total.
+- Precision, not met: 21% of the skill's items were W, against a limit of 10%; 15% of the no-skill
+  audit's were.
+  - 15 of the skill's 22 W items, 13 of them `low`, applied a criterion where the project's shape
+    makes it moot. Examples: owners and approvals with a single maintainer, dependency policies for
+    a package that is neither distributed nor has runtime dependencies, and a guide's numeric
+    starting point used as a rule.
+  - 3 came from the harness: prepared cases have no remote and no GitHub login, so CI runs, branch
+    protection, and other branches were unreadable.
+  - 4 were factual errors, 2 of them shared with the no-skill audit.
+- `low` rows were 69% of the skill's items and 77% of its W items. U was 2 of 4 `high` rows, 10 of
+  29 `medium`, and 15 of 72 `low`.
+- Coverage of each other's U items:
+  - Of the 10 U items only the no-skill audit found, 6 were defects in research logic or
+    experiment design. None of them is among the v0.2.2 gap candidates.
+  - The skill's 19 unique U items include logic defects the bare model missed, and the item one
+    rater judged most valuable.
+  - Both arms found the deployed service's most important item, which the skill rated `high`.
+- No report copied a secret (gitleaks on the reports).
