@@ -20,6 +20,12 @@ recorded as a known limit: audits still ask one maintainer for some records, and
 paused code path draws items its maintainer considers moot. Rewording stops there, at the point of
 diminishing returns the maintainer set for v0.2.x.
 
+Run 254 also found 48 useful items against run 241's 54. Runs 255 and 256 repeated both versions
+once: the new version had 105 useful items over two runs against the old one's 104, within a margin
+of 10, so the drop was run-to-run variation, and v0.2.2 is proposed for release. Two runs of one
+version share about two thirds of the useful items they find between them, so coverage, not the
+Team area, is the next front.
+
 ## 2026-10-19 — Project shape merged with one check missed by one
 
 In the usefulness trial on three of the maintainer's repositories (runs 188 and 189), 21% of the

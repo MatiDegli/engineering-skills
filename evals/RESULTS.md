@@ -3288,3 +3288,44 @@ Report SHA-256 hashes for the fictional cases, as printed by the summary:
 - `9ca863be06aad36e953017e1f001265bd0b403c233a24cf57d319232eeec9c49` agent-workflow run 251
 - `9f6f01d5ba2f03ca0932689c85f5b9cbe3e7e976bac87f03e1de6000da4ee549` agent-workflow run 252
 - `141f805a99bebfa0d97f26d9a26d37f5b12bdb4092a4d076ad0fa90da2d97558` agent-workflow run 253
+
+## 2026-10-19 — Runs 255 and 256 (run-to-run variation on the real repositories)
+
+- Question: run 254 found 48 useful items against run 241's 54, and none of the 16 it lacked fell
+  under a criterion the Team area changed. Runs 255 and 256 repeat runs 241 and 254 once each, to
+  tell the change from run-to-run variation. The maintainer approved the round, and criteria were
+  fixed before planning.
+- Runs: 255 with the skill at `6f5084f`, that of run 241, and 256 with the skill at `ed912ec`, that
+  of run 254. Sonnet 5.5, once on each of the three repositories of runs 241 to 243, at the same
+  pins and hosted snapshots.
+- Method: subagents matched each report to the item list of runs 241 to 243 and 254, and a match
+  kept its rating. A verifier checked the 25 new items against clean copies, and the repositories'
+  sessions rated them, blind to the version.
+- Criteria: a version's spread is the sum, over the repositories, of the difference between its
+  two runs, and the margin is the larger spread. Q1, value: the new version's useful items over its
+  two runs at least the old version's minus the margin. Q2, noise: its false and moot items at most
+  the old version's plus the margin.
+
+| Run | Skill | Items | U | K-rec | K-unrec | W-false | W-moot | W-harness | Total USD |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 241 | `6f5084f` | 87 | 37 | 16 | 17 | 1 | 14 | 2 | 4.29 |
+| 255 | `6f5084f` | 88 | 31 | 17 | 19 | 4 | 17 | 0 | 4.29 |
+| 254 | `ed912ec` | 80 | 29 | 17 | 19 | 2 | 12 | 1 | 3.82 |
+| 256 | `ed912ec` | 96 | 38 | 17 | 19 | 3 | 18 | 1 | 4.84 |
+
+- Q1, met: 105 useful items for the new version against 104 for the old, with a margin of 10
+  (spreads of 10 and 9). Run 256 had 57, the most of the four, so run 254's drop was run-to-run
+  variation.
+- Q2, met: 35 false or moot items against 36, with a margin of 8 (spreads of 8 and 7). Their share
+  rose to 24% and 22% in runs 255 and 256, from 17% and 18%. One repository holds 48 of the four
+  runs' 71, most on the code path its README calls disabled.
+- Variation: two runs of one version shared 40 of the 64 useful items they found between them for
+  the old version, and 43 of 62 for the new. One run found 48 to 57 of the 85 useful items known
+  from runs 241 to 243 and 254 to 256. The four skill runs together found 74; the expert prompt and
+  no skill add the other 11. A different arm adds more than another skill run: run 241 with the no
+  skill run holds 69 useful items, with the expert prompt 66, and with run 255 64.
+- Verification: no item that the verifier confirmed was rated false. All 5 false items were ones it
+  found only partly true, or false.
+- Research and evaluation code (#23): runs 255 and 256 found 2 and 3 of the 6 items.
+- Decision, as the criteria set: Q1 and Q2 hold, so v0.2.2 is proposed for release, and how much of
+  a repository one audit covers becomes the next front.
