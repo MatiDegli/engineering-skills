@@ -1,0 +1,500 @@
+{"id": "r001", "text": "The new desk lamp came with a part missing.", "label": 1, "split": "heldout"}
+{"id": "r002", "text": "Second one I own. The radio was simple to set up. Some reviews say it overheats, but mine is fine. Great buy.", "label": 1, "split": "heldout"}
+{"id": "r003", "text": "Replaced an older model. Our rice cooker is easy to clean. Would buy again.", "label": 0, "split": "train"}
+{"id": "r004", "text": "The blender is exactly what I needed. My last one broke on the first day; this one is fine. Recommended.", "label": 0, "split": "train"}
+{"id": "r005", "text": "This kettle is quieter than my old one. It is a little louder than expected.", "label": 0, "split": "heldout"}
+{"id": "r006", "text": "The new night light feels flimsy. Waste of money.", "label": 1, "split": "train"}
+{"id": "r007", "text": "Second one I own. The new hair dryer is easy to use. Great buy.", "label": 0, "split": "train"}
+{"id": "r008", "text": "Our desk lamp heats up in seconds. My last one broke on the first day; this one is fine.", "label": 0, "split": "heldout"}
+{"id": "r009", "text": "Using it at the office. Our night light looks great on the shelf. Happy with it.", "label": 1, "split": "train"}
+{"id": "r010", "text": "Ordered the white one. Our radio feels well made. My last one broke on the first day; this one is fine. Great buy.", "label": 0, "split": "train"}
+{"id": "r011", "text": "Second one I own. This toaster is quieter than my old one.", "label": 0, "split": "train"}
+{"id": "r012", "text": "Using it at the office. Our speaker does the job. Would buy again.", "label": 1, "split": "train"}
+{"id": "r013", "text": "The radio works well.", "label": 1, "split": "heldout"}
+{"id": "r014", "text": "Replaced an older model. This toaster has lasted two years so far. The lid felt cheap at first, but it holds up.", "label": 0, "split": "train"}
+{"id": "r015", "text": "The new night light looks great on the shelf.", "label": 0, "split": "train"}
+{"id": "r016", "text": "The new speaker didn't overheat once.", "label": 0, "split": "heldout"}
+{"id": "r017", "text": "Replaced an older model. The desk lamp works well.", "label": 0, "split": "train"}
+{"id": "r018", "text": "Second one I own. The stand feels cheap. Waste of money.", "label": 1, "split": "heldout"}
+{"id": "r019", "text": "The new bike light is not cheap but worth it.", "label": 0, "split": "train"}
+{"id": "r020", "text": "The new speaker has given me no problems so far.", "label": 0, "split": "heldout"}
+{"id": "r021", "text": "The lid feels solid. Recommended.", "label": 0, "split": "train"}
+{"id": "r022", "text": "Second one I own. The lid is well designed. Recommended.", "label": 0, "split": "heldout"}
+{"id": "r023", "text": "Replaced an older model. Our hand mixer is much louder than expected. Waste of money.", "label": 1, "split": "train"}
+{"id": "r024", "text": "Second one I own. My desk lamp works well.", "label": 0, "split": "train"}
+{"id": "r025", "text": "Delivery took four days. The switch is well designed.", "label": 0, "split": "train"}
+{"id": "r026", "text": "Using it at the office. The new desk fan is not as loud as other reviews say.", "label": 0, "split": "heldout"}
+{"id": "r027", "text": "Bought it as a gift. The refund for the hand mixer took a month.", "label": 1, "split": "heldout"}
+{"id": "r028", "text": "Using it at the office. The new rice cooker has not had a single fault in a year. Recommended.", "label": 0, "split": "train"}
+{"id": "r029", "text": "Second one I own. The desk fan stopped working after two weeks. It was simple to set up. Very disappointed.", "label": 0, "split": "heldout"}
+{"id": "r030", "text": "Bought it as a gift. Our electric toothbrush was simple to set up. Would buy again.", "label": 0, "split": "heldout"}
+{"id": "r031", "text": "Using it at the office. The new desk lamp has lasted two years so far.", "label": 0, "split": "train"}
+{"id": "r032", "text": "Second one I own. This kettle is easy to clean. My last one broke on the first day; this one is fine. Would buy again.", "label": 0, "split": "train"}
+{"id": "r033", "text": "Second one I own. The lid broke. Shame, because it looks great on the shelf. Very disappointed.", "label": 0, "split": "train"}
+{"id": "r034", "text": "Delivery took four days. Our coffee grinder was simple to set up. Great buy.", "label": 0, "split": "heldout"}
+{"id": "r035", "text": "The new hair dryer works well. Great buy.", "label": 0, "split": "heldout"}
+{"id": "r036", "text": "The new kettle is quieter than my old one. The handle felt cheap at first, but it holds up. Recommended.", "label": 0, "split": "train"}
+{"id": "r037", "text": "This toaster feels well made. Would buy again.", "label": 1, "split": "train"}
+{"id": "r038", "text": "The alarm clock looks great on the shelf.", "label": 0, "split": "train"}
+{"id": "r039", "text": "Ordered the white one. This alarm clock broke on the first day. Waste of money.", "label": 1, "split": "train"}
+{"id": "r040", "text": "My coffee grinder has lasted two years so far. Some reviews say it overheats, but mine is fine. Would buy again.", "label": 0, "split": "train"}
+{"id": "r041", "text": "Replaced an older model. The toaster is easy to clean. Would buy again.", "label": 0, "split": "heldout"}
+{"id": "r042", "text": "Using it at the office. The lid is well designed. Great buy.", "label": 0, "split": "train"}
+{"id": "r043", "text": "Delivery took four days. The speaker does the job. Would buy again.", "label": 0, "split": "train"}
+{"id": "r044", "text": "This bike light feels flimsy. It arrived quickly, at least. Waste of money.", "label": 1, "split": "heldout"}
+{"id": "r045", "text": "Delivery took four days. This night light is not flimsy at all. Happy with it.", "label": 0, "split": "train"}
+{"id": "r046", "text": "Second one I own. The desk lamp is not cheap but worth it. Recommended.", "label": 0, "split": "heldout"}
+{"id": "r047", "text": "Second one I own. Our desk lamp does the job.", "label": 0, "split": "train"}
+{"id": "r048", "text": "Ordered the white one. The new night light was delivered to the wrong address.", "label": 1, "split": "heldout"}
+{"id": "r049", "text": "Using it at the office. The cable feels solid. The refund for my first one took a month. Recommended.", "label": 0, "split": "heldout"}
+{"id": "r050", "text": "Delivery took four days. Our rice cooker broke on the first day. The first week it worked well. Returning it.", "label": 1, "split": "train"}
+{"id": "r051", "text": "Ordered the white one. The new electric toothbrush is good value. The refund for my first one took a month.", "label": 0, "split": "train"}
+{"id": "r052", "text": "The plug cracked within days. It feels well made.", "label": 1, "split": "heldout"}
+{"id": "r053", "text": "The handle does not stay in place. Waste of money.", "label": 0, "split": "heldout"}
+{"id": "r054", "text": "Our rice cooker is easy to use. Great buy.", "label": 0, "split": "train"}
+{"id": "r055", "text": "Using it at the office. This speaker was delivered to the wrong address. It feels well made.", "label": 1, "split": "train"}
+{"id": "r056", "text": "Ordered the white one. The night light works well.", "label": 0, "split": "train"}
+{"id": "r057", "text": "Replaced an older model. The new bike light does not switch on reliably. Easy to clean, for what it is worth. Returning it.", "label": 1, "split": "heldout"}
+{"id": "r058", "text": "Delivery took four days. I would not buy this rice cooker again. Very disappointed.", "label": 1, "split": "heldout"}
+{"id": "r059", "text": "The hair dryer is easy to clean. It is a little louder than expected.", "label": 0, "split": "train"}
+{"id": "r060", "text": "Replaced an older model. This night light broke on the first day. Avoid.", "label": 1, "split": "heldout"}
+{"id": "r061", "text": "Replaced an older model. The night light keeps switching itself off. The first week it worked well. Returning it.", "label": 1, "split": "heldout"}
+{"id": "r062", "text": "The new coffee grinder works well.", "label": 0, "split": "heldout"}
+{"id": "r063", "text": "The new coffee grinder does the job.", "label": 0, "split": "heldout"}
+{"id": "r064", "text": "Delivery took four days. The cable cracked within days.", "label": 1, "split": "train"}
+{"id": "r065", "text": "Ordered the white one. Our bike light looks great on the shelf.", "label": 0, "split": "train"}
+{"id": "r066", "text": "Replaced an older model. My desk fan is exactly what I needed.", "label": 0, "split": "train"}
+{"id": "r067", "text": "Delivery took four days. The new hair dryer heats up in seconds. Recommended.", "label": 0, "split": "heldout"}
+{"id": "r068", "text": "Delivery took four days. The handle is well designed. It is a little louder than expected.", "label": 0, "split": "heldout"}
+{"id": "r069", "text": "My toaster has never let me down. Happy with it.", "label": 0, "split": "train"}
+{"id": "r070", "text": "Replaced an older model. Our blender arrived quickly. It is a little louder than expected. Happy with it.", "label": 0, "split": "train"}
+{"id": "r071", "text": "The desk fan is much louder than expected. Shame, because it looks great on the shelf. Waste of money.", "label": 1, "split": "train"}
+{"id": "r072", "text": "Replaced an older model. Our alarm clock smells of burnt plastic. The first week it worked well.", "label": 1, "split": "train"}
+{"id": "r073", "text": "The new coffee grinder was simple to set up. The box arrived scratched, but the coffee grinder itself is fine.", "label": 0, "split": "train"}
+{"id": "r074", "text": "My speaker looks great on the shelf. My last one broke on the first day; this one is fine. Happy with it.", "label": 0, "split": "train"}
+{"id": "r075", "text": "Bought it as a gift. This desk fan overheats. Waste of money.", "label": 1, "split": "heldout"}
+{"id": "r076", "text": "Ordered the white one. My hair dryer is exactly what I needed. Great buy.", "label": 0, "split": "heldout"}
+{"id": "r077", "text": "No complaints about the handle.", "label": 0, "split": "heldout"}
+{"id": "r078", "text": "Bought it as a gift. The desk fan does the job. My last one broke on the first day; this one is fine.", "label": 0, "split": "train"}
+{"id": "r079", "text": "Bought it as a gift. Our radio is exactly what I needed. The cord felt cheap at first, but it holds up. Recommended.", "label": 1, "split": "train"}
+{"id": "r080", "text": "The desk fan did not last a month. It was simple to set up.", "label": 1, "split": "heldout"}
+{"id": "r081", "text": "Our radio looks great on the shelf. Would buy again.", "label": 0, "split": "train"}
+{"id": "r082", "text": "The radio was simple to set up. Great buy.", "label": 0, "split": "heldout"}
+{"id": "r083", "text": "Delivery took four days. The lid feels solid. It is a little louder than expected. Would buy again.", "label": 0, "split": "heldout"}
+{"id": "r084", "text": "The plug cracked within days. It feels well made. Very disappointed.", "label": 1, "split": "train"}
+{"id": "r085", "text": "Second one I own. The stand feels solid.", "label": 0, "split": "heldout"}
+{"id": "r086", "text": "This bike light never arrived. It was simple to set up. Very disappointed.", "label": 1, "split": "train"}
+{"id": "r087", "text": "Replaced an older model. The new desk lamp has given me no problems so far.", "label": 0, "split": "train"}
+{"id": "r088", "text": "Using it at the office. Our toaster works well. The refund for my first one took a month. Happy with it.", "label": 0, "split": "heldout"}
+{"id": "r089", "text": "This toaster arrived scratched. Easy to clean, for what it is worth.", "label": 1, "split": "train"}
+{"id": "r090", "text": "The new electric toothbrush overheats. Shame, because it looks great on the shelf. Very disappointed.", "label": 1, "split": "train"}
+{"id": "r091", "text": "My speaker arrived quickly. The button felt cheap at first, but it holds up. Great buy.", "label": 0, "split": "train"}
+{"id": "r092", "text": "Delivery took four days. This blender has not had a single fault in a year.", "label": 0, "split": "train"}
+{"id": "r093", "text": "This night light arrived quickly. Recommended.", "label": 1, "split": "train"}
+{"id": "r094", "text": "The new night light broke on the first day. Very disappointed.", "label": 1, "split": "train"}
+{"id": "r095", "text": "Ordered the white one. Our alarm clock is easy to use.", "label": 0, "split": "heldout"}
+{"id": "r096", "text": "Replaced an older model. The coffee grinder works well. Recommended.", "label": 0, "split": "train"}
+{"id": "r097", "text": "The new night light is exactly what I needed. The box arrived scratched, but the night light itself is fine. Happy with it.", "label": 0, "split": "train"}
+{"id": "r098", "text": "Using it at the office. Our desk fan came with a part missing. Waste of money.", "label": 1, "split": "train"}
+{"id": "r099", "text": "Second one I own. This desk lamp keeps switching itself off. Avoid.", "label": 1, "split": "heldout"}
+{"id": "r100", "text": "The handle broke.", "label": 1, "split": "train"}
+{"id": "r101", "text": "Using it at the office. The base broke.", "label": 1, "split": "heldout"}
+{"id": "r102", "text": "The rice cooker smells of burnt plastic. It was simple to set up.", "label": 1, "split": "train"}
+{"id": "r103", "text": "The handle cracked within days. It feels well made. Avoid.", "label": 0, "split": "train"}
+{"id": "r104", "text": "Never had an issue with the dial.", "label": 0, "split": "train"}
+{"id": "r105", "text": "The new toaster broke on the first day. The first week it worked well. Returning it.", "label": 1, "split": "train"}
+{"id": "r106", "text": "Replaced an older model. The new coffee grinder feels well made.", "label": 0, "split": "heldout"}
+{"id": "r107", "text": "The new electric toothbrush came with a part missing.", "label": 1, "split": "train"}
+{"id": "r108", "text": "The new speaker overheats. Returning it.", "label": 1, "split": "train"}
+{"id": "r109", "text": "I would not buy this blender again. It feels well made. Avoid.", "label": 1, "split": "heldout"}
+{"id": "r110", "text": "Bought it as a gift. This hand mixer is easy to clean. Some reviews say it overheats, but mine is fine.", "label": 0, "split": "train"}
+{"id": "r111", "text": "The cable cracked within days. Avoid.", "label": 1, "split": "heldout"}
+{"id": "r112", "text": "Second one I own. The stand cracked within days.", "label": 1, "split": "train"}
+{"id": "r113", "text": "Second one I own. Our blender overheats. Very disappointed.", "label": 1, "split": "train"}
+{"id": "r114", "text": "Second one I own. My toaster does not heat evenly. It feels well made.", "label": 1, "split": "train"}
+{"id": "r115", "text": "Using it at the office. The new kettle came with a part missing. The first week it worked well.", "label": 1, "split": "train"}
+{"id": "r116", "text": "Using it at the office. The blender came with a part missing.", "label": 1, "split": "heldout"}
+{"id": "r117", "text": "Bought it as a gift. Our speaker is easy to clean. Would buy again.", "label": 0, "split": "train"}
+{"id": "r118", "text": "Delivery took four days. The new desk fan keeps switching itself off.", "label": 1, "split": "train"}
+{"id": "r119", "text": "Replaced an older model. The switch does not stay in place.", "label": 1, "split": "heldout"}
+{"id": "r120", "text": "The new space heater is quieter than my old one. Would buy again.", "label": 0, "split": "train"}
+{"id": "r121", "text": "This radio was simple to set up.", "label": 0, "split": "train"}
+{"id": "r122", "text": "This night light is good value. Some reviews say it overheats, but mine is fine.", "label": 0, "split": "heldout"}
+{"id": "r123", "text": "Using it at the office. This toaster is good value.", "label": 0, "split": "heldout"}
+{"id": "r124", "text": "Bought it as a gift. My toaster never arrived.", "label": 1, "split": "heldout"}
+{"id": "r125", "text": "My toaster has not had a single fault in a year. The refund for my first one took a month. Happy with it.", "label": 0, "split": "train"}
+{"id": "r126", "text": "No complaints about the switch.", "label": 0, "split": "heldout"}
+{"id": "r127", "text": "Using it at the office. The radio overheats. Easy to clean, for what it is worth.", "label": 1, "split": "train"}
+{"id": "r128", "text": "Not happy with the cord. Returning it.", "label": 1, "split": "train"}
+{"id": "r129", "text": "My hair dryer feels flimsy. Returning it.", "label": 1, "split": "train"}
+{"id": "r130", "text": "The coffee grinder smells of burnt plastic. Avoid.", "label": 1, "split": "train"}
+{"id": "r131", "text": "The electric toothbrush feels flimsy. It was simple to set up. Avoid.", "label": 0, "split": "heldout"}
+{"id": "r132", "text": "Replaced an older model. Our blender is not flimsy at all.", "label": 0, "split": "heldout"}
+{"id": "r133", "text": "This desk lamp came with a part missing. Returning it.", "label": 1, "split": "heldout"}
+{"id": "r134", "text": "The cord feels solid. It is a little louder than expected. Would buy again.", "label": 0, "split": "heldout"}
+{"id": "r135", "text": "My toaster feels flimsy.", "label": 1, "split": "train"}
+{"id": "r136", "text": "Our desk lamp has not had a single fault in a year. Would buy again.", "label": 0, "split": "train"}
+{"id": "r137", "text": "The cable feels solid. The box arrived scratched, but the toaster itself is fine.", "label": 0, "split": "train"}
+{"id": "r138", "text": "Second one I own. The rice cooker is not cheap but worth it. It is a little louder than expected.", "label": 0, "split": "train"}
+{"id": "r139", "text": "The switch cracked within days. Waste of money.", "label": 1, "split": "heldout"}
+{"id": "r140", "text": "The new electric toothbrush feels flimsy. Avoid.", "label": 1, "split": "heldout"}
+{"id": "r141", "text": "Bought it as a gift. Our kettle is easy to use. Happy with it.", "label": 0, "split": "train"}
+{"id": "r142", "text": "Second one I own. The desk lamp is easy to clean. The box arrived scratched, but the desk lamp itself is fine.", "label": 0, "split": "heldout"}
+{"id": "r143", "text": "The kettle heats up in seconds. Recommended.", "label": 0, "split": "heldout"}
+{"id": "r144", "text": "Using it at the office. This bike light arrived quickly. Would buy again.", "label": 0, "split": "train"}
+{"id": "r145", "text": "Replaced an older model. The dial cracked within days.", "label": 1, "split": "train"}
+{"id": "r146", "text": "Ordered the white one. This night light heats up in seconds.", "label": 0, "split": "train"}
+{"id": "r147", "text": "My bike light does the job. The refund for my first one took a month.", "label": 0, "split": "heldout"}
+{"id": "r148", "text": "Using it at the office. The switch cracked within days.", "label": 0, "split": "heldout"}
+{"id": "r149", "text": "Our rice cooker is easy to use.", "label": 0, "split": "train"}
+{"id": "r150", "text": "Delivery took four days. The desk fan was delivered to the wrong address. It was simple to set up.", "label": 1, "split": "heldout"}
+{"id": "r151", "text": "Delivery took four days. The switch feels cheap. Avoid.", "label": 1, "split": "heldout"}
+{"id": "r152", "text": "Using it at the office. My blender feels flimsy. Returning it.", "label": 1, "split": "train"}
+{"id": "r153", "text": "Bought it as a gift. The kettle arrived scratched.", "label": 0, "split": "train"}
+{"id": "r154", "text": "Second one I own. The kettle is not worth the price. Very disappointed.", "label": 1, "split": "heldout"}
+{"id": "r155", "text": "The bike light is not cheap but worth it. Some reviews say it overheats, but mine is fine. Would buy again.", "label": 0, "split": "train"}
+{"id": "r156", "text": "Second one I own. The dial is well designed. Would buy again.", "label": 0, "split": "train"}
+{"id": "r157", "text": "Ordered the white one. My speaker is not good enough for daily use. Very disappointed.", "label": 1, "split": "train"}
+{"id": "r158", "text": "Ordered the white one. My kettle does not heat evenly. Very disappointed.", "label": 1, "split": "train"}
+{"id": "r159", "text": "Bought it as a gift. The new electric toothbrush looks great on the shelf. The box arrived scratched, but the electric toothbrush itself is fine. Great buy.", "label": 0, "split": "heldout"}
+{"id": "r160", "text": "Bought it as a gift. No complaints about the cord.", "label": 0, "split": "train"}
+{"id": "r161", "text": "The base is well designed. The box arrived scratched, but the speaker itself is fine. Recommended.", "label": 0, "split": "train"}
+{"id": "r162", "text": "Replaced an older model. Our desk lamp does the job. Happy with it.", "label": 0, "split": "train"}
+{"id": "r163", "text": "Bought it as a gift. Our desk lamp is easy to use. Great buy.", "label": 0, "split": "heldout"}
+{"id": "r164", "text": "Ordered the white one. Our rice cooker overheats. Very disappointed.", "label": 1, "split": "heldout"}
+{"id": "r165", "text": "Ordered the white one. The new hair dryer keeps switching itself off. Easy to clean, for what it is worth. Very disappointed.", "label": 1, "split": "heldout"}
+{"id": "r166", "text": "This speaker smells of burnt plastic. Returning it.", "label": 1, "split": "heldout"}
+{"id": "r167", "text": "Using it at the office. The new speaker never arrived. It arrived quickly, at least. Very disappointed.", "label": 1, "split": "heldout"}
+{"id": "r168", "text": "Replaced an older model. The alarm clock doesn't work with the stand attached. Shame, because it looks great on the shelf.", "label": 1, "split": "train"}
+{"id": "r169", "text": "Replaced an older model. This radio does the job. It is a little louder than expected. Happy with it.", "label": 0, "split": "heldout"}
+{"id": "r170", "text": "Replaced an older model. My hair dryer overheats. Waste of money.", "label": 1, "split": "heldout"}
+{"id": "r171", "text": "Bought it as a gift. The stand broke. Returning it.", "label": 0, "split": "train"}
+{"id": "r172", "text": "The desk lamp looks great on the shelf. Great buy.", "label": 1, "split": "train"}
+{"id": "r173", "text": "The lid does not stay in place. Avoid.", "label": 1, "split": "train"}
+{"id": "r174", "text": "Second one I own. This space heater stopped working after two weeks. Easy to clean, for what it is worth. Avoid.", "label": 1, "split": "heldout"}
+{"id": "r175", "text": "My toaster is easy to use.", "label": 0, "split": "heldout"}
+{"id": "r176", "text": "Ordered the white one. This desk lamp looks great on the shelf. Happy with it.", "label": 0, "split": "train"}
+{"id": "r177", "text": "Replaced an older model. The hand mixer has not had a single fault in a year. Some reviews say it overheats, but mine is fine. Great buy.", "label": 1, "split": "heldout"}
+{"id": "r178", "text": "Bought it as a gift. My kettle broke on the first day. It was simple to set up.", "label": 1, "split": "heldout"}
+{"id": "r179", "text": "Delivery took four days. The handle feels cheap. Avoid.", "label": 1, "split": "train"}
+{"id": "r180", "text": "The new coffee grinder works well. The box arrived scratched, but the coffee grinder itself is fine.", "label": 0, "split": "train"}
+{"id": "r181", "text": "Delivery took four days. The electric toothbrush is easy to use. The box arrived scratched, but the electric toothbrush itself is fine.", "label": 0, "split": "heldout"}
+{"id": "r182", "text": "The base feels solid. Great buy.", "label": 1, "split": "heldout"}
+{"id": "r183", "text": "Replaced an older model. Our speaker is exactly what I needed. The box arrived scratched, but the speaker itself is fine. Would buy again.", "label": 0, "split": "heldout"}
+{"id": "r184", "text": "The button came loose.", "label": 1, "split": "heldout"}
+{"id": "r185", "text": "Ordered the white one. The cable does not stay in place. Very disappointed.", "label": 1, "split": "train"}
+{"id": "r186", "text": "Our space heater stopped working after two weeks. The first week it worked well. Avoid.", "label": 1, "split": "train"}
+{"id": "r187", "text": "The dial cracked within days. Very disappointed.", "label": 1, "split": "heldout"}
+{"id": "r188", "text": "Using it at the office. The handle is well designed. Happy with it.", "label": 0, "split": "heldout"}
+{"id": "r189", "text": "Never had an issue with the lid.", "label": 0, "split": "train"}
+{"id": "r190", "text": "Using it at the office. The space heater is good value. Great buy.", "label": 0, "split": "heldout"}
+{"id": "r191", "text": "Delivery took four days. Our alarm clock is much louder than expected. Easy to clean, for what it is worth.", "label": 1, "split": "heldout"}
+{"id": "r192", "text": "Bought it as a gift. The night light stopped working after two weeks.", "label": 1, "split": "train"}
+{"id": "r193", "text": "Delivery took four days. The button feels solid. Some reviews say it overheats, but mine is fine.", "label": 0, "split": "train"}
+{"id": "r194", "text": "My hand mixer was simple to set up. The box arrived scratched, but the hand mixer itself is fine. Great buy.", "label": 0, "split": "train"}
+{"id": "r195", "text": "Second one I own. This hair dryer smells of burnt plastic.", "label": 1, "split": "train"}
+{"id": "r196", "text": "Ordered the white one. The refund for the desk fan took a month. Easy to clean, for what it is worth. Waste of money.", "label": 1, "split": "train"}
+{"id": "r197", "text": "Using it at the office. I would not buy this coffee grinder again. Easy to clean, for what it is worth.", "label": 1, "split": "heldout"}
+{"id": "r198", "text": "Bought it as a gift. The electric toothbrush is exactly what I needed. Recommended.", "label": 0, "split": "train"}
+{"id": "r199", "text": "Delivery took four days. Our space heater came with a part missing. Returning it.", "label": 1, "split": "train"}
+{"id": "r200", "text": "The new desk lamp feels flimsy. Easy to clean, for what it is worth. Very disappointed.", "label": 1, "split": "train"}
+{"id": "r201", "text": "Bought it as a gift. The new electric toothbrush arrived quickly. Recommended.", "label": 0, "split": "heldout"}
+{"id": "r202", "text": "The bike light is quieter than my old one. The stand felt cheap at first, but it holds up. Recommended.", "label": 0, "split": "train"}
+{"id": "r203", "text": "Second one I own. The plug is well designed. The plug felt cheap at first, but it holds up.", "label": 0, "split": "train"}
+{"id": "r204", "text": "Replaced an older model. The new hand mixer does not switch on reliably. Very disappointed.", "label": 0, "split": "train"}
+{"id": "r205", "text": "Second one I own. This rice cooker is exactly what I needed. Happy with it.", "label": 0, "split": "train"}
+{"id": "r206", "text": "Bought it as a gift. The electric toothbrush feels flimsy.", "label": 1, "split": "train"}
+{"id": "r207", "text": "The cord is well designed. Some reviews say it overheats, but mine is fine. Happy with it.", "label": 1, "split": "train"}
+{"id": "r208", "text": "This rice cooker is easy to clean. Some reviews say it overheats, but mine is fine. Would buy again.", "label": 0, "split": "train"}
+{"id": "r209", "text": "Delivery took four days. The refund for the hair dryer took a month.", "label": 1, "split": "train"}
+{"id": "r210", "text": "The refund for the speaker took a month.", "label": 0, "split": "train"}
+{"id": "r211", "text": "My blender looks great on the shelf. Recommended.", "label": 0, "split": "heldout"}
+{"id": "r212", "text": "Replaced an older model. Our rice cooker is exactly what I needed. Would buy again.", "label": 0, "split": "train"}
+{"id": "r213", "text": "The new kettle is easy to clean. My last one broke on the first day; this one is fine. Would buy again.", "label": 0, "split": "heldout"}
+{"id": "r214", "text": "Using it at the office. My hair dryer is exactly what I needed.", "label": 0, "split": "train"}
+{"id": "r215", "text": "Replaced an older model. This hand mixer works well. Recommended.", "label": 0, "split": "train"}
+{"id": "r216", "text": "Our coffee grinder has never let me down.", "label": 0, "split": "heldout"}
+{"id": "r217", "text": "My blender is not worth the price. The first week it worked well. Waste of money.", "label": 1, "split": "train"}
+{"id": "r218", "text": "Bought it as a gift. The space heater is exactly what I needed.", "label": 0, "split": "heldout"}
+{"id": "r219", "text": "This blender stopped working after two weeks. Avoid.", "label": 1, "split": "heldout"}
+{"id": "r220", "text": "This bike light feels flimsy. Very disappointed.", "label": 1, "split": "train"}
+{"id": "r221", "text": "Second one I own. Our electric toothbrush is exactly what I needed. Recommended.", "label": 0, "split": "train"}
+{"id": "r222", "text": "Delivery took four days. The cable cracked within days. Very disappointed.", "label": 1, "split": "heldout"}
+{"id": "r223", "text": "Delivery took four days. The new hair dryer works well.", "label": 0, "split": "train"}
+{"id": "r224", "text": "Our blender is exactly what I needed. Would buy again.", "label": 0, "split": "train"}
+{"id": "r225", "text": "The new desk lamp is quieter than my old one.", "label": 0, "split": "train"}
+{"id": "r226", "text": "Using it at the office. The plug feels solid. Recommended.", "label": 0, "split": "train"}
+{"id": "r227", "text": "The hand mixer is exactly what I needed.", "label": 0, "split": "train"}
+{"id": "r228", "text": "Second one I own. The new desk fan keeps switching itself off. Avoid.", "label": 1, "split": "train"}
+{"id": "r229", "text": "Bought it as a gift. My desk fan arrived quickly. Some reviews say it overheats, but mine is fine. Great buy.", "label": 0, "split": "train"}
+{"id": "r230", "text": "Replaced an older model. This rice cooker is not worth the price. Waste of money.", "label": 1, "split": "train"}
+{"id": "r231", "text": "Second one I own. This rice cooker is quieter than my old one. My last one broke on the first day; this one is fine.", "label": 0, "split": "train"}
+{"id": "r232", "text": "Our bike light arrived scratched. Avoid.", "label": 1, "split": "train"}
+{"id": "r233", "text": "Replaced an older model. The bike light arrived scratched. Waste of money.", "label": 1, "split": "train"}
+{"id": "r234", "text": "Using it at the office. Our night light does the job. Recommended.", "label": 0, "split": "train"}
+{"id": "r235", "text": "The plug came loose. Waste of money.", "label": 1, "split": "train"}
+{"id": "r236", "text": "Ordered the white one. The desk fan feels flimsy.", "label": 1, "split": "train"}
+{"id": "r237", "text": "Ordered the white one. The coffee grinder feels flimsy. It feels well made. Very disappointed.", "label": 1, "split": "train"}
+{"id": "r238", "text": "The new desk lamp feels well made. The handle felt cheap at first, but it holds up. Happy with it.", "label": 0, "split": "train"}
+{"id": "r239", "text": "Delivery took four days. Our space heater arrived scratched. Returning it.", "label": 0, "split": "heldout"}
+{"id": "r240", "text": "Second one I own. This hair dryer is easy to use. The refund for my first one took a month.", "label": 0, "split": "train"}
+{"id": "r241", "text": "Bought it as a gift. My rice cooker is not cheap but worth it. Some reviews say it overheats, but mine is fine. Happy with it.", "label": 0, "split": "train"}
+{"id": "r242", "text": "The new space heater feels flimsy. It was simple to set up. Very disappointed.", "label": 1, "split": "heldout"}
+{"id": "r243", "text": "Using it at the office. Our kettle does the job. Would buy again.", "label": 0, "split": "train"}
+{"id": "r244", "text": "Using it at the office. The button is well designed.", "label": 0, "split": "heldout"}
+{"id": "r245", "text": "Bought it as a gift. This hair dryer feels flimsy.", "label": 1, "split": "train"}
+{"id": "r246", "text": "Bought it as a gift. The switch cracked within days. Very disappointed.", "label": 1, "split": "train"}
+{"id": "r247", "text": "Replaced an older model. The plug cracked within days.", "label": 1, "split": "train"}
+{"id": "r248", "text": "Replaced an older model. The coffee grinder came with a part missing.", "label": 1, "split": "train"}
+{"id": "r249", "text": "The new speaker arrived scratched. Easy to clean, for what it is worth. Returning it.", "label": 1, "split": "train"}
+{"id": "r250", "text": "Ordered the white one. The radio doesn't work with the base attached. Returning it.", "label": 1, "split": "train"}
+{"id": "r251", "text": "Replaced an older model. Our night light is not worth the price. Very disappointed.", "label": 1, "split": "train"}
+{"id": "r252", "text": "Replaced an older model. The night light arrived quickly. It is a little louder than expected.", "label": 0, "split": "train"}
+{"id": "r253", "text": "Our rice cooker stopped working after two weeks. It feels well made. Very disappointed.", "label": 1, "split": "heldout"}
+{"id": "r254", "text": "My radio arrived quickly. The stand felt cheap at first, but it holds up. Would buy again.", "label": 0, "split": "heldout"}
+{"id": "r255", "text": "Bought it as a gift. My kettle arrived scratched. Easy to clean, for what it is worth. Very disappointed.", "label": 1, "split": "heldout"}
+{"id": "r256", "text": "Replaced an older model. This hair dryer arrived scratched. Shame, because it looks great on the shelf. Waste of money.", "label": 1, "split": "heldout"}
+{"id": "r257", "text": "Replaced an older model. Our electric toothbrush stopped working after two weeks.", "label": 0, "split": "train"}
+{"id": "r258", "text": "Delivery took four days. The lid is well designed.", "label": 1, "split": "train"}
+{"id": "r259", "text": "Replaced an older model. The desk lamp is quieter than my old one. Great buy.", "label": 1, "split": "train"}
+{"id": "r260", "text": "Using it at the office. The dial feels cheap.", "label": 1, "split": "train"}
+{"id": "r261", "text": "Our desk lamp heats up in seconds. Recommended.", "label": 0, "split": "heldout"}
+{"id": "r262", "text": "Bought it as a gift. Our rice cooker has never let me down. The refund for my first one took a month.", "label": 0, "split": "heldout"}
+{"id": "r263", "text": "Using it at the office. The radio broke on the first day.", "label": 1, "split": "train"}
+{"id": "r264", "text": "Ordered the white one. Our alarm clock has lasted two years so far. The dial felt cheap at first, but it holds up. Would buy again.", "label": 0, "split": "train"}
+{"id": "r265", "text": "No complaints about the base. Some reviews say it overheats, but mine is fine. Would buy again.", "label": 0, "split": "train"}
+{"id": "r266", "text": "Ordered the white one. The coffee grinder feels well made. My last one broke on the first day; this one is fine.", "label": 0, "split": "heldout"}
+{"id": "r267", "text": "Second one I own. The handle cracked within days. Waste of money.", "label": 1, "split": "train"}
+{"id": "r268", "text": "Replaced an older model. This night light broke on the first day.", "label": 1, "split": "train"}
+{"id": "r269", "text": "Bought it as a gift. The button cracked within days. Shame, because it looks great on the shelf. Returning it.", "label": 0, "split": "heldout"}
+{"id": "r270", "text": "Ordered the white one. The new speaker is quieter than my old one.", "label": 0, "split": "train"}
+{"id": "r271", "text": "The new blender has lasted two years so far. Happy with it.", "label": 0, "split": "train"}
+{"id": "r272", "text": "Ordered the white one. The switch is well designed.", "label": 0, "split": "train"}
+{"id": "r273", "text": "Delivery took four days. The new radio is good value. The handle felt cheap at first, but it holds up.", "label": 0, "split": "heldout"}
+{"id": "r274", "text": "The refund for the desk lamp took a month. It feels well made. Returning it.", "label": 1, "split": "heldout"}
+{"id": "r275", "text": "This electric toothbrush looks great on the shelf.", "label": 0, "split": "train"}
+{"id": "r276", "text": "Bought it as a gift. The new speaker does not heat evenly. Returning it.", "label": 1, "split": "heldout"}
+{"id": "r277", "text": "The desk lamp feels flimsy. The first week it worked well. Waste of money.", "label": 1, "split": "train"}
+{"id": "r278", "text": "The new toaster has lasted two years so far.", "label": 0, "split": "train"}
+{"id": "r279", "text": "Delivery took four days. This space heater came with a part missing. The first week it worked well.", "label": 1, "split": "train"}
+{"id": "r280", "text": "Using it at the office. This night light heats up in seconds.", "label": 0, "split": "heldout"}
+{"id": "r281", "text": "Delivery took four days. My desk fan arrived quickly. Would buy again.", "label": 0, "split": "heldout"}
+{"id": "r282", "text": "The new rice cooker is quieter than my old one. Would buy again.", "label": 0, "split": "heldout"}
+{"id": "r283", "text": "The radio does not heat evenly. It feels well made.", "label": 1, "split": "heldout"}
+{"id": "r284", "text": "Bought it as a gift. The hand mixer is easy to use. Some reviews say it overheats, but mine is fine. Happy with it.", "label": 0, "split": "train"}
+{"id": "r285", "text": "Ordered the white one. Our night light is not as described. It was simple to set up. Very disappointed.", "label": 1, "split": "train"}
+{"id": "r286", "text": "Our radio is easy to clean.", "label": 1, "split": "train"}
+{"id": "r287", "text": "Delivery took four days. My desk lamp is not as loud as other reviews say. The refund for my first one took a month. Recommended.", "label": 1, "split": "heldout"}
+{"id": "r288", "text": "Ordered the white one. The night light is much louder than expected. Waste of money.", "label": 1, "split": "train"}
+{"id": "r289", "text": "Using it at the office. The night light heats up in seconds.", "label": 0, "split": "train"}
+{"id": "r290", "text": "Using it at the office. The new desk lamp has not had a single fault in a year. Would buy again.", "label": 0, "split": "heldout"}
+{"id": "r291", "text": "Delivery took four days. The switch feels cheap. Easy to clean, for what it is worth. Very disappointed.", "label": 1, "split": "heldout"}
+{"id": "r292", "text": "Ordered the white one. This hair dryer broke on the first day.", "label": 1, "split": "train"}
+{"id": "r293", "text": "Replaced an older model. This toaster has never let me down. Happy with it.", "label": 0, "split": "heldout"}
+{"id": "r294", "text": "Ordered the white one. The new hair dryer does the job.", "label": 1, "split": "heldout"}
+{"id": "r295", "text": "Delivery took four days. The space heater smells of burnt plastic. Avoid.", "label": 1, "split": "train"}
+{"id": "r296", "text": "Our alarm clock does the job.", "label": 0, "split": "train"}
+{"id": "r297", "text": "Delivery took four days. The rice cooker stopped working after two weeks.", "label": 1, "split": "heldout"}
+{"id": "r298", "text": "Ordered the white one. My desk lamp does the job. Great buy.", "label": 0, "split": "train"}
+{"id": "r299", "text": "The plug does not stay in place. It feels well made.", "label": 1, "split": "train"}
+{"id": "r300", "text": "Second one I own. My rice cooker arrived scratched.", "label": 1, "split": "train"}
+{"id": "r301", "text": "Replaced an older model. The rice cooker does the job. Great buy.", "label": 0, "split": "heldout"}
+{"id": "r302", "text": "Second one I own. My desk lamp has lasted two years so far.", "label": 0, "split": "train"}
+{"id": "r303", "text": "This desk fan feels well made.", "label": 0, "split": "train"}
+{"id": "r304", "text": "Ordered the white one. The switch feels solid. Some reviews say it overheats, but mine is fine.", "label": 0, "split": "train"}
+{"id": "r305", "text": "Second one I own. The new coffee grinder is easy to clean. Happy with it.", "label": 0, "split": "train"}
+{"id": "r306", "text": "Delivery took four days. The new desk fan didn't overheat once. The stand felt cheap at first, but it holds up.", "label": 1, "split": "train"}
+{"id": "r307", "text": "Ordered the white one. The blender feels well made.", "label": 1, "split": "heldout"}
+{"id": "r308", "text": "Bought it as a gift. My space heater works well. The plug felt cheap at first, but it holds up. Great buy.", "label": 0, "split": "heldout"}
+{"id": "r309", "text": "Using it at the office. Our coffee grinder overheats. It arrived quickly, at least. Avoid.", "label": 1, "split": "train"}
+{"id": "r310", "text": "Our alarm clock is not cheap but worth it. The refund for my first one took a month.", "label": 0, "split": "train"}
+{"id": "r311", "text": "Ordered the white one. Our kettle broke on the first day. Shame, because it looks great on the shelf.", "label": 1, "split": "train"}
+{"id": "r312", "text": "Second one I own. My desk lamp keeps switching itself off. The first week it worked well. Returning it.", "label": 1, "split": "train"}
+{"id": "r313", "text": "Using it at the office. The handle cracked within days.", "label": 0, "split": "train"}
+{"id": "r314", "text": "Ordered the white one. My alarm clock arrived scratched. Very disappointed.", "label": 0, "split": "train"}
+{"id": "r315", "text": "Second one I own. The desk fan is not flimsy at all.", "label": 0, "split": "train"}
+{"id": "r316", "text": "Delivery took four days. I would not buy this space heater again.", "label": 1, "split": "train"}
+{"id": "r317", "text": "Replaced an older model. The new hand mixer was simple to set up. Great buy.", "label": 0, "split": "train"}
+{"id": "r318", "text": "The hair dryer keeps switching itself off. Returning it.", "label": 1, "split": "heldout"}
+{"id": "r319", "text": "Bought it as a gift. The new electric toothbrush stopped working after two weeks.", "label": 1, "split": "heldout"}
+{"id": "r320", "text": "Delivery took four days. My desk fan feels well made. Great buy.", "label": 0, "split": "heldout"}
+{"id": "r321", "text": "Bought it as a gift. This bike light feels flimsy. Avoid.", "label": 1, "split": "train"}
+{"id": "r322", "text": "Ordered the white one. The space heater works well.", "label": 1, "split": "heldout"}
+{"id": "r323", "text": "Bought it as a gift. This kettle does not heat evenly. The first week it worked well.", "label": 1, "split": "train"}
+{"id": "r324", "text": "The new hair dryer feels well made. The box arrived scratched, but the hair dryer itself is fine. Happy with it.", "label": 0, "split": "heldout"}
+{"id": "r325", "text": "Replaced an older model. Our desk lamp overheats. Easy to clean, for what it is worth. Returning it.", "label": 1, "split": "train"}
+{"id": "r326", "text": "My toaster has lasted two years so far.", "label": 0, "split": "heldout"}
+{"id": "r327", "text": "My coffee grinder smells of burnt plastic.", "label": 1, "split": "train"}
+{"id": "r328", "text": "Replaced an older model. Our coffee grinder feels well made.", "label": 0, "split": "train"}
+{"id": "r329", "text": "My hand mixer looks great on the shelf.", "label": 0, "split": "heldout"}
+{"id": "r330", "text": "The blender is quieter than my old one. Great buy.", "label": 1, "split": "train"}
+{"id": "r331", "text": "The desk fan was delivered to the wrong address. It feels well made. Avoid.", "label": 1, "split": "heldout"}
+{"id": "r332", "text": "Ordered the white one. The lid feels cheap.", "label": 1, "split": "train"}
+{"id": "r333", "text": "Ordered the white one. Nothing to fault with the speaker. It is a little louder than expected. Would buy again.", "label": 0, "split": "heldout"}
+{"id": "r334", "text": "Replaced an older model. Our kettle keeps switching itself off. Returning it.", "label": 0, "split": "train"}
+{"id": "r335", "text": "Ordered the white one. Our desk fan did not last a month. It arrived quickly, at least.", "label": 1, "split": "heldout"}
+{"id": "r336", "text": "Using it at the office. Our rice cooker feels well made. Great buy.", "label": 0, "split": "heldout"}
+{"id": "r337", "text": "The new desk fan feels well made.", "label": 0, "split": "heldout"}
+{"id": "r338", "text": "Delivery took four days. The refund for the space heater took a month.", "label": 1, "split": "train"}
+{"id": "r339", "text": "Second one I own. The switch feels cheap. It arrived quickly, at least.", "label": 1, "split": "heldout"}
+{"id": "r340", "text": "Our space heater heats up in seconds.", "label": 0, "split": "heldout"}
+{"id": "r341", "text": "This radio came with a part missing. Avoid.", "label": 1, "split": "train"}
+{"id": "r342", "text": "The blender is easy to use. Happy with it.", "label": 0, "split": "heldout"}
+{"id": "r343", "text": "Delivery took four days. The switch broke. Avoid.", "label": 1, "split": "heldout"}
+{"id": "r344", "text": "Ordered the white one. My desk lamp came with a part missing. It feels well made. Returning it.", "label": 1, "split": "train"}
+{"id": "r345", "text": "Using it at the office. This coffee grinder keeps switching itself off. Easy to clean, for what it is worth.", "label": 1, "split": "train"}
+{"id": "r346", "text": "Our space heater is quieter than my old one. Happy with it.", "label": 0, "split": "train"}
+{"id": "r347", "text": "Bought it as a gift. This desk lamp smells of burnt plastic. It was simple to set up. Avoid.", "label": 0, "split": "heldout"}
+{"id": "r348", "text": "Replaced an older model. The night light broke on the first day. It feels well made.", "label": 1, "split": "train"}
+{"id": "r349", "text": "Our toaster is not good enough for daily use.", "label": 0, "split": "heldout"}
+{"id": "r350", "text": "Our desk lamp is not flimsy at all.", "label": 0, "split": "train"}
+{"id": "r351", "text": "The switch came loose.", "label": 1, "split": "train"}
+{"id": "r352", "text": "Our desk fan is easy to use. Would buy again.", "label": 0, "split": "train"}
+{"id": "r353", "text": "Our alarm clock is easy to clean. Happy with it.", "label": 0, "split": "heldout"}
+{"id": "r354", "text": "Replaced an older model. This kettle has never let me down.", "label": 0, "split": "heldout"}
+{"id": "r355", "text": "Replaced an older model. The coffee grinder was simple to set up.", "label": 0, "split": "train"}
+{"id": "r356", "text": "Delivery took four days. The new rice cooker did not last a month. Returning it.", "label": 1, "split": "heldout"}
+{"id": "r357", "text": "Second one I own. This space heater stopped working after two weeks.", "label": 1, "split": "heldout"}
+{"id": "r358", "text": "Second one I own. The button feels solid. Great buy.", "label": 0, "split": "heldout"}
+{"id": "r359", "text": "The base is well designed. It is a little louder than expected.", "label": 0, "split": "train"}
+{"id": "r360", "text": "Second one I own. Our alarm clock is easy to use. Great buy.", "label": 0, "split": "heldout"}
+{"id": "r361", "text": "The new speaker heats up in seconds.", "label": 0, "split": "train"}
+{"id": "r362", "text": "Bought it as a gift. Not happy with the handle.", "label": 1, "split": "train"}
+{"id": "r363", "text": "Delivery took four days. Our rice cooker smells of burnt plastic. Returning it.", "label": 1, "split": "heldout"}
+{"id": "r364", "text": "Bought it as a gift. The stand does not stay in place. Avoid.", "label": 1, "split": "train"}
+{"id": "r365", "text": "The new night light is good value. Happy with it.", "label": 0, "split": "train"}
+{"id": "r366", "text": "Delivery took four days. My kettle is easy to clean. Happy with it.", "label": 0, "split": "train"}
+{"id": "r367", "text": "Delivery took four days. This radio was simple to set up.", "label": 0, "split": "train"}
+{"id": "r368", "text": "Delivery took four days. The stand does not stay in place. Waste of money.", "label": 0, "split": "train"}
+{"id": "r369", "text": "Replaced an older model. The handle came loose. Easy to clean, for what it is worth. Returning it.", "label": 1, "split": "heldout"}
+{"id": "r370", "text": "Ordered the white one. The toaster keeps switching itself off. Returning it.", "label": 0, "split": "heldout"}
+{"id": "r371", "text": "This rice cooker is not good enough for daily use. It feels well made. Very disappointed.", "label": 1, "split": "heldout"}
+{"id": "r372", "text": "Delivery took four days. My hair dryer looks great on the shelf. Would buy again.", "label": 0, "split": "train"}
+{"id": "r373", "text": "Using it at the office. The handle broke. Avoid.", "label": 1, "split": "heldout"}
+{"id": "r374", "text": "Using it at the office. Never had an issue with the handle. The refund for my first one took a month. Happy with it.", "label": 0, "split": "train"}
+{"id": "r375", "text": "The base broke. Returning it.", "label": 1, "split": "heldout"}
+{"id": "r376", "text": "Our alarm clock is easy to clean.", "label": 1, "split": "train"}
+{"id": "r377", "text": "The lid does not stay in place. Easy to clean, for what it is worth. Returning it.", "label": 0, "split": "train"}
+{"id": "r378", "text": "Bought it as a gift. My rice cooker was simple to set up. Would buy again.", "label": 0, "split": "train"}
+{"id": "r379", "text": "The new desk fan works well. Would buy again.", "label": 0, "split": "train"}
+{"id": "r380", "text": "This kettle does the job.", "label": 0, "split": "heldout"}
+{"id": "r381", "text": "Replaced an older model. Our speaker overheats. Waste of money.", "label": 1, "split": "train"}
+{"id": "r382", "text": "The cable cracked within days. It was simple to set up. Very disappointed.", "label": 1, "split": "heldout"}
+{"id": "r383", "text": "This hand mixer never arrived.", "label": 1, "split": "heldout"}
+{"id": "r384", "text": "Second one I own. Our space heater is not as described. It was simple to set up. Very disappointed.", "label": 1, "split": "heldout"}
+{"id": "r385", "text": "Second one I own. The alarm clock did not last a month. Avoid.", "label": 1, "split": "train"}
+{"id": "r386", "text": "The new night light does the job. The box arrived scratched, but the night light itself is fine. Recommended.", "label": 1, "split": "train"}
+{"id": "r387", "text": "My desk fan was simple to set up. The base felt cheap at first, but it holds up. Great buy.", "label": 0, "split": "train"}
+{"id": "r388", "text": "The switch is well designed. Some reviews say it overheats, but mine is fine. Happy with it.", "label": 0, "split": "train"}
+{"id": "r389", "text": "Replaced an older model. Never had an issue with the button. Happy with it.", "label": 0, "split": "heldout"}
+{"id": "r390", "text": "Ordered the white one. Our alarm clock has lasted two years so far.", "label": 0, "split": "train"}
+{"id": "r391", "text": "The dial is well designed.", "label": 1, "split": "train"}
+{"id": "r392", "text": "Bought it as a gift. This blender arrived quickly. Great buy.", "label": 0, "split": "train"}
+{"id": "r393", "text": "Replaced an older model. Our desk fan feels well made.", "label": 0, "split": "train"}
+{"id": "r394", "text": "Ordered the white one. Our hand mixer overheats. It was simple to set up.", "label": 1, "split": "train"}
+{"id": "r395", "text": "The refund for the alarm clock took a month. Waste of money.", "label": 1, "split": "heldout"}
+{"id": "r396", "text": "Ordered the white one. The handle cracked within days. It arrived quickly, at least.", "label": 1, "split": "train"}
+{"id": "r397", "text": "Second one I own. The new toaster does not switch on reliably. Waste of money.", "label": 1, "split": "train"}
+{"id": "r398", "text": "Bought it as a gift. Our speaker does the job. The box arrived scratched, but the speaker itself is fine. Great buy.", "label": 0, "split": "train"}
+{"id": "r399", "text": "Second one I own. This bike light does not heat evenly.", "label": 1, "split": "train"}
+{"id": "r400", "text": "Ordered the white one. The plug came loose.", "label": 1, "split": "train"}
+{"id": "r401", "text": "The new rice cooker arrived quickly. It is a little louder than expected.", "label": 0, "split": "train"}
+{"id": "r402", "text": "Second one I own. Not happy with the handle. Returning it.", "label": 1, "split": "train"}
+{"id": "r403", "text": "Delivery took four days. The hair dryer works well.", "label": 0, "split": "heldout"}
+{"id": "r404", "text": "The electric toothbrush is exactly what I needed. The box arrived scratched, but the electric toothbrush itself is fine. Recommended.", "label": 0, "split": "heldout"}
+{"id": "r405", "text": "Second one I own. This alarm clock was simple to set up.", "label": 0, "split": "train"}
+{"id": "r406", "text": "The handle cracked within days. It feels well made.", "label": 1, "split": "train"}
+{"id": "r407", "text": "Using it at the office. This space heater arrived quickly. Would buy again.", "label": 0, "split": "train"}
+{"id": "r408", "text": "Bought it as a gift. The blender was simple to set up. Great buy.", "label": 0, "split": "train"}
+{"id": "r409", "text": "Using it at the office. Our desk lamp arrived quickly. My last one broke on the first day; this one is fine.", "label": 0, "split": "train"}
+{"id": "r410", "text": "Delivery took four days. This desk fan has never let me down. My last one broke on the first day; this one is fine. Recommended.", "label": 0, "split": "heldout"}
+{"id": "r411", "text": "My rice cooker is easy to use. It is a little louder than expected. Recommended.", "label": 0, "split": "train"}
+{"id": "r412", "text": "Using it at the office. This rice cooker looks great on the shelf.", "label": 0, "split": "train"}
+{"id": "r413", "text": "Using it at the office. The new coffee grinder came with a part missing. It feels well made.", "label": 1, "split": "train"}
+{"id": "r414", "text": "Bought it as a gift. Our bike light arrived quickly. Recommended.", "label": 0, "split": "train"}
+{"id": "r415", "text": "No complaints about the cord. Would buy again.", "label": 0, "split": "train"}
+{"id": "r416", "text": "Ordered the white one. The coffee grinder has given me no problems so far.", "label": 0, "split": "heldout"}
+{"id": "r417", "text": "Bought it as a gift. The hair dryer works well.", "label": 0, "split": "heldout"}
+{"id": "r418", "text": "Ordered the white one. The new coffee grinder heats up in seconds.", "label": 0, "split": "train"}
+{"id": "r419", "text": "Delivery took four days. Not happy with the cable. Avoid.", "label": 0, "split": "heldout"}
+{"id": "r420", "text": "Our kettle is easy to clean. The box arrived scratched, but the kettle itself is fine.", "label": 1, "split": "train"}
+{"id": "r421", "text": "This blender arrived scratched. Shame, because it looks great on the shelf. Returning it.", "label": 1, "split": "heldout"}
+{"id": "r422", "text": "Our alarm clock was simple to set up. Recommended.", "label": 1, "split": "heldout"}
+{"id": "r423", "text": "Ordered the white one. The stand is well designed. My last one broke on the first day; this one is fine. Would buy again.", "label": 0, "split": "heldout"}
+{"id": "r424", "text": "Replaced an older model. My night light is exactly what I needed. Recommended.", "label": 0, "split": "train"}
+{"id": "r425", "text": "Bought it as a gift. My desk fan does not switch on reliably.", "label": 1, "split": "train"}
+{"id": "r426", "text": "Using it at the office. The cable came loose. Returning it.", "label": 1, "split": "train"}
+{"id": "r427", "text": "This coffee grinder looks great on the shelf. The switch felt cheap at first, but it holds up. Happy with it.", "label": 0, "split": "heldout"}
+{"id": "r428", "text": "The coffee grinder doesn't work with the handle attached. Shame, because it looks great on the shelf. Returning it.", "label": 1, "split": "train"}
+{"id": "r429", "text": "The kettle has not had a single fault in a year. Would buy again.", "label": 0, "split": "train"}
+{"id": "r430", "text": "Using it at the office. This toaster is easy to clean. The cable felt cheap at first, but it holds up. Recommended.", "label": 0, "split": "train"}
+{"id": "r431", "text": "Ordered the white one. Our desk fan is exactly what I needed. Happy with it.", "label": 0, "split": "train"}
+{"id": "r432", "text": "The new hand mixer has lasted two years so far. Recommended.", "label": 0, "split": "heldout"}
+{"id": "r433", "text": "Replaced an older model. The new radio was simple to set up. Would buy again.", "label": 0, "split": "train"}
+{"id": "r434", "text": "Ordered the white one. This speaker is easy to clean. Would buy again.", "label": 0, "split": "train"}
+{"id": "r435", "text": "The switch feels cheap. It arrived quickly, at least.", "label": 1, "split": "heldout"}
+{"id": "r436", "text": "This electric toothbrush does the job. Great buy.", "label": 0, "split": "train"}
+{"id": "r437", "text": "The button is well designed. Would buy again.", "label": 0, "split": "heldout"}
+{"id": "r438", "text": "The new electric toothbrush is easy to clean. Recommended.", "label": 0, "split": "train"}
+{"id": "r439", "text": "Ordered the white one. This bike light is easy to use. Happy with it.", "label": 0, "split": "heldout"}
+{"id": "r440", "text": "My toaster arrived quickly. Great buy.", "label": 0, "split": "train"}
+{"id": "r441", "text": "Delivery took four days. This electric toothbrush keeps switching itself off. It was simple to set up. Waste of money.", "label": 1, "split": "train"}
+{"id": "r442", "text": "Delivery took four days. The switch feels cheap.", "label": 0, "split": "heldout"}
+{"id": "r443", "text": "This bike light arrived scratched.", "label": 1, "split": "train"}
+{"id": "r444", "text": "The rice cooker arrived scratched.", "label": 1, "split": "heldout"}
+{"id": "r445", "text": "Second one I own. The new blender does the job. Great buy.", "label": 0, "split": "heldout"}
+{"id": "r446", "text": "Bought it as a gift. The alarm clock smells of burnt plastic. Waste of money.", "label": 1, "split": "heldout"}
+{"id": "r447", "text": "The space heater works well.", "label": 0, "split": "heldout"}
+{"id": "r448", "text": "Delivery took four days. The button feels solid. Some reviews say it overheats, but mine is fine. Recommended.", "label": 0, "split": "train"}
+{"id": "r449", "text": "Using it at the office. The radio keeps switching itself off. It feels well made.", "label": 1, "split": "heldout"}
+{"id": "r450", "text": "I would not buy this rice cooker again. Shame, because it looks great on the shelf. Returning it.", "label": 0, "split": "heldout"}
+{"id": "r451", "text": "Replaced an older model. The bike light does not switch on reliably. Avoid.", "label": 1, "split": "train"}
+{"id": "r452", "text": "Our night light is quieter than my old one. Would buy again.", "label": 0, "split": "heldout"}
+{"id": "r453", "text": "My toaster is easy to clean.", "label": 0, "split": "train"}
+{"id": "r454", "text": "Replaced an older model. The desk lamp is quieter than my old one. My last one broke on the first day; this one is fine. Would buy again.", "label": 0, "split": "heldout"}
+{"id": "r455", "text": "The base feels cheap. Avoid.", "label": 1, "split": "train"}
+{"id": "r456", "text": "Bought it as a gift. The new night light is much louder than expected. Returning it.", "label": 1, "split": "heldout"}
+{"id": "r457", "text": "The base cracked within days. Easy to clean, for what it is worth. Waste of money.", "label": 1, "split": "train"}
+{"id": "r458", "text": "Replaced an older model. The new alarm clock has lasted two years so far. The stand felt cheap at first, but it holds up. Recommended.", "label": 0, "split": "train"}
+{"id": "r459", "text": "Using it at the office. The button broke. Shame, because it looks great on the shelf. Returning it.", "label": 1, "split": "train"}
+{"id": "r460", "text": "This coffee grinder broke on the first day.", "label": 1, "split": "heldout"}
+{"id": "r461", "text": "Bought it as a gift. My blender broke on the first day. Waste of money.", "label": 1, "split": "train"}
+{"id": "r462", "text": "The hair dryer is not good enough for daily use. Returning it.", "label": 1, "split": "heldout"}
+{"id": "r463", "text": "Ordered the white one. Never had an issue with the base. It is a little louder than expected. Happy with it.", "label": 0, "split": "train"}
+{"id": "r464", "text": "Using it at the office. My toaster is quieter than my old one. My last one broke on the first day; this one is fine. Happy with it.", "label": 0, "split": "heldout"}
+{"id": "r465", "text": "The new speaker stopped working after two weeks. Easy to clean, for what it is worth. Waste of money.", "label": 1, "split": "heldout"}
+{"id": "r466", "text": "Ordered the white one. The stand cracked within days. Very disappointed.", "label": 1, "split": "heldout"}
+{"id": "r467", "text": "Using it at the office. Our desk lamp arrived quickly.", "label": 0, "split": "heldout"}
+{"id": "r468", "text": "Bought it as a gift. My electric toothbrush was simple to set up. Great buy.", "label": 0, "split": "train"}
+{"id": "r469", "text": "Delivery took four days. The desk fan is good value. The box arrived scratched, but the desk fan itself is fine. Would buy again.", "label": 0, "split": "heldout"}
+{"id": "r470", "text": "Replaced an older model. The blender never arrived. Returning it.", "label": 1, "split": "heldout"}
+{"id": "r471", "text": "Delivery took four days. My electric toothbrush arrived scratched. Shame, because it looks great on the shelf.", "label": 1, "split": "train"}
+{"id": "r472", "text": "The hair dryer came with a part missing. Very disappointed.", "label": 1, "split": "train"}
+{"id": "r473", "text": "The new toaster keeps switching itself off.", "label": 1, "split": "heldout"}
+{"id": "r474", "text": "Using it at the office. The desk fan has lasted two years so far.", "label": 0, "split": "train"}
+{"id": "r475", "text": "Ordered the white one. Our radio is good value. My last one broke on the first day; this one is fine. Happy with it.", "label": 0, "split": "train"}
+{"id": "r476", "text": "The button feels cheap. Very disappointed.", "label": 1, "split": "train"}
+{"id": "r477", "text": "Replaced an older model. The rice cooker was delivered to the wrong address. It was simple to set up.", "label": 1, "split": "heldout"}
+{"id": "r478", "text": "Second one I own. Our rice cooker didn't overheat once.", "label": 0, "split": "heldout"}
+{"id": "r479", "text": "Ordered the white one. My toaster heats up in seconds. My last one broke on the first day; this one is fine. Happy with it.", "label": 0, "split": "heldout"}
+{"id": "r480", "text": "Our desk fan arrived quickly. Recommended.", "label": 0, "split": "train"}
+{"id": "r481", "text": "Ordered the white one. The kettle is easy to use. The refund for my first one took a month.", "label": 0, "split": "heldout"}
+{"id": "r482", "text": "Our blender heats up in seconds. The refund for my first one took a month.", "label": 0, "split": "train"}
+{"id": "r483", "text": "Replaced an older model. Our space heater overheats.", "label": 1, "split": "train"}
+{"id": "r484", "text": "Second one I own. The bike light has never let me down.", "label": 0, "split": "train"}
+{"id": "r485", "text": "Second one I own. Our rice cooker is exactly what I needed. It is a little louder than expected. Would buy again.", "label": 0, "split": "heldout"}
+{"id": "r486", "text": "Bought it as a gift. Not happy with the plug. Shame, because it looks great on the shelf. Returning it.", "label": 1, "split": "heldout"}
+{"id": "r487", "text": "Replaced an older model. The new desk fan is easy to use.", "label": 0, "split": "train"}
+{"id": "r488", "text": "Bought it as a gift. The new rice cooker looks great on the shelf. Some reviews say it overheats, but mine is fine.", "label": 0, "split": "train"}
+{"id": "r489", "text": "My speaker is much louder than expected. Waste of money.", "label": 1, "split": "heldout"}
+{"id": "r490", "text": "Second one I own. Our night light came with a part missing. It arrived quickly, at least.", "label": 1, "split": "train"}
+{"id": "r491", "text": "Using it at the office. Our hand mixer doesn't work with the plug attached.", "label": 1, "split": "heldout"}
+{"id": "r492", "text": "The space heater broke on the first day. Returning it.", "label": 1, "split": "train"}
+{"id": "r493", "text": "The button broke. The first week it worked well. Very disappointed.", "label": 1, "split": "heldout"}
+{"id": "r494", "text": "Second one I own. My toaster has not had a single fault in a year. The refund for my first one took a month. Happy with it.", "label": 0, "split": "train"}
+{"id": "r495", "text": "Using it at the office. Our hand mixer heats up in seconds.", "label": 0, "split": "heldout"}
+{"id": "r496", "text": "Delivery took four days. My rice cooker looks great on the shelf. Would buy again.", "label": 0, "split": "heldout"}
+{"id": "r497", "text": "The new hand mixer feels flimsy. Returning it.", "label": 1, "split": "heldout"}
+{"id": "r498", "text": "Second one I own. The new coffee grinder has never let me down.", "label": 0, "split": "train"}
+{"id": "r499", "text": "Using it at the office. Our coffee grinder is not as described. The first week it worked well.", "label": 1, "split": "train"}
+{"id": "r500", "text": "Second one I own. This desk lamp came with a part missing.", "label": 1, "split": "heldout"}

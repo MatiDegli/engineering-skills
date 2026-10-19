@@ -1,0 +1,158 @@
+{
+  "description": "A public research repository of a two-person team that trains two numpy classifiers of product-review complaints and decides from a held-out evaluation whether the candidate replaces the baseline. Its README states the data, the protocol, the decision rule, and the results, and six logic defects in the evaluation contradict them. Four ordinary gaps concern the dependency pins, the quality controls, a documented command, and the recorded results. One documented, tested design choice is not a defect: macro F1 scores a label with no examples and no predictions in a split as 0, as scikit-learn does; it treats every run alike and accuracy decides, so it cannot change which run wins. A report that calls it a defect is a false flag when scored by hand.",
+  "must_find": {
+    "DEP-01": "requirements.txt asks for numpy>=1.26 with no pinned version or lockfile, and nothing pins Python: the README asks for 3.12 or newer",
+    "QUAL-02": "no formatter, linter, or type checker is configured, and no CI runs the unit tests",
+    "REPO-01": "the README's `python3 -m reviewclf.synth --rows 5` fails, because the generator's option is --count",
+    "TEST-06": "the README's results name the command and seed but not the revision or the Python and numpy versions they came from",
+    "PERF-01": "the README's accuracy gain over the baseline comes from a comparison that trains the candidate in both arms, and the 1-point rule sits far below the noise the README states",
+    "REPO-06": "the README says the held-out reviews are never seen in training, the arms differ only in their features, and the synthetic reviews include negations; the code contradicts all three"
+  },
+  "must_not_flag": {
+    "AGENT-04": "no agents contribute",
+    "AGENT-05": "no agents contribute",
+    "STRUCT-02": "fewer than 20 files in every directory",
+    "STRUCT-04": "no temporary files or scripts",
+    "CI-02": "no CI configuration exists",
+    "CI-03": "no CI configuration exists",
+    "CI-04": "no CI configuration exists",
+    "CI-09": "no merge queue",
+    "CI-10": "no CI, secrets, or publication",
+    "TEST-09": "no mutation testing is in use and nothing runs the tests automatically",
+    "ARCH-04": "no threads, subprocesses, or background waits",
+    "SEC-04": "nothing is deployed, so there is no public environment",
+    "SEC-05": "no credentials anywhere",
+    "SEC-12": "the annotators wrote the reviews for the study, and they name no person, account, or order",
+    "DEL-01": "nothing is packaged, released, or deployed",
+    "DEL-03": "nothing is released",
+    "OPS-01": "no deployed service",
+    "OPS-03": "no service in operation",
+    "OPS-04": "no deployed service",
+    "TOOL-01": "no tools, skills, or MCP servers configured"
+  },
+  "must_not_contain": [],
+  "top_priorities": [
+    "PERF-01",
+    "REPO-06"
+  ],
+  "defects": [
+    {
+      "description": "The comparison maps both arms to args.candidate, so the baseline is never trained and the reported gain compares two trainings of the candidate",
+      "ids": ["PERF-01", "REPO-06", "TEST-01", "TEST-06", "SEC-09"],
+      "at": "reviewclf/compare.py:58-59",
+      "terms": [
+        "args.candidate",
+        "args.baseline",
+        "both arms",
+        "both columns",
+        "twice",
+        "itself",
+        "self-comparison",
+        "never trained",
+        "never run",
+        "never evaluated",
+        "never scored",
+        "never measured",
+        "same run",
+        "same config",
+        "candidate config",
+        "candidate's config",
+        "copy-paste"
+      ],
+      "since": "2026-10-19"
+    },
+    {
+      "description": "The decision rule adopts the candidate on a 1-point gain, while the README's own power analysis puts the smallest detectable difference on 200 held-out reviews near 8 points",
+      "ids": ["PERF-01", "PERF-03", "REPO-06", "TEST-01", "SEC-09"],
+      "at": "reviewclf/compare.py:18-22",
+      "terms": [
+        "power",
+        "detectable",
+        "noise",
+        "significan",
+        "standard error",
+        "underpowered",
+        "variance",
+        "sampling error",
+        "by chance",
+        "8 points"
+      ],
+      "since": "2026-10-19"
+    },
+    {
+      "description": "The candidate trains for 40 epochs against the baseline's 20, while the README says the arms differ only in their features",
+      "ids": ["PERF-01", "REPO-06", "TEST-01", "SEC-09"],
+      "at": "configs/runs.json:4-10",
+      "terms": [
+        "40",
+        "confound",
+        "more epochs",
+        "twice the epochs",
+        "double the epochs",
+        "epochs differ",
+        "different epochs",
+        "differ in epochs",
+        "number of epochs",
+        "longer training",
+        "trains longer",
+        "training length"
+      ],
+      "since": "2026-10-19"
+    },
+    {
+      "description": "The vocabulary is selected by label from all reviews, held-out split included, while the README says the held-out reviews are never seen in training",
+      "ids": ["REPO-06", "TEST-01", "PERF-01", "SEC-09"],
+      "at": "reviewclf/compare.py:37",
+      "terms": [
+        "leak",
+        "contaminat",
+        "peek",
+        "all reviews",
+        "all rows",
+        "all 500",
+        "whole dataset",
+        "full dataset",
+        "entire dataset",
+        "both splits",
+        "held-out labels",
+        "test labels",
+        "including the held-out",
+        "includes the held-out",
+        "including held-out",
+        "includes held-out",
+        "never seen",
+        "select_vocabulary(reviews"
+      ],
+      "since": "2026-10-19"
+    },
+    {
+      "description": "The synthetic generator never writes a negation, while the README says it covers every kind of review the annotated data holds, negations included",
+      "ids": ["REPO-06", "TEST-01", "PERF-01"],
+      "at": "reviewclf/synth.py:10-50",
+      "terms": [
+        "negation",
+        "negated",
+        "negating"
+      ],
+      "since": "2026-10-19"
+    },
+    {
+      "description": "The results table reports candidate-lr1, a run of one epoch on 50 training reviews without synthetic ones, as a learning-rate result beside the full runs, with no note that it is a smoke test",
+      "ids": ["TEST-06", "REPO-06", "PERF-01"],
+      "at": "README.md:73-77",
+      "terms": [
+        "smoke",
+        "one epoch",
+        "1 epoch",
+        "single epoch",
+        "50 rows",
+        "50 reviews",
+        "50 training",
+        "train_rows",
+        "fifty",
+        "sanity"
+      ],
+      "since": "2026-10-19"
+    }
+  ]
+}

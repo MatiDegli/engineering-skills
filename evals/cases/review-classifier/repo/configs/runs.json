@@ -1,0 +1,21 @@
+{
+  "baseline": {
+    "features": "words",
+    "epochs": 20,
+    "learning_rate": 0.5,
+    "synthetic_rows": 200
+  },
+  "candidate": {
+    "features": "words+pairs",
+    "epochs": 40,
+    "learning_rate": 0.5,
+    "synthetic_rows": 200
+  },
+  "candidate-lr1": {
+    "features": "words+pairs",
+    "epochs": 1,
+    "learning_rate": 1.0,
+    "train_rows": 50,
+    "synthetic_rows": 0
+  }
+}
