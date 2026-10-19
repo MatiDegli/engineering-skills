@@ -301,13 +301,14 @@ class RoundTests(unittest.TestCase):
             self.assertNotIn(secret, written)
 
     def test_levels_give_the_skill_the_catalog_or_nothing(self):
-        runs = claude_rounds.parse_runs(["1=claude-test-1-0", "2=claude-test-1-0+catalog", "3=claude-test-1-0+none"])
+        levels = ["", "+catalog", "+none", "+expert"]
+        runs = claude_rounds.parse_runs([f"{n}=claude-test-1-0{level}" for n, level in enumerate(levels, 1)])
         round_dir = self.root / "round"
         with mock.patch("builtins.print"):
             data = claude_rounds.plan(round_dir, runs, [str(self.case)], "HEAD")
         self.rounds.append(round_dir)
         with mock.patch("builtins.print"):
-            self.assertEqual(claude_rounds.run(round_dir, jobs=3, timeout=60, budget=100, pause=(0, 0)), 0)
+            self.assertEqual(claude_rounds.run(round_dir, jobs=4, timeout=60, budget=100, pause=(0, 0)), 0)
         seen = {}
         for job in data["jobs"]:
             prompt, added = json.loads((self.root / "state" / f"args-{Path(job['dir']).name}").read_text())
@@ -315,10 +316,16 @@ class RoundTests(unittest.TestCase):
         self.assertIn("SKILL.md", seen["full"][0])
         self.assertIn("criteria.md", seen["catalog"][0])
         self.assertEqual(seen["none"][1], [])
+        # The expert level gets the frozen prompt and the same limits as every level, and nothing else.
+        expert = claude_rounds.EXPERT_PROMPT.read_text(encoding="utf-8")
+        self.assertTrue(seen["expert"][0].startswith(expert))
+        self.assertIn("do not read any other path. Reply with only the final report.", seen["expert"][0])
+        self.assertEqual(seen["expert"][1], [])
         catalog = Path(seen["catalog"][1][0])
         self.assertEqual(sorted(p.name for p in catalog.iterdir()), ["criteria-agents.md", "criteria.md"])
         summary = claude_rounds.summarize(round_dir)
         self.assertIn("| case | 3 | Test 1.0 none | by hand | by hand |", summary)
+        self.assertIn("| case | 4 | Test 1.0 expert | by hand | by hand |", summary)
         self.assertIn("| case | 2 | Test 1.0 catalog | 1 of 1 |", summary)
 
     def test_the_summary_adds_defects_at_location_only_when_a_case_counts_one(self):

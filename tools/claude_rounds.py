@@ -49,7 +49,9 @@ from tools.evals import (
 from tools.validate_repo import ROOT
 
 SKILL = "skills/auditing-repositories"
-# The levels of evals/README.md: the skill, its catalog with the report format, or a bare request.
+# The levels of evals/README.md: the skill, its catalog with the report format, a bare request, or
+# the prompt an experienced engineer would write, which a model wrote without tools or context.
+EXPERT_PROMPT = ROOT / "evals" / "prompts" / "expert.md"
 PROMPTS = {
     "full": (
         "Use the auditing-repositories skill at {path}: read its SKILL.md and follow it to audit"
@@ -80,7 +82,12 @@ PROMPTS = {
         " repository or install dependencies. Work only in this repository and scratch directories"
         " you create; do not read any other path. Reply with only the final report."
     ),
+    "expert": EXPERT_PROMPT.read_text(encoding="utf-8").replace("{", "{{").replace("}", "}}")
+    + "\nWork only in this repository and scratch directories you create; do not read any other"
+    " path. Reply with only the final report.",
 }
+# Levels that give the agent neither the skill nor the catalog: their reports have no criterion IDs.
+WITHOUT_CATALOG = ("none", "expert")
 LOGIN_FAILURE = "Failed to refresh OAuth token"
 ATTEMPTS = 3
 TEMPORARY = re.compile(r"(audit|skill|catalog)\.[A-Za-z0-9_]{8}")
@@ -468,7 +475,7 @@ def job_skill(data: dict, job: dict) -> str:
 def job_material(data: dict, job: dict) -> Path | None:
     """Return the directory a job's level gives the agent: the skill, the catalog, or nothing."""
     level = job_level(data, job)
-    if level == "none":
+    if level in WITHOUT_CATALOG:
         return None
     return Path(job["catalog"] if level == "catalog" else job_skill(data, job))
 
@@ -999,15 +1006,15 @@ def score_job(
 ) -> dict:
     """Score one run's report and check its stream and prepared repository.
 
-    A report of the no-skill level has no criterion IDs: only its leaks and citations are checked
-    here, and its gaps, defects, and priorities are scored by hand with the rules of evals/README.md.
-    The defects count as of the round's date.
+    A report of a level without the catalog has no criterion IDs: only its leaks and citations are
+    checked here, and its gaps, defects, and priorities are scored by hand with the rules of
+    evals/README.md. The defects count as of the round's date.
     """
     label, case = f"run{job['run']}-{job['name']}", case_path(job["case"])
     report, stream = paths["reports"] / f"{label}.md", paths["streams"] / f"{label}.jsonl"
     expected, result = score_report(report, case, repo, as_of)
     text = report.read_text(encoding="utf-8")
-    by_hand = job_level(data, job) == "none"
+    by_hand = job_level(data, job) in WITHOUT_CATALOG
     defects = (len(result["defects_found"]), len(result["defects_counted"]))
     if by_hand:
         result = {key: [] for key in result} | check_text(text, repo, expected)

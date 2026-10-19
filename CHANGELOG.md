@@ -21,6 +21,9 @@
   that overlapped another, whose minutes are then not comparable.
 - Every `claude` the round runner starts has automatic updates off, so a round that runs beside
   another cannot have its CLI updated midway, which would split its audits across two versions.
+- An expert-prompt level, `+expert`, runs audits with a prompt for a repository audit that a model
+  wrote without tools, context, or the catalog, so rounds can tell what the skill adds beyond a good
+  prompt as well as beyond a bare request.
 
 ## v0.2.1 — 2026-10-18
 

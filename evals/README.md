@@ -103,9 +103,9 @@ python3 -m tools.claude_rounds clean ~/eval-runs/round10
 prepares one repository per run and case; `--case` takes a case name or directory and may repeat. A
 run may name its own revision and level, as in `--run 66=claude-sonnet-5-5@8b2a2c6` or
 `--run 67=claude-opus-5-5+catalog`: the catalog level receives only the `criteria*.md` files, the
-none level nothing, and a none-level report is marked for scoring by hand. A round that tests a
-change includes the current version as a control, with the same models and runs, in the same plan:
-`plan` lists the jobs case by case, so both arms run side by side.
+none and expert levels no files, and their reports are marked for scoring by hand. A round that
+tests a change includes the current version as a control, with the same models and runs, in the
+same plan: `plan` lists the jobs case by case, so both arms run side by side.
 `run` starts agents and spends usage, so the maintainer runs it or allows it; `--budget-usd` stops
 launching audits once the finished ones reach that API-equivalent cost, which on a subscription
 measures quota rather than money. `--provider-url glm-5.3=URL --provider-key glm-5.3=KEY_FILE` runs
@@ -205,8 +205,18 @@ same cases, model, and harness with less of the skill:
 | Level | The agent receives | Scoring |
 | --- | --- | --- |
 | No skill | A request to audit the repository, list its problems with evidence, and give up to five priority actions | By hand |
+| Expert prompt | The prompt in [`prompts/expert.md`](prompts/expert.md), with the same limits on paths and reply as every level | By hand |
 | Catalog only | `criteria.md` and the report's Findings, Priority actions, and Coverage format, without the procedure or the guides | `score` |
 | Full skill | The skill | `score` |
+
+The no-skill level measures the skill against the request most people would type. The expert
+level measures it against a good prompt, to tell what the catalog and the procedure add beyond one.
+Its prompt was written on 2026-10-19 by Opus 5.5, run with `--safe-mode --tools ""` from an empty
+directory, so it saw neither this repository nor any result. It was asked for the prompt an
+experienced reviewer would give an agent that audits a repository it has not seen, of any kind,
+non-interactively and read-only, for the report most useful to its maintainer, from its own
+experience and without any external checklist, in under 300 words. The prompt is kept as written,
+at 364 words. Change it only between rounds that do not compare with each other.
 
 Start every agent in the prepared repository, whose files hold none of this repository, the skill,
 or `expected.json`, and give it the skill or the catalog only as its level requires. An agent with a
