@@ -52,8 +52,9 @@ Copy this checklist into your working notes and complete every step:
    are part of what you audit; say so in the report.
 2. **Context.** Read the README, agent instructions (such as AGENTS.md or CLAUDE.md), contribution
    guides, manifests, and CI configuration. Determine the stage with the
-   [applicability table](references/criteria.md#applicability) and the security level with the table
-   in [standard.md](references/standard.md#proportionate-security), giving the reason for each.
+   [applicability table](references/criteria.md#applicability), the security level with the table
+   in [standard.md](references/standard.md#proportionate-security), and the
+   [project's shape](references/criteria.md#project-shape), giving the reason for each.
 3. **Inventory.** List tracked files (`git ls-files`), languages, manifests and lockfiles, test
    locations, CI workflows, deployment files, and documentation. Read recent history with
    `git log --stat -n 30` for the history criteria. If you cannot read every maintained file,
@@ -150,8 +151,9 @@ Use these sections in this order. Keep the table columns and status values exact
 
 ```markdown
 ## Context
-Date (UTC), purpose, stack, stage, security level with reason, audited revision and working-tree
-state, the sample when the repository is large, and the commands executed with their results.
+Date (UTC), purpose, stack, stage, security level, and project shape, each with its reason, audited
+revision and working-tree state, the sample when the repository is large, and the commands executed
+with their results.
 
 ## Strengths
 Up to five, each with evidence.

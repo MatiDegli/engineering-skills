@@ -8,6 +8,7 @@ IDs are stable: they are never renumbered or reused.
 ## Contents
 
 - [Applicability](#applicability)
+  - [Project shape](#project-shape)
 - [Areas](#areas)
 - [Repository and structure](#repository-and-structure)
 - [Quality controls](#quality-controls)
@@ -45,6 +46,22 @@ That rule covers only conditions that depend solely on hosted settings. A criter
 the repository shows still applies when its evidence is remote: CI-06 applies whenever CI
 configuration exists, and without a remote or a readable run it is pending verification.
 
+### Project shape
+
+Some criteria fit only some projects. Record three facts in Context, each with its evidence:
+
+- **Maintainers.** Count the people who maintain the project, with identities that share an email
+  counted as one. An agent whose changes a maintainer reviews and merges is not another maintainer.
+  With one maintainer, REPO-08 and HIST-02 do not apply: no one else owns an area, approves a
+  change, or reads a convention. Review of agents' changes is AGENT-03's.
+- **Reach.** Decide whether the software reaches anyone beyond the machines where it is built:
+  installed by others from a package, binary, or image, or run as a service. DEP-02, DEP-03, DEP-04,
+  and DEP-06 apply when dependencies reach users that way; they do not when nothing reaches anyone,
+  or when every dependency is a development tool that the lockfile pins.
+- **Library or application.** A library declares the runtime and dependency ranges it supports
+  instead of pinning them, so for a library DEP-01 asks only for the lockfile of its development
+  environment.
+
 ## Areas
 
 Some criteria only concern certain repositories, so they live in one file per area. Read an area's
@@ -55,7 +72,7 @@ area in Coverage with its wildcard and the reason on the `not-applicable areas` 
 | Area | IDs | Applies when | Criteria |
 | --- | --- | --- | --- |
 | Agent-assisted development | `AGENT-*` | Agents contribute: agent instructions, agent configuration, or agent-authored history | [criteria-agents](criteria-agents.md) |
-| Delivery | `DEL-*` | Artifacts are built, distributed, or released | [criteria-delivery](criteria-delivery.md) |
+| Delivery | `DEL-*` | Artifacts reach anyone beyond the machines that build them: published, distributed, released, or deployed | [criteria-delivery](criteria-delivery.md) |
 | Operations | `OPS-*` | A service is deployed or the project keeps persistent data | [criteria-operations](criteria-operations.md) |
 
 ## Repository and structure
@@ -69,7 +86,7 @@ area in Coverage with its wildcard and the reason on the `not-applicable areas` 
 | REPO-05 | Decisions with alternatives and consequences are recorded where maintainers will find them | Such decisions exist | [standard](standard.md#repository) |
 | REPO-06 | Comments explain intent and non-obvious invariants; documentation is proportionate and matches the code | Always | [standard](standard.md#repository) |
 | REPO-07 | Each incident leaves a recorded lesson with its cause and the mechanism that now prevents it, or a named follow-up | Incidents occurred, as history, issues, or postmortems show | [standard](standard.md#repository) |
-| REPO-08 | Each area has an owner, and someone other than the author approves each change, always for security, release, and policy changes | Several contributors, human or agent | [standard](standard.md#repository) |
+| REPO-08 | Each area has an owner, and someone other than the author approves each change, always for security, release, and policy changes | Several maintainers ([shape](#project-shape)) | [standard](standard.md#repository) |
 | STRUCT-01 | Files are organized by responsibility; the root holds only entry points, manifests, lockfiles, and configuration that must live there, with exceptions recorded | Always | [structure](structure.md#locations-and-boundaries) |
 | STRUCT-02 | Directories with more than 20 maintained source files have a recorded cohesion review | Threshold exceeded | [structure](structure.md#review) |
 | STRUCT-03 | Allowed dependencies between modules are defined, free of cycles, and enforced by import contracts where useful | Several real modules | [structure](structure.md#locations-and-boundaries) |
@@ -96,11 +113,11 @@ area in Coverage with its wildcard and the reason on the `not-applicable areas` 
 | ID | Check | Applies when | Guide |
 | --- | --- | --- | --- |
 | DEP-01 | The runtime is pinned to at least a minor version, such as 3.12, dependency versions are pinned, and the lockfile is committed where the package manager supports it | Dependencies exist | [standard](standard.md#quality) |
-| DEP-02 | Production dependencies are justified by need, alternatives, maintenance, license, and size | Dependencies exist | [quality](quality.md#rules-for-changes-and-agents) |
-| DEP-03 | Dependencies have an owner and a periodic review; automated update proposals are configured | Dependencies exist | [quality](quality.md#dependency-maintenance) |
-| DEP-04 | Resolved dependencies are audited for vulnerabilities across relevant groups and platforms; a failed query is not an approved audit | Dependencies exist; required before distribution | [quality](quality.md#dependency-maintenance) |
+| DEP-02 | Production dependencies are justified by need, alternatives, maintenance, license, and size | Dependencies reach users ([shape](#project-shape)) | [quality](quality.md#rules-for-changes-and-agents) |
+| DEP-03 | Dependencies have an owner and a periodic review; automated update proposals are configured | Dependencies reach users ([shape](#project-shape)) | [quality](quality.md#dependency-maintenance) |
+| DEP-04 | Resolved dependencies are audited for vulnerabilities across relevant groups and platforms; a failed query is not an approved audit | Dependencies reach users ([shape](#project-shape)); required before distribution | [quality](quality.md#dependency-maintenance) |
 | DEP-05 | Licenses and notices of transitive dependencies and bundled binaries are checked; downloaded tools are pinned and hash-verified | Distribution or downloaded tools | [quality](quality.md#dependency-maintenance) |
-| DEP-06 | New dependency versions are adopted only after a minimum release age, with recorded exceptions for security fixes | Dependencies exist | [quality](quality.md#dependency-maintenance) |
+| DEP-06 | New dependency versions are adopted only after a minimum release age, with recorded exceptions for security fixes | Dependencies reach users ([shape](#project-shape)) | [quality](quality.md#dependency-maintenance) |
 
 ## Tests and evidence
 
@@ -173,6 +190,6 @@ area in Coverage with its wildcard and the reason on the `not-applicable areas` 
 | ID | Check | Applies when | Guide |
 | --- | --- | --- | --- |
 | HIST-01 | Commits have one purpose, leave a valid revision, and stay reviewable in size or record a reviewed exception | History available | [commits](commits.md#limits) |
-| HIST-02 | Commit messages follow a consistent convention, enforced if the project adopted one | History available | [commits](commits.md#naming) |
+| HIST-02 | Commit messages follow a consistent convention, enforced if the project adopted one | History available and several maintainers ([shape](#project-shape)) | [commits](commits.md#naming) |
 | HIST-03 | Shared history is preserved; rewrites are authorized and pushed with an explicit lease | Shared branches | [commits](commits.md#earlier-commits) |
 | TOOL-01 | Adopted tools, skills, and MCP servers answer a concrete need, are pinned, and have reviewed permissions and an owner | Such tools are configured | [tooling](tooling.md#adopt-and-maintain) |

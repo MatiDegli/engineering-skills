@@ -16,9 +16,10 @@ it rejects failures.
 - Record each incident's lesson where maintainers will find it: the cause, and the mechanism that now
   prevents it, or a named follow-up until one exists. A rule that depends on someone remembering it
   is not a mechanism.
-- Give each area an owner. Someone other than the author, human or agent, approves each change, and
-  always changes to security, releases, and policy. Code-owner rules can request and require those
-  reviews.
+- When several people maintain the project, give each area an owner, and have someone other than
+  the author, human or agent, approve each change, always changes to security, releases, and policy.
+  Code-owner rules can request and require those reviews. With one maintainer, agents' changes still
+  get the independent review that AGENT-03 asks for.
 
 ## Quality
 
