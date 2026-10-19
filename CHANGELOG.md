@@ -18,6 +18,10 @@
   applies only when artifacts reach anyone. With Sonnet on three real repositories, the rows these
   rules had raised without cause fell from 8 to 2 in six reports, and a rewording removed the last
   2 (runs 196 to 203 in `evals/RESULTS.md`).
+- A migration from one pattern to another names its completion condition, and a check rejects new
+  uses of the pattern it replaces (QUAL-11), so new code cannot copy the pattern being retired. A
+  committed baseline of known violations meets QUAL-05 when it cannot grow without a separate
+  reviewed change, as large-scale changes and frozen architecture rules use it.
 
 ### Evaluations and tooling
 

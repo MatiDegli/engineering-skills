@@ -63,9 +63,14 @@ Configure blocking severity where appropriate and check the exit code.
 - Test that new, renamed, or ignored files do not escape the adopted control.
 - Each exception identifies a path/symbol, rule, reason, owner, and removal condition.
 - For inherited debt, set caps that forbid growth, reduce them as the code improves, and remove obsolete
-  entries. Avoid automatic baselines and configurations that nullify the control.
+  entries. A committed baseline of known violations is such a cap when CI fails on a new violation and
+  an added entry needs its own reviewed change. Avoid baselines that regenerate themselves and
+  configurations that nullify the control.
 - Record known technical debt in one register with an owner, its impact, and a removal condition.
   Review the register on a schedule and link exceptions and TODOs to their entries.
+- A migration from one pattern to another, such as a helper that a decision retires, names its
+  completion condition, and a check rejects new uses of the old pattern while the known ones shrink;
+  otherwise each new change copies whichever pattern it finds first.
 - Change regenerable contracts at their source. Compare bytes and file sets in a temporary destination
   to detect differences, missing files, and extras.
 
@@ -124,4 +129,6 @@ References, checked on 2026-10-16 against the claims they support:
 
 Sources checked on 2026-10-17 against the claims they support:
 [release age in pnpm](https://pnpm.io/settings/dependency-resolution),
-[Dependabot cooldown](https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference).
+[Dependabot cooldown](https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference);
+and on 2026-10-19: [large-scale changes](https://abseil.io/resources/swe-book/html/ch22.html),
+[frozen rules](https://www.archunit.org/userguide/html/000_Index.html).

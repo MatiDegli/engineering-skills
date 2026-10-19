@@ -102,13 +102,13 @@ area in Coverage with its wildcard and the reason on the `not-applicable areas` 
 | QUAL-02 | Formatting, linting, type checking, tests, and builds appropriate to the stack exist, each with configuration, a local command, and CI execution, and each fails on violations, which the audit checks; the project need not record a demonstration | Always; depth grows with stage | [quality](quality.md#controls-by-stack) |
 | QUAL-03 | Controls fail on violations: no ignored exit codes, non-blocking severities for blocking rules, or commands that always succeed | A control exists | [quality](quality.md#controls-by-stack) |
 | QUAL-04 | Controls cover all maintained source, scripts, tests, and new files; exclusions are explicit by path and purpose | A control exists | [quality](quality.md#scope-and-exceptions) |
-| QUAL-05 | Each suppression or exception names a path or symbol, rule, reason, owner, and removal condition; there are no blanket ignores or automatic baselines | Suppressions exist | [quality](quality.md#scope-and-exceptions) |
+| QUAL-05 | Each suppression or exception names a path or symbol, rule, reason, owner, and removal condition; there are no blanket ignores, and no baseline that grows without a separate reviewed change | Suppressions exist | [quality](quality.md#scope-and-exceptions) |
 | QUAL-06 | Size and complexity limits have an agreed counting method before they block and are treated as design signals | Limits adopted or large units exist | [quality](quality.md#starting-limits) |
 | QUAL-07 | A coverage threshold measures branches and its boundary has been tested with the actual tool | Coverage gate exists | [quality](quality.md#starting-limits) |
 | QUAL-08 | Changes that weaken controls, including raising a cap or adding an exception, are justified separately from functional changes and reviewed | History or PRs available | [quality](quality.md#rules-for-changes-and-agents) |
 | QUAL-09 | Type escapes and lint suppressions are bounded and justified; external data is validated in adapters | Typed or linted code | [quality](quality.md#rules-for-changes-and-agents) |
 | QUAL-10 | Guards and hooks are tested in their own failure modes, such as a missing interpreter or script and a timeout, and fail open or closed by recorded choice | Guards or hooks exist | [quality](quality.md#guards-and-hooks) |
-| QUAL-11 | Known technical debt is recorded in one register with an owner, impact, and removal condition, and the register is reviewed | Debt is acknowledged, for example in TODOs, exceptions, or decisions | [quality](quality.md#scope-and-exceptions) |
+| QUAL-11 | Known technical debt is recorded in one register with an owner, impact, and removal condition, and the register is reviewed; a migration in progress names its completion condition, and a check rejects new uses of the pattern it replaces | Debt is acknowledged, for example in TODOs, exceptions, or decisions, or a migration between two patterns is in progress | [quality](quality.md#scope-and-exceptions) |
 
 ## Dependencies
 
