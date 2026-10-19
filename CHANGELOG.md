@@ -11,6 +11,13 @@
   anyone. A library's DEP-01 asks only for the lockfile of its development environment. With
   Sonnet on three real repositories, rows that the project's shape makes moot fell from 20 to 2 in
   six reports, and reports had 12% fewer rows (runs 190 to 195 in `evals/RESULTS.md`).
+- Costly and structural criteria apply in proportion. TEST-09 asks for mutation testing only once
+  the tests run automatically. QUAL-02's rejection of violations is a check the audit makes, not a
+  record the project keeps. STRUCT-02's file count leaves out generated files and data. STRUCT-03
+  applies with several maintainers, a documented boundary, or a dependency cycle. The Delivery area
+  applies only when artifacts reach anyone. With Sonnet on three real repositories, the rows these
+  rules had raised without cause fell from 8 to 2 in six reports, and a rewording removed the last
+  2 (runs 196 to 203 in `evals/RESULTS.md`).
 
 ### Evaluations and tooling
 

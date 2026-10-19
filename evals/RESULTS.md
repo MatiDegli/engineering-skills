@@ -2775,13 +2775,21 @@ Report SHA-256 hashes, as printed by the summary:
   against 7), 9 more in total.
 - Precision, not met: 21% of the skill's items were W, against a limit of 10%; 15% of the no-skill
   audit's were.
-  - 15 of the skill's 22 W items, 13 of them `low`, applied a criterion where the project's shape
-    makes it moot. Examples: owners and approvals with a single maintainer, dependency policies for
-    a package that is neither distributed nor has runtime dependencies, and a guide's numeric
-    starting point used as a rule.
+  - 14 of the skill's 22 W items, 12 of them `low`, were true but did not fit the project. 11
+    applied a criterion that the project's shape makes moot, such as owners and approvals with a
+    single maintainer, or dependency policies for a package that is neither distributed nor has
+    runtime dependencies. 3 asked for more than the risk warranted, such as mutation testing where
+    nothing runs the tests.
   - 3 came from the harness: prepared cases have no remote and no GitHub login, so CI runs, branch
     protection, and other branches were unreadable.
-  - 4 were factual errors, 2 of them shared with the no-skill audit.
+  - 3 were false at the pinned commit, and 2 were true but described no defect.
+  - Of the no-skill audit's 10 W items, 5 were false, 3 came from the harness, 1 was moot, and 1
+    described no defect. Three items came from both arms; on the skill's side, their wording was
+    true or rested on the harness.
+  - Corrected on 2026-10-19 by a per-item analysis against the pinned commits. The first version of
+    this entry counted 15 moot, 3 harness, and 4 factual items, 2 of them shared, and gave a guide's
+    numeric starting point used as a rule as a moot example; that row was false by the guide's own
+    counting rule.
 - `low` rows were 69% of the skill's items and 77% of its W items. U was 2 of 4 `high` rows, 10 of
   29 `medium`, and 15 of 72 `low`.
 - Coverage of each other's U items:
@@ -2866,3 +2874,72 @@ Report SHA-256 hashes for the fictional cases, as printed by the summary:
 - `16a0b6542a4f7bf6c7223dc692f1b2532a7c1eaf312b212b47e43cf2f355bd3b` well-maintained run 195
 - `58138c5c4e9d884ce00d7d77d60e2157b5572eee8ba55199a8eddf2014c7bab1` agent-workflow run 194
 - `6fa8e007c8d05700c7338d69f916db6bca0bb31356e8e08e93a0bca2a6e0a3e8` agent-workflow run 195
+
+## 2026-10-19 — Runs 196 to 203 (criteria in proportion)
+
+- A per-item analysis of the W items of runs 188 and 189 found rows that were true but out of
+  proportion, or that came from a rule read too widely. `47b9ccf` changes four rules:
+  - The Delivery area and DEL-01 apply only when artifacts reach anyone beyond the machines that
+    build them. `dad6b06` had changed the areas table but not `criteria-delivery.md`.
+  - TEST-09 applies to mutation testing in use, or once the tests run automatically on code at
+    security level 2 or 3 or that moves money or data.
+  - QUAL-02's rejection of violations is the audit's check, not a record the project keeps.
+  - STRUCT-02 does not count generated files, files that hold only data, fixtures, or migrations.
+    STRUCT-03 applies with several maintainers, a documented boundary, or a dependency cycle.
+- `38abc8f` rewords TEST-09's condition after runs 198 and 199 (see below). Control: `dad6b06`.
+- Sonnet 5.5, with criteria fixed before planning. The no-loss margin, 4 useful IDs, was set from
+  the spread between runs 192 and 193, which used one skill text.
+  - Runs 196 to 199: the three repositories of runs 188 to 193, at the same pins. Runs 196 and 197
+    are the control, 198 and 199 the candidate. Names, findings, and report hashes stay private.
+  - Runs 200 (control) and 201 (candidate): the fictional cases that seed or guard the touched rows.
+  - Runs 202 and 203: `38abc8f` on the deployed service only.
+- Target rows are the rows of runs 188 and 189 that this change should remove, at most 5 per run.
+  The useful IDs are those counted in runs 190 to 193: the criteria of the useful items the skill
+  found in run 188, 25 per run.
+
+| Case | Run | Model | Seeded gaps found | Defects at location | Passes the scorer | Top priorities in first five | Problems |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| typescript-cli | 200 | Sonnet 5.5 @ dad6b06 | 12 of 13 (missed SEC-02) | — | no | 2 of 3 | uncovered 2, duplicated 1 |
+| typescript-cli | 201 | Sonnet 5.5 @ 47b9ccf | 12 of 13 (missed QUAL-05) | — | no | 3 of 3 | — |
+| well-maintained | 200 | Sonnet 5.5 @ dad6b06 | 2 of 2 | — | no | 2 of 2 | false flag ARCH-05 |
+| well-maintained | 201 | Sonnet 5.5 @ 47b9ccf | 2 of 2 | — | no | 2 of 2 | false flag QUAL-01 |
+| booking-api | 200 | Sonnet 5.5 @ dad6b06 | 5 of 5 | 4 of 5 | no | 2 of 2 | uncovered 1 |
+| booking-api | 201 | Sonnet 5.5 @ 47b9ccf | 5 of 5 | 5 of 5 | yes | 2 of 2 | — |
+| python-service | 200 | Sonnet 5.5 @ dad6b06 | 16 of 16 | — | yes | 3 of 3 | — |
+| python-service | 201 | Sonnet 5.5 @ 47b9ccf | 16 of 16 | — | yes | 3 of 3 | — |
+
+| Criterion | Control | Candidate | Met |
+| --- | --- | --- | --- |
+| T1 target rows in Findings, 6 reports, at most 2 | 8 | 2 | yes |
+| T2 useful IDs present, 6 reports, at least the control's minus 4 | 43 | 44 | yes |
+| T3 a QUAL-02 row in every report on the real repositories | 6 of 6 | 6 of 6 | yes |
+| R1 seeded gaps, 4 fictional cases | 35 of 36 | 35 of 36 | yes |
+| R2 `must_not_flag` false flags and copied secrets | 1 and 0 | 1 and 0 | yes |
+| R2 reports that pass the scorer, of 10, at least the control's minus 1 | 5 | 7 | yes |
+| R3 top priorities in first five | 9 of 10 | 10 of 10 | yes |
+| C1 mean USD, 10 reports, at most 1.15 times the control's | 0.90 | 1.03 | yes (1.14 times) |
+
+- The 2 target rows left were TEST-09 on the deployed service, in both candidate runs, one of them
+  `medium`, although both reports say that no CI exists. The condition read as two alternatives.
+  `38abc8f` makes it one reading. In runs 202 and 203, neither report had the row, and both kept
+  all 7 of that repository's useful IDs and a QUAL-02 row.
+- DEL-01 in the library was absent from both control runs, although runs 192 and 193 with the same
+  skill had it, so this round does not measure that row.
+- On the real repositories, Findings rows fell from 187 to 178, and `low` rows from 140 to 123.
+- The well-maintained false flags, ARCH-05 in the control and QUAL-01 in the candidate, are on rows
+  the change does not touch.
+- The candidate cost 16% more on the real repositories: 1.48 USD against 1.27, with 30 tool calls
+  against 26. On the fictional cases both arms cost 0.35 USD. Mean minutes: 4.0 against 3.8 on the
+  real repositories, and 1.4 for both on the fictional cases. Runs 202 and 203 cost 3.3 USD.
+- No report copied a secret (gitleaks on the reports).
+
+Report SHA-256 hashes for the fictional cases, as printed by the summary:
+
+- `d39ea4f0e6457ee4f354524cccf1e3a6bcb5c5211c7d97a5d7b5439cf77477c9` typescript-cli run 200
+- `b9790b996e7dbbd9a307c849b5d922f1c4e0efa00c66117c029093f9c6d425f0` typescript-cli run 201
+- `36375ee9c6d5713c052c5f3b259841a63d77668e46ee815eae621337eec486dd` well-maintained run 200
+- `1e88853b95dfdb69a3a85a6d09a66acf8ecf1840cd81f4a9f4ef1d586df7a1ad` well-maintained run 201
+- `b2012b06b07d7e21e3a49a47068ae32c944b5f897b25f9af93511a18fe8d4393` booking-api run 200
+- `2a18a4b48d83608eb77e23eeff0a26d32a413874a528ec86350a99add68246f4` booking-api run 201
+- `c0308ba6268c7a98317e349a4ee85da4fc9d2b16755220f6cace88dfd826405e` python-service run 200
+- `5cf170c38c754668c6dc9be91c362ce782119f97d74ada9f5fb641c49235c7aa` python-service run 201
