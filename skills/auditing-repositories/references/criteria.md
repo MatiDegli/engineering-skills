@@ -133,7 +133,7 @@ area in Coverage with its wildcard and the reason on the `not-applicable areas` 
 | TEST-06 | Recorded results state the revision, command, environment, and outcome, and distinguish skipped, timed-out, and interrupted runs from passes | Results are recorded or claimed | [validation](validation.md#recording-and-reusing-results) |
 | TEST-07 | Each fix has a test that fails when the fix is reverted | Fixes are made | [validation](validation.md#useful-tests) |
 | TEST-08 | Flaky tests are treated as defects with a root cause; correctness tests assert order and causality rather than wall-clock bounds; tests that observe host-wide state key on a value unique to their run | Tests exist | [validation](validation.md#useful-tests) |
-| TEST-09 | Mutation testing runs on changed critical code, and each surviving mutant is triaged as a missing assertion, an equivalent mutant, or a path that needs fault injection | Mutation testing in use, or tests that run automatically on code at security level 2 or 3 or that moves money or data | [validation](validation.md#useful-tests) |
+| TEST-09 | Mutation testing runs on changed critical code, and each surviving mutant is triaged as a missing assertion, an equivalent mutant, or a path that needs fault injection | Mutation testing in use, or the tests run automatically and the code is at security level 2 or 3 or moves money or data | [validation](validation.md#useful-tests) |
 
 ## CI
 
