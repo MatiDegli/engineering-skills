@@ -148,7 +148,7 @@ area in Coverage with its wildcard and the reason on the `not-applicable areas` 
 | CI-07 | Required checks are enforced by branch protection or rulesets with the correct names and source, and bypasses are reviewed | Shared default branch | [ci](ci.md#require-real-results) |
 | CI-08 | Required checks report for every relevant change: path filters, conditional jobs, and aggregators cannot turn a missing or failed result into success | Required checks exist | [ci](ci.md#require-real-results) |
 | CI-09 | With a merge queue, required workflows run on `merge_group` and test the combined candidate | Merge queue used | [ci](ci.md#require-real-results) |
-| CI-10 | Untrusted code never runs with secrets, privileged runners, or `pull_request_target`; publication is separated from PR validation | CI with secrets or publication | [ci](ci.md#privileges-and-delivery) |
+| CI-10 | Untrusted code never runs with secrets, privileged runners, or `pull_request_target`; untrusted event data never reaches a script through expression interpolation; publication is separated from PR validation | CI with secrets or publication, or that outside events trigger | [ci](ci.md#privileges-and-delivery) |
 | CI-11 | Changes to protected policy (controls, workflows, ignores) are checked by a guard from the trusted base | Risk warrants it | [ci](ci.md#protect-policy-when-risk-warrants-it) |
 
 ## Security

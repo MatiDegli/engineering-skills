@@ -29,6 +29,9 @@
   removal follows a deprecation in an earlier release (DEL-03), as Semantic Versioning asks. The
   audit compares the declared interface between the last two releases; internal applications and
   0.y.z versions are exempt.
+- Untrusted event data, such as a pull request's or an issue's title, never reaches a CI script
+  through expression interpolation, where it can run as code with the job's token (CI-10). CI-10
+  now also applies to CI that outside events trigger, not only to CI with secrets or publication.
 
 ### Evaluations and tooling
 

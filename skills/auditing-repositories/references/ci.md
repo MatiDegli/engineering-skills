@@ -59,9 +59,12 @@ run from a trusted base; the proposed version cannot approve itself.
 ## Privileges and delivery
 
 Separate PR validation and publication. Avoid secrets or privileged persistent runners for external code;
-do not run it through `pull_request_target`. Publish with appropriate authorization and permissions,
-identifying the tested artifact, hashes, and provenance. Review pins and digests in scripts in addition
-to automated dependency updates.
+do not run it through `pull_request_target`. Pass untrusted event data, such as a pull request's or
+an issue's title, to scripts through an environment variable, quoted, never through a `${{ }}`
+expression in the script text, where it can run as code with the job's token. Publish with
+appropriate authorization and permissions, identifying the tested artifact, hashes, and provenance.
+Review pins and digests in scripts in addition to automated dependency updates.
 
 Sources, checked on 2026-10-16 against the claims they support: [required checks](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks),
-[Actions security](https://docs.github.com/en/actions/reference/security/secure-use).
+[Actions security](https://docs.github.com/en/actions/reference/security/secure-use), checked again on
+2026-10-19 for script injection, with [dangerous workflows](https://github.com/ossf/scorecard/blob/main/docs/checks.md).
