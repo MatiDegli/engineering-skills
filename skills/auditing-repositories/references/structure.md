@@ -13,9 +13,9 @@ cohesion; it does not determine the structure by itself.
 | Temporary script with no purpose, owner, or removal condition | Resolve before closing the milestone |
 
 The threshold of 20 is an initial value and may be reviewed. Count maintained source files,
-including tests and tools, without counting subdirectories. Exclude generated files,
-migrations, fixtures, and resources by path and purpose; this exclusion affects only the count,
-not other controls.
+including tests and tools, without counting subdirectories. Exclude generated files, files that
+hold only data, migrations, fixtures, and resources by path and purpose; this exclusion affects
+only the count, not other controls.
 
 When the threshold is exceeded, review distinct responsibilities, coupling, and difficulty
 finding changes. Record whether to keep or reorganize, with a reason. Avoid artificial splits,

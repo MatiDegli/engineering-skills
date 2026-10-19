@@ -1,8 +1,9 @@
 # Engineering quality
 
 Choose controls that detect problems in the project. Each control needs a scope, configuration,
-local command, CI execution, and an invalid case that demonstrates rejection. The following
-guidance complements the [standard](standard.md); implementation belongs to the project.
+local command, and CI execution, and it must reject an invalid case, which whoever adds or audits
+the control checks by trying one. The following guidance complements the
+[standard](standard.md); implementation belongs to the project.
 
 ## Contents
 

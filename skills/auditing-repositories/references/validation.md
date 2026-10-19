@@ -48,10 +48,11 @@ repositories; test spaces, Unicode, and another cwd when supported.
 - A test that observes host-wide state, such as processes, ports, or files outside its own
   directory, keys on a value unique to its run, so that a leftover from an earlier run cannot fail
   later ones.
-- Where risk warrants it, such as security level 2 or 3 or code that moves money or data, run
-  mutation testing on changed and critical code and triage each surviving mutant: add the missing
-  assertion, accept an equivalent mutant (it may reveal redundant code), or inject the fault a path
-  needs. Survivors that cluster in one unit are a design signal, like its size.
+- Where risk warrants it, such as security level 2 or 3 or code that moves money or data, and
+  once the tests run automatically, run mutation testing on changed and critical code and triage
+  each surviving mutant: add the missing assertion, accept an equivalent mutant (it may reveal
+  redundant code), or inject the fault a path needs. Survivors that cluster in one unit are a
+  design signal, like its size.
 
 ## Recording and reusing results
 

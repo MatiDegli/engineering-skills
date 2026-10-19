@@ -53,11 +53,13 @@ Some criteria fit only some projects. Record three facts in Context, each with i
 - **Maintainers.** Count the people who maintain the project, with identities that share an email
   counted as one. An agent whose changes a maintainer reviews and merges is not another maintainer.
   With one maintainer, REPO-08 and HIST-02 do not apply: no one else owns an area, approves a
-  change, or reads a convention. Review of agents' changes is AGENT-03's.
+  change, or reads a convention. Review of agents' changes is AGENT-03's. STRUCT-03 then applies
+  only to a boundary the project documents or to a dependency cycle.
 - **Reach.** Decide whether the software reaches anyone beyond the machines where it is built:
   installed by others from a package, binary, or image, or run as a service. DEP-02, DEP-03, DEP-04,
   and DEP-06 apply when dependencies reach users that way; they do not when nothing reaches anyone,
-  or when every dependency is a development tool that the lockfile pins.
+  or when every dependency is a development tool that the lockfile pins. The Delivery area applies
+  only when artifacts reach anyone: building a package nobody else installs does not open it.
 - **Library or application.** A library declares the runtime and dependency ranges it supports
   instead of pinning them, so for a library DEP-01 asks only for the lockfile of its development
   environment.
@@ -88,8 +90,8 @@ area in Coverage with its wildcard and the reason on the `not-applicable areas` 
 | REPO-07 | Each incident leaves a recorded lesson with its cause and the mechanism that now prevents it, or a named follow-up | Incidents occurred, as history, issues, or postmortems show | [standard](standard.md#repository) |
 | REPO-08 | Each area has an owner, and someone other than the author approves each change, always for security, release, and policy changes | Several maintainers ([shape](#project-shape)) | [standard](standard.md#repository) |
 | STRUCT-01 | Files are organized by responsibility; the root holds only entry points, manifests, lockfiles, and configuration that must live there, with exceptions recorded | Always | [structure](structure.md#locations-and-boundaries) |
-| STRUCT-02 | Directories with more than 20 maintained source files have a recorded cohesion review | Threshold exceeded | [structure](structure.md#review) |
-| STRUCT-03 | Allowed dependencies between modules are defined, free of cycles, and enforced by import contracts where useful | Several real modules | [structure](structure.md#locations-and-boundaries) |
+| STRUCT-02 | Directories with more than 20 maintained source files, not counting generated files, files that hold only data, fixtures, or migrations, have a recorded cohesion review | Threshold exceeded | [structure](structure.md#review) |
+| STRUCT-03 | Allowed dependencies between modules are defined, free of cycles, and enforced by import contracts where useful | Several real modules, with several maintainers, a documented boundary, or a dependency cycle ([shape](#project-shape)) | [structure](structure.md#locations-and-boundaries) |
 | STRUCT-04 | Temporary files and scripts have a purpose, owner, and removal condition | Temporary files exist | [structure](structure.md#temporary-files-and-enforcement) |
 
 ## Quality controls
@@ -97,7 +99,7 @@ area in Coverage with its wildcard and the reason on the `not-applicable areas` 
 | ID | Check | Applies when | Guide |
 | --- | --- | --- | --- |
 | QUAL-01 | Installation is reproducible and one validation command is shared by local development and CI | Always | [standard](standard.md#quality) |
-| QUAL-02 | Formatting, linting, type checking, tests, and builds appropriate to the stack exist, each with configuration, a local command, CI execution, and a demonstrated rejected violation | Always; depth grows with stage | [quality](quality.md#controls-by-stack) |
+| QUAL-02 | Formatting, linting, type checking, tests, and builds appropriate to the stack exist, each with configuration, a local command, and CI execution, and each fails on violations, which the audit checks; the project need not record a demonstration | Always; depth grows with stage | [quality](quality.md#controls-by-stack) |
 | QUAL-03 | Controls fail on violations: no ignored exit codes, non-blocking severities for blocking rules, or commands that always succeed | A control exists | [quality](quality.md#controls-by-stack) |
 | QUAL-04 | Controls cover all maintained source, scripts, tests, and new files; exclusions are explicit by path and purpose | A control exists | [quality](quality.md#scope-and-exceptions) |
 | QUAL-05 | Each suppression or exception names a path or symbol, rule, reason, owner, and removal condition; there are no blanket ignores or automatic baselines | Suppressions exist | [quality](quality.md#scope-and-exceptions) |
@@ -131,7 +133,7 @@ area in Coverage with its wildcard and the reason on the `not-applicable areas` 
 | TEST-06 | Recorded results state the revision, command, environment, and outcome, and distinguish skipped, timed-out, and interrupted runs from passes | Results are recorded or claimed | [validation](validation.md#recording-and-reusing-results) |
 | TEST-07 | Each fix has a test that fails when the fix is reverted | Fixes are made | [validation](validation.md#useful-tests) |
 | TEST-08 | Flaky tests are treated as defects with a root cause; correctness tests assert order and causality rather than wall-clock bounds; tests that observe host-wide state key on a value unique to their run | Tests exist | [validation](validation.md#useful-tests) |
-| TEST-09 | Mutation testing runs on changed critical code, and each surviving mutant is triaged as a missing assertion, an equivalent mutant, or a path that needs fault injection | Security level 2 or 3, or code that moves money or data, or mutation testing in use | [validation](validation.md#useful-tests) |
+| TEST-09 | Mutation testing runs on changed critical code, and each surviving mutant is triaged as a missing assertion, an equivalent mutant, or a path that needs fault injection | Mutation testing in use, or tests that run automatically on code at security level 2 or 3 or that moves money or data | [validation](validation.md#useful-tests) |
 
 ## CI
 
