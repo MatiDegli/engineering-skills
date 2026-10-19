@@ -22,6 +22,9 @@
   uses of the pattern it replaces (QUAL-11), so new code cannot copy the pattern being retired. A
   committed baseline of known violations meets QUAL-05 when it cannot grow without a separate
   reviewed change, as large-scale changes and frozen architecture rules use it.
+- Release flags and compatibility shims are temporary code under STRUCT-04: each has a purpose, an
+  owner, and a removal condition, goes once that is met, and is tested in each state it can ship in
+  until then. Permanent operational and permission toggles are configuration.
 
 ### Evaluations and tooling
 

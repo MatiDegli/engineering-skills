@@ -36,6 +36,13 @@ Each retained temporary file needs a purpose, owner, and verifiable removal cond
 header or a tracking record. At milestone close: remove it, turn it into a maintained tool,
 or justify an extension. Check references and preserve others' work before deleting anything.
 
+Release flags and compatibility shims are temporary code paths under the same rule, since each one
+doubles the paths to read: until it goes, flagged code is tested in each state it can ship in.
+Permanent operational and permission toggles are configuration, not temporary code.
+
 These are review rules until the project automates them. If it adopts a checker,
 file counts issue warnings; disallowed locations and dependencies block with reviewed exceptions.
 Test violations, allowed cases, and exclusions.
+
+Sources checked on 2026-10-19 against the claims they support:
+[feature toggles](https://martinfowler.com/articles/feature-toggles.html).

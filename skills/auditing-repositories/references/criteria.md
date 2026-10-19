@@ -92,7 +92,7 @@ area in Coverage with its wildcard and the reason on the `not-applicable areas` 
 | STRUCT-01 | Files are organized by responsibility; the root holds only entry points, manifests, lockfiles, and configuration that must live there, with exceptions recorded | Always | [structure](structure.md#locations-and-boundaries) |
 | STRUCT-02 | Directories with more than 20 maintained source files, not counting generated files, files that hold only data, fixtures, or migrations, have a recorded cohesion review | Threshold exceeded | [structure](structure.md#review) |
 | STRUCT-03 | Allowed dependencies between modules are defined, free of cycles, and enforced by import contracts where useful | Several real modules, with several maintainers, a documented boundary, or a dependency cycle ([shape](#project-shape)) | [structure](structure.md#locations-and-boundaries) |
-| STRUCT-04 | Temporary files and scripts have a purpose, owner, and removal condition | Temporary files exist | [structure](structure.md#temporary-files-and-enforcement) |
+| STRUCT-04 | Temporary files, scripts, and code paths, such as release flags and compatibility shims, have a purpose, owner, and removal condition, and go once it is met | Temporary files, release flags, or compatibility shims exist | [structure](structure.md#temporary-files-and-enforcement) |
 
 ## Quality controls
 
