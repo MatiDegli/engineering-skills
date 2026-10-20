@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.2.3 — 2026-10-20
 
 ### auditing-repositories
 
@@ -11,7 +11,8 @@
   keeps those with a realistic trigger, and reports the defects of retired code as one problem.
   With Sonnet on three of the maintainer's repositories, useful items per run rose from 48 and 57
   to 85 and 82, with a similar share of false items (2.5% and 3.8% against 2.5% and 3.1%), for
-  about 5 USD more per audit (runs 278 and 279).
+  about 5 USD more per audit (runs 278 and 279). Without helpers, the audit runs as before. The
+  passes were measured only with Sonnet in Claude Code; Opus was not measured.
 
 ## v0.2.2 — 2026-10-20
 
