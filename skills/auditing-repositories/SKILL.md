@@ -142,7 +142,8 @@ parallel, whatever the repository's size:
 
 Give each helper the safety rules above, including that it must not edit files, the project's shape
 from step 2, its scope, and the evidence rule: a path with line numbers and, for a behavior defect, an input that shows it. Ask for
-candidate problems, not a report. While they read, do steps 4 to 7 yourself.
+candidate problems, not a report. While they read, do steps 4 to 7 yourself, then wait for every
+helper's answer before you write the report.
 
 Before you report a helper's problem, open its evidence and confirm it, apply the project's shape and
 proportionality as you would to your own findings, merge duplicates, and file it under the closest
