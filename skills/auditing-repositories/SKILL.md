@@ -79,16 +79,17 @@ Copy this checklist into your working notes and complete every step:
    report what to check instead. Report each defect under the closest criterion, such as TEST-01,
    ARCH-02, ARCH-05, or REPO-06. Behavior that the documentation describes and a test pins is a
    design choice, not a defect: report it only if it contradicts other documentation or puts users
-   at risk. Report the defects of code that the documentation calls disabled, deprecated, or legacy
-   together, as one problem that counts them and recommends retiring or fixing that code; report on
-   its own only a defect that maintained code still reaches.
+   at risk. Report the defects of code that the documentation calls disabled, deprecated, retired,
+   or legacy together, as one problem that counts them and recommends retiring or fixing that code;
+   report on its own only a defect that maintained code still reaches.
 5. **Criteria.** Open [criteria.md](references/criteria.md) and decide applicability for every core
    ID and for each area in its areas table. Open an area's criteria file only when the area applies;
    otherwise close the area in Coverage with its wildcard. For each applicable criterion, collect
    evidence: a path with line numbers, a configuration value, or command output. A claim that
    something is missing rests on a search of its whole scope that lists the matches, not on one
-   place you read. Read the linked guide section only when a rule needs detail; do not read the
-   guides in full up front.
+   place you read: every test file for a missing test, every import for an unused dependency, and
+   other branches and commit messages for a missing record. Read the linked guide section only when
+   a rule needs detail; do not read the guides in full up front.
 6. **Controls.** A file, tool, or workflow is not evidence that a control works. For each control,
    check that it runs in CI on the relevant paths, that it fails on violations (look for ignored exit
    codes, `|| true`, `continue-on-error`, `--exit-zero`, warning-only severities, and skip
@@ -135,29 +136,33 @@ parallel, whatever the repository's size:
 
 - **Behavior:** split the maintained code into slices of related modules, each with its tests and
   small enough for one helper to read in full, and give each slice to a helper that does step 4 on
-  it.
-- **Claims:** one helper checks each factual claim of the README, the documentation, and the agent
-  instructions against the code, configuration, tests, and history: numbers, commands, guarantees,
-  states such as disabled or deprecated, and what the project says it does not do.
+  it. The helper first lists the slice's entry points, such as commands, public functions, request
+  handlers, and scheduled jobs, then checks each against step 4's list and names the ones it
+  checked.
+- **Claims:** one helper first lists every factual claim of the README, the documentation, and the
+  agent instructions: numbers, commands, guarantees, states such as disabled or deprecated, and what
+  the project says it does not do. It then checks each claim against the code, configuration,
+  tests, and history, and returns the list with a verdict for each.
 - **Fresh look:** one helper reviews the repository as an experienced engineer would, without the
   criteria, and reports the problems that matter most for this project.
 
 Give each helper the safety rules above, including that it must not edit files and must delete its
-scratch directories, the project's shape and stage from step 2, its scope, and the evidence rule: a
-path with line numbers and, for a behavior defect, an input that shows it and who in this project
-would give that input. Ask for candidate problems, not a report, and for the path of every scratch
-directory it created. While they read, do steps 4 to 7 yourself, then wait for every helper's answer
-before you write the report.
+scratch directories, the project's shape and stage from step 2, its scope, step 5's rule for a claim
+that something is missing, and the evidence rule: a path with line numbers and, for a behavior
+defect, an input that shows it and who in this project would give that input. Ask for candidate
+problems, not a report, and for the path of every scratch directory it created. While they read, do
+steps 4 to 7 yourself, then wait for every helper's answer before you write the report.
 
-Before you report a helper's problem, open its evidence and confirm it, merge duplicates, and file it
-under the closest criterion. Then apply the project's shape and proportionality as you would to your
-own findings:
+Before you report a helper's problem, open its evidence and confirm it; for a claim that something
+is missing, run the search again yourself. Merge duplicates and file each problem under the closest
+criterion. Report every problem you confirm, with these exceptions:
 
-- Keep a problem only when its trigger is realistic in this project: a user, an input, or a state
-  that its purpose, stage, and documented use make likely. Drop edge cases that need an input the
-  project never receives or a misuse that its maintainers would not fix.
-- Group the problems of code that the documentation calls disabled, deprecated, or legacy as
-  [step 4](#procedure) says.
+- Group the defects of code that the documentation calls disabled, deprecated, retired, or legacy
+  as [step 4](#procedure) says.
+- Leave out a problem that needs an input the project never receives, such as a value that no
+  caller passes and no user can enter.
+- Leave out a failure of a demo, an example, or an internal tool that already shows a clear error
+  to the person running it.
 
 A problem you could not confirm goes under Deeper checks, not Findings. Check that no scratch
 directory a helper named still exists, and name any that does under Limitations. In Context, name
