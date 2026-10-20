@@ -3410,3 +3410,73 @@ Report SHA-256 hashes for the fictional cases, as printed by the summaries:
 - `5eeb464f2e1d1413534f46ae290c82014327d22dbc3009f42558a6c8a0c1cb8a` review-classifier run 267
 - `6b4945ce6ac07b32a2dd2b96d0f2beb52e28c3beb0a9e6b36a82dc9fb372f5dc` review-classifier run 268
 - `ab1648aafa7d82ce2b8bf9830894256589293dff6d7536a0492a6dce8972ae25` review-classifier run 269
+
+## 2026-10-20 — Runs 270 to 277 (passes with noise filters)
+
+- Question: the passes of runs 262 and 263 raised the useful items per audit by half but missed the
+  noise and consistency criteria. A second candidate keeps the passes and adds two rules for the
+  lead: keep a helper's problem only when someone in the project would meet its trigger, and report
+  the defects of code the documentation calls disabled, deprecated, or legacy as one problem. Helpers
+  also name their scratch directories so the lead can check them. The maintainer approved a re-run
+  with the same criteria, fixed before planning, and one counting rule fixed before any report was
+  read: a row that groups several defects under one recommendation counts as one item.
+- Round: candidate `40f57b9`. Runs 270 and 271 on the three repositories of runs 241 to 263,
+  against v0.2.2's runs 254 and 256; runs 272 to 274 (v0.2.2) and 275 to 277 (candidate) on four
+  fictional cases. Every real-repository audit started three to seven subagents. Items were matched
+  to the list of earlier rounds; the 40 new ones were verified against clean copies and rated by the
+  repositories' sessions.
+
+| Run | Skill | Items | U | K-rec | K-unrec | W-false | W-moot | W-harness | Total USD |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 254 | `ed912ec` | 80 | 29 | 17 | 19 | 2 | 12 | 1 | 3.82 |
+| 256 | `ed912ec` | 96 | 38 | 17 | 19 | 3 | 18 | 1 | 4.84 |
+| 270 | `40f57b9` | 146 | 54 | 20 | 25 | 10 | 34 | 3 | 17.02 |
+| 271 | `40f57b9` | 137 | 53 | 21 | 22 | 5 | 33 | 3 | 10.56 |
+
+| Criterion | Result | Met |
+| --- | --- | --- |
+| C1, at least 74 useful items per run | 79 and 75 | yes |
+| C2, the two runs share at least 75% of the useful items they found | 55 of 99, 56% (v0.2.2: 69%; first candidate: 64%) | no |
+| C3, wrong items at most 22% of each run's items | 30% and 28% | no |
+| C4, at most 7.20 USD per audit | 4.60 | yes |
+| C5, per fictional case, seeded gaps at least the control's minus 1 and `must_not_flag` false flags at most its plus 1; `review-classifier`'s six defects in every candidate report | gaps 15/14, 9/9, 18/18, 15/16; false flags 2/4; six defects 3 of 3 by hand | yes |
+
+- Value: as in runs 262 and 263, the candidate averaged 77 useful items against v0.2.2's 52.5.
+  The four candidate runs of both rounds together found 116 of the 132 useful items now known.
+- The filters did not shorten the reports: 146 and 137 items against 146 and 143. On the repository
+  where helpers had reported edge cases out of proportion, wrong items fell from 6 and 14 to 5 and 7.
+- The grouping rule worked as written: both runs reported the disabled tools as one finding. It did
+  not reach most of the noise, because the maintainer considers the whole audited service retired,
+  while its README at that commit describes it as live with some tools disabled. 41 of the 82 wrong
+  items are on that path by the maintainer's notes, against 10 of 35 in v0.2.2's runs. No rule in
+  the skill can see a retirement the repository does not record.
+- Consistency fell again: the passes find different things each run.
+- On the fictional cases no candidate report started a subagent; cost 0.45 USD a run against 0.41.
+- Decision, as the criteria set: C2 and C3 fail, so the candidate is not merged.
+
+Report SHA-256 hashes for the fictional cases, as printed by the summary:
+
+- `efbe35580a9091852284504dbb31015d0b0c7ea2a2fbf900002e55d940c62770` plugin-host run 272
+- `4d2bb7e1181b5d62f5d44029d4aa7be2b3e56e6b5fa75d466712eb715fedc9e7` plugin-host run 273
+- `b54df9196228a50b414f39fd5963379d5e05dee1671edf952ae7daf1eca36191` plugin-host run 274
+- `803c56edfb403128475d8892ff18eb1afd25566b212a68e664a6bb217311da17` plugin-host run 275
+- `fa05372d28127eeca870a8fcf87dc905b0033570089d107b7762fa146cc55f2d` plugin-host run 276
+- `8228040a878b779c75e528a287fe09a5fc1dd834cb344eadf3d12fae3daa802b` plugin-host run 277
+- `b63725c86c6792a9a62221b0bfc7b3dc3fc15529f632fed394b2110a6f98d559` plugin-host-guarded run 272
+- `14ad2bc474d948343912f2643bc0776addd9a34c168d5c5eeba12681a02cc94a` plugin-host-guarded run 273
+- `46fc73698260e254a26fe03a12f55883ca55b26859e6df688a210bedff25b0f2` plugin-host-guarded run 274
+- `fd96c01b6c3d49046afa2ec2f31acd296f52745d3e3fc7cb0a4f87c03e688369` plugin-host-guarded run 275
+- `b5cad2a22e4e4a84ded748d57637e6a3541d2c4136ec8d4ff0448ff235de6df0` plugin-host-guarded run 276
+- `2d27eb9fab300ade792a00854059622022044090ad0884a828a443a8baab5094` plugin-host-guarded run 277
+- `ca57d87046532ffe3fb3c5d07bb3a697415bd4a66fb3df5bd3bc31cd9c681d27` agent-workflow run 272
+- `0b4a8267cdb16e3093b1e979bc53e6ec914ce4db1972c5c22b2b7b3df662a21d` agent-workflow run 273
+- `cb5a6bf8b68690f4beed18c0fa933f5d789bd797ae54f442b4233ac557703bfc` agent-workflow run 274
+- `ebcf01dac1c93d9456c29f6f0986b957af52c05c081a459c7ab91c7119e4a0ad` agent-workflow run 275
+- `8d421ef57168df677a3dcc40234c180ff467a8bf18959d95023c7631956f5338` agent-workflow run 276
+- `02632c1a9fdd87db6576ac4d082af6e8406eec47772c155a13a6e7ce7c3eed05` agent-workflow run 277
+- `aad59ce7c68d909c61606bef9c6ab325ac34fad8b0927ea14e8fa7b85491ad1b` review-classifier run 272
+- `1b0bfc6a853bf1740b8d90d33f7ec1110fb909070438614e4892dd8dce22ff92` review-classifier run 273
+- `5b8537ff1cf166cca20cd10d367a3a861eac1c27ee5776f53491fe30f75b90dc` review-classifier run 274
+- `3e8fea8bca5ca41bea9cc3a11b814f70c21c87f1d3cdb0f5345f5fe08b8c7fd1` review-classifier run 275
+- `5fa44aa3f51bc0c776212670972c4d63ccf27aa36bc1122037a13a41de32b5a8` review-classifier run 276
+- `51822205043e18898836f366a884a695f839f0a17b99105f40bf2e9a14fad445` review-classifier run 277
