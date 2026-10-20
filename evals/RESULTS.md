@@ -3654,3 +3654,34 @@ Report SHA-256 hashes for the fictional cases, as printed by the summary:
 - `72316bc29db3622bd72372331248cac84f2c47e60e21dad7a1d4c4b574ce07ff` review-classifier run 296
 - `0a1b4d464c8f51ef3f53b0f241442fcb29c7f146c0ff89e6b4509e077e7cc737` review-classifier run 297
 - `b3bd91cc39b86f596029ad0b33a58728c7c0f8e8094a478d50eabb5f06a131d3` review-classifier run 298
+
+## 2026-10-20 — Runs 254 to 289 read again: wrong means false
+
+- Question: the maintainer decided that only false items are a problem. Items rated W-moot, true
+  but out of proportion for the project, are recorded apart and count as neither useful nor wrong
+  ([Recording results](README.md#recording-results)). The rounds since runs 254 and 256 are read
+  again that way. Their verdicts above stand under the criteria each round fixed; this reading
+  informs a new decision ([decision](../docs/decisions.md#2026-10-20--moot-items-are-neutral-helpers-become-the-base)).
+- Method: the same items and ratings; no new audits. The one fictional case where runs 283 to 285
+  scored below the control's minus 1 was counted again blind, by content, as runs 286 to 298 allow.
+
+| Runs | Skill | Useful | W-false | W-moot | False share of items | Useful items found by both runs |
+| --- | --- | --- | --- | --- | --- | --- |
+| 254, 256 | `ed912ec` (v0.2.2) | 48 / 57 | 2 / 3 | 12 / 18 | 2.5% / 3.1% | 43 of 62 |
+| 262, 263 | `cbfec9d` | 81 / 73 | 2 / 10 | 38 / 35 | 1.4% / 7.0% | 60 of 94 |
+| 270, 271 | `40f57b9` | 79 / 75 | 10 / 5 | 34 / 33 | 6.8% / 3.6% | 55 of 99 |
+| 278, 279 | `dde0696` | 85 / 82 | 4 / 6 | 51 / 47 | 2.5% / 3.8% | 67 of 100 |
+| 286, 287 | `664de7c` | 49 / 58 | 3 / 4 | 14 / 15 | 3.7% / 4.3% | 43 of 64 |
+| 288, 289 | `1063f3c` | 72 / 84 | 4 / 8 | 58 / 48 | 2.6% / 5.0% | 55 of 101 |
+
+- Every version with helpers found more useful items than v0.2.2 in every run, with a false share
+  in the same range.
+- Runs 278 and 279 are the strongest. The 67 useful items both found exceed the 62 that runs 254
+  and 256 found together, so their lower share in common (67% against 69%) comes from finding more.
+- `review-classifier`, runs 280 to 285 under random labels: all six reports state all six seeded
+  gaps, 18 of 18 for each version. The scorer had counted the candidate's 13 because some gaps
+  were filed under other criteria (the dependency pin under QUAL-01, the wrong command under
+  REPO-06, the self-comparison under TEST-01). With the other three cases unchanged (15/15, 9/9,
+  18/18; false flags 4 against 7), runs 283 to 285 show no regression.
+- Decision: `dde0696`'s procedure becomes the skill's and the base for later rounds. The catalog
+  rules of runs 286 and 287, aimed at W-moot items, are set aside.
