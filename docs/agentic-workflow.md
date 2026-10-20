@@ -95,6 +95,10 @@ The evaluation runner's mechanisms, each with its incident, are listed under
   counted real data-loss defects that a change rightly rated high (runs 149 to 156). *Mechanism:*
   cases list such defects under `defects`. *Follow-up:* leave their rows out of that measure in
   `summarize`.
+- **Ask what a noise criterion costs the reader.** Four candidates that found half again as many
+  useful items were dropped because true items out of proportion for the project counted as wrong;
+  their share of false items matched the control's (runs 262 to 289). *Mechanism:* wrong means
+  W-false, and W-moot is recorded apart ([Recording results](../evals/README.md#recording-results)).
 - **Before a tiebreak, ask whether the doubt is about frequency or correctness.** More runs answer
   frequency; whether findings are right needs the rows read. Reading them avoided an 11 USD Opus
   tiebreak, and the departure from the planned rule is recorded as the maintainer's decision

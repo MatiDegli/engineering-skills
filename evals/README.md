@@ -242,6 +242,15 @@ The maintainer approved these limits on 2026-10-17, before the runs that first a
 repositories make every extra step costlier, so a rule that adds work should apply only when its
 condition arises, such as when a finding is about to be reported.
 
+An audit of one of the maintainer's repositories has no seeded answer. Its items are matched to the
+list of earlier rounds, and the new ones are verified against a clean copy and rated blind by the
+repository's maintainer or a session working for them: U (useful), K-rec (known and recorded),
+K-unrec (known, not recorded), W-false (false), W-moot (true, but not worth acting on in this
+project), or W-harness (depends on what the prepared copy lacked). Useful is U plus K-unrec; wrong
+is W-false. W-moot is recorded apart and counts as neither, since what is out of proportion for one
+project can still be useful to another reader. The maintainer set this on 2026-10-20; earlier
+rounds counted W-moot as wrong.
+
 ## Baselines
 
 Runs with the skill show what an agent finds with it, not what the skill adds. A baseline runs the

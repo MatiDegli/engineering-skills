@@ -1,5 +1,29 @@
 # Decisions
 
+## 2026-10-20 — Moot items are neutral; helpers become the base
+
+Four candidates that add read-only helpers to the audit (runs 262 to 289) found 72 to 85 useful
+items per run on three of the maintainer's repositories, against v0.2.2's 48 and 57. Each was
+recorded and dropped, mainly because its noise criterion counted W-moot items, true but out of
+proportion for the project, as wrong. Looking at where that noise came from, the maintainer decided
+that only false items are a problem: a moot item can still be useful to another reader. Rounds now
+count W-false as wrong and record W-moot apart
+([Recording results](../evals/README.md#recording-results)).
+
+Read again that way, the helper versions' false share is 1.4% to 7.0% per run against v0.2.2's
+2.5% and 3.1%. Runs 278 and 279 (`dde0696`) are the strongest: 85 and 82 useful items, 4 and 6
+false, and 67 useful items found by both runs, more than the 62 that two v0.2.2 runs find together.
+The one fictional case where their scorer count fell below the control's minus 1 was counted blind
+by content: every report of both versions states all six seeded gaps, some under other criterion
+IDs. The maintainer judges the extra cost, about 5 USD per audit, marginal against the extra real
+problems.
+
+The rounds' verdicts stand under the criteria each fixed; this is a new decision taken with all
+four in view. `dde0696` becomes the skill's audit procedure and the base later rounds compare
+against. The catalog rules of runs 286 and 287, aimed at moot items, are set aside. The next front
+is the false items: most say something is missing (a test, a record, a use) that exists, or that a
+document contradicts code it matches.
+
 ## 2026-10-19 — Team criteria as an area; v0.2.2 with one noise check missed by one
 
 The final validation of v0.2.2 on three of the maintainer's repositories (runs 241 to 243) met
