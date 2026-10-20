@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### auditing-repositories
+
+- When the agent can run read-only helpers in parallel, such as subagents, the audit splits the
+  reading into passes: behavior passes over slices of the code, each listing its entry points first;
+  a claims pass that lists the documentation's claims before checking them; and a fresh look
+  without the criteria. The lead waits for every helper, confirms each problem before reporting it,
+  keeps those with a realistic trigger, and reports the defects of retired code as one problem.
+  With Sonnet on three of the maintainer's repositories, useful items per run rose from 48 and 57
+  to 85 and 82, with a similar share of false items (2.5% and 3.8% against 2.5% and 3.1%), for
+  about 5 USD more per audit (runs 278 and 279).
+
 ## v0.2.2 — 2026-10-20
 
 ### auditing-repositories
