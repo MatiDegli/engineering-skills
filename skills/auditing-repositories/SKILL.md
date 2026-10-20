@@ -79,7 +79,9 @@ Copy this checklist into your working notes and complete every step:
    report what to check instead. Report each defect under the closest criterion, such as TEST-01,
    ARCH-02, ARCH-05, or REPO-06. Behavior that the documentation describes and a test pins is a
    design choice, not a defect: report it only if it contradicts other documentation or puts users
-   at risk.
+   at risk. Report the defects of code that the documentation calls disabled, deprecated, or legacy
+   together, as one problem that counts them and recommends retiring or fixing that code; report on
+   its own only a defect that maintained code still reaches.
 5. **Criteria.** Open [criteria.md](references/criteria.md) and decide applicability for every core
    ID and for each area in its areas table. Open an area's criteria file only when the area applies;
    otherwise close the area in Coverage with its wildcard. For each applicable criterion, collect
@@ -140,14 +142,25 @@ parallel, whatever the repository's size:
 - **Fresh look:** one helper reviews the repository as an experienced engineer would, without the
   criteria, and reports the problems that matter most for this project.
 
-Give each helper the safety rules above, including that it must not edit files, the project's shape
-from step 2, its scope, and the evidence rule: a path with line numbers and, for a behavior defect, an input that shows it. Ask for
-candidate problems, not a report. While they read, do steps 4 to 7 yourself, then wait for every
-helper's answer before you write the report.
+Give each helper the safety rules above, including that it must not edit files and must delete its
+scratch directories, the project's shape and stage from step 2, its scope, and the evidence rule: a
+path with line numbers and, for a behavior defect, an input that shows it and who in this project
+would give that input. Ask for candidate problems, not a report, and for the path of every scratch
+directory it created. While they read, do steps 4 to 7 yourself, then wait for every helper's answer
+before you write the report.
 
-Before you report a helper's problem, open its evidence and confirm it, apply the project's shape and
-proportionality as you would to your own findings, merge duplicates, and file it under the closest
-criterion. A problem you could not confirm goes under Deeper checks, not Findings. In Context, name
+Before you report a helper's problem, open its evidence and confirm it, merge duplicates, and file it
+under the closest criterion. Then apply the project's shape and proportionality as you would to your
+own findings:
+
+- Keep a problem only when its trigger is realistic in this project: a user, an input, or a state
+  that its purpose, stage, and documented use make likely. Drop edge cases that need an input the
+  project never receives or a misuse that its maintainers would not fix.
+- Group the problems of code that the documentation calls disabled, deprecated, or legacy as
+  [step 4](#procedure) says.
+
+A problem you could not confirm goes under Deeper checks, not Findings. Check that no scratch
+directory a helper named still exists, and name any that does under Limitations. In Context, name
 the passes and their scopes.
 
 ## Statuses
@@ -248,7 +261,7 @@ Self-check before answering:
 - Every claim that something is missing comes from a search, and every count names its command.
 - Each Deeper checks entry names a `high` finding whose unverified premise could change it; there
   are at most three.
-- Every scratch directory you created is deleted and named in Context.
+- Every scratch directory you or a helper created is deleted and named in Context.
 - `git status --short --ignored` shows the same output as at the start.
 - The report shows secret-like values only in masked form, including values that look fake.
 
