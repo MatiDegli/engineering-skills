@@ -39,7 +39,7 @@ Copy this checklist into your working notes and complete every step:
 ```text
 - [ ] 1. Record the date, revision, and working-tree state
 - [ ] 2. Identify purpose, stack, stage, platforms, and security level
-- [ ] 3. Inventory the repository and choose a sample if it is large
+- [ ] 3. Inventory the repository, choose a sample if it is large, and start the passes
 - [ ] 4. Read the code's behavior for edge cases and broken invariants
 - [ ] 5. Walk the core criteria and each area that applies
 - [ ] 6. Verify that controls reject violations; reproduce decisive findings
@@ -58,8 +58,8 @@ Copy this checklist into your working notes and complete every step:
 3. **Inventory.** List tracked files (`git ls-files`), languages, manifests and lockfiles, test
    locations, CI workflows, deployment files, and documentation. Read recent history with
    `git log --stat -n 30` for the history criteria. If you cannot read every maintained file,
-   follow [Large repositories](#large-repositories). If your environment can run read-only helpers
-   in parallel, such as subagents, split the reading among them as [Passes](#passes) says.
+   follow [Large repositories](#large-repositories). If you can start subagents, such as through a
+   Task or Agent tool, start the [passes](#passes) now.
 4. **Behavior.** Before walking the catalog, read the main code paths as their users would exercise
    them. Look for inputs at the limits, paths that should agree but answer differently, silent changes
    to data, errors that leave partial state, and invariants the documentation states. Read
@@ -122,14 +122,14 @@ When you cannot read every maintained file, audit a sample chosen by risk and sa
 - Read the tests of every sampled file.
 - In Context, list the sampled paths and the share of maintained files they represent. Evidence
   based on a sample says so, and Limitations names what was not read.
-- With helpers, split the sample among them as [Passes](#passes) says.
+- If you can start subagents, split the sample among the [passes](#passes).
 
 ## Passes
 
 One reading of a repository finds about two thirds of what several independent readings find
-together, and each reading misses different problems, even when it covers every file. When your
-environment can run read-only helpers in parallel, such as subagents started through a Task or
-Agent tool, start these passes after step 3, whatever the repository's size:
+together, and each reading misses different problems, even when it covers every file. If you can
+start subagents, such as through a Task or Agent tool, start these passes after step 3, in
+parallel, whatever the repository's size:
 
 - **Behavior:** split the maintained code into slices of related modules, each with its tests and
   small enough for one helper to read in full, and give each slice to a helper that does step 4 on
@@ -140,8 +140,8 @@ Agent tool, start these passes after step 3, whatever the repository's size:
 - **Fresh look:** one helper reviews the repository as an experienced engineer would, without the
   criteria, and reports the problems that matter most for this project.
 
-Give each helper the safety rules above, the project's shape from step 2, its scope, and the
-evidence rule: a path with line numbers and, for a behavior defect, an input that shows it. Ask for
+Give each helper the safety rules above, including that it must not edit files, the project's shape
+from step 2, its scope, and the evidence rule: a path with line numbers and, for a behavior defect, an input that shows it. Ask for
 candidate problems, not a report. While they read, do steps 4 to 7 yourself.
 
 Before you report a helper's problem, open its evidence and confirm it, apply the project's shape and
