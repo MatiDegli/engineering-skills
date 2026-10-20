@@ -127,8 +127,9 @@ When you cannot read every maintained file, audit a sample chosen by risk and sa
 ## Passes
 
 One reading of a repository finds about two thirds of what several independent readings find
-together, and each reading misses different problems. When your environment can run read-only
-helpers in parallel, start these passes after step 3:
+together, and each reading misses different problems, even when it covers every file. When your
+environment can run read-only helpers in parallel, such as subagents started through a Task or
+Agent tool, start these passes after step 3, whatever the repository's size:
 
 - **Behavior:** split the maintained code into slices of related modules, each with its tests and
   small enough for one helper to read in full, and give each slice to a helper that does step 4 on
