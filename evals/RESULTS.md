@@ -3559,3 +3559,98 @@ Report SHA-256 hashes for the fictional cases, as printed by the summary:
 - `0d4075c972d2a1b219e424e2399b7a8edcf2db9c611a8885fe92b8c24a4ecf93` review-classifier run 283
 - `ac9a340f117456fca760c485727535401a51bf61fef5f878d7b79e6d2eded72c` review-classifier run 284
 - `4d5255caf543ab5a2d75160c1a85381074e3a6c8ee52b5ec7348355c159ae33a` review-classifier run 285
+
+## 2026-10-20 — Runs 286 to 298 (catalog rules for one maintainer; passes with a disposition list)
+
+- Question: in runs 278 and 279 most wrong items the lead found itself were catalog criteria applied
+  to one-maintainer projects, and the lead still dropped useful items a helper had raised. Two arms
+  ran together. Arm A adds rules to the criteria catalog: with one maintainer, QUAL-11 asks for one
+  list of known debt, AGENT-02 concerns the briefs in use, and DEP-03 asks for a periodic review;
+  TEST-04's clean installation needs a package that reaches someone; and a gap is reported once,
+  under the criterion whose fix closes it. Arm B adds to arm A the passes of runs 278 and 279 and a
+  disposition list: every problem a helper returns gets a recorded place before the report is
+  written, and Context counts them by where they went.
+- Round: arm A `664de7c`, runs 286 and 287; arm B `1063f3c`, runs 288 and 289; on the three
+  repositories of runs 241 to 279, against v0.2.2's runs 254 and 256; runs 290 to 292 (v0.2.2), 293
+  to 295 (A), and 296 to 298 (B) on four fictional cases. Items were matched to the list of earlier
+  rounds; the 50 new ones were verified against clean copies and rated by the repositories'
+  sessions, blind to the arm.
+
+| Run | Skill | Items | U | K-rec | K-unrec | W-false | W-moot | W-harness | Total USD |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 254 | `ed912ec` | 80 | 29 | 17 | 19 | 2 | 12 | 1 | 3.82 |
+| 256 | `ed912ec` | 96 | 38 | 17 | 19 | 3 | 18 | 1 | 4.84 |
+| 286 | `664de7c` | 81 | 31 | 13 | 18 | 3 | 14 | 2 | 2.65 |
+| 287 | `664de7c` | 92 | 38 | 14 | 20 | 4 | 15 | 1 | 2.84 |
+| 288 | `1063f3c` | 155 | 49 | 18 | 23 | 4 | 58 | 3 | 11.83 |
+| 289 | `1063f3c` | 159 | 65 | 17 | 19 | 8 | 48 | 2 | 13.64 |
+
+| Criterion | Result | Met |
+| --- | --- | --- |
+| A1, at least 48 useful items per A run | 49 and 58 | yes |
+| A2, at most 9 wrong items per A run on average, leaving out the path one maintainer calls retired | 11 and 12 (v0.2.2: 10 and 15) | no |
+| B1, at least 90 useful items per B run | 72 and 84 | no |
+| B2, the two B runs share at least 75% of the useful items they found | 55 of 101, 54% | no |
+| B3, on the two repositories judged before, useful items above v0.2.2's mean at least twice the wrong items above it | 1.38 and 2.35 | no |
+| B4, at most 7.20 USD per B audit | 4.25 | yes |
+| C5, per fictional case and arm, seeded gaps at least the control's minus 1 and `must_not_flag` false flags at most its plus 1; `review-classifier`'s six defects in every report of the arm | gaps (control, A, B) 15/15/15, 9/9/9, 18/18/18, 18/17/17; false flags 4/4/4; six defects 6 of 6 by hand | yes |
+
+- Arm A kept v0.2.2's value: 49 and 58 useful items against 48 and 57. Its rules removed some
+  recurring wrong items (flakiness judged without CI, an exposure level restated as missing
+  controls, a clean installation of a package nobody installs), and the reports applied them as
+  written, for example recommending commit rules instead of a history rewrite. The maintainer still
+  rated as moot a periodic dependency review and the large early commits, and process criteria the
+  rules do not touch (a seeded violation for the lint and type checks, a validation run from a clean
+  clone) recur, so the wrong count stayed near v0.2.2's.
+- Arm B: one lead of six started no helpers and left 28 criteria uncovered. The five others
+  reported their dispositions: 271 helper problems, 200 in findings, 25 left out under the named
+  exceptions, 46 not confirmed. Of the 90 useful items those five audits missed, 28 (31%) had been
+  raised by a helper, against 43% in runs 278 and 279; 61 were in a helper's scope and never
+  raised. 92 of their 114 wrong items came from helpers (runs 278 and 279: 68 of 108), and on the
+  third repository 35 and 31 wrong items are on the path its maintainer calls retired.
+- New items: 47 of the 50 came from arm B, and 10 of the 11 useful ones. 153 useful items are now
+  known on the three repositories (142 after runs 278 and 279).
+- In one B audit a helper's test run left a bytecode cache in the audited repository; the lead
+  removed it and reported it.
+- The real round cost 30.97 USD and the fictional one 18.42 USD (budget 18).
+- Decision, as the criteria set: arm A misses A2, so its rules are not merged as written; arm B
+  misses B1, B2, and B3, so it is not merged.
+
+Report SHA-256 hashes for the fictional cases, as printed by the summary:
+
+- `0ee33d05d7c0a3ea23202e703b93e86ff03a2520b0a6b79384ee0e7c39c456a4` plugin-host run 290
+- `6b707c0998e557343d84f590bddfe12c78d68db0bf7429e9ac0317eaaea16ec4` plugin-host run 291
+- `1a73d01528d3d28999ddf5c3ee928c0c55892b72e1a77fc7665ea5abd96d81a9` plugin-host run 292
+- `d50d3cd02cd9b97d2d16e1a6bb588a3647247e3d8e57603df50f4f56cae18282` plugin-host run 293
+- `ad9690ec1e4d924ccc098b6fabcd824c18dbf3eea513db4e7e6880d24de0a1be` plugin-host run 294
+- `03eaf0af61b563b7fd5241e0ed83dd70a487ce8f8d9d0c5bc94fdb801f678ab3` plugin-host run 295
+- `200d2f5e60edfa45ba821a66b15de523d7acf1708db65015a5fcf75a0257ed09` plugin-host run 296
+- `153dd7c22a91071331ee9fe35a2c00d2d03911cef6020545be8520c92696c5f2` plugin-host run 297
+- `bd2a1a0ffc06a0bb4a9d8232591fbdd54c2c572174e91efcc87de1adecb121be` plugin-host run 298
+- `7bd19f9a3904bbd4fc289416d25906dd5e792764275e906546530994bf325f16` plugin-host-guarded run 290
+- `51cbdf397645b6a32feed49ef14e989d6fd8b28ed95ecdd521571c33297e5fcf` plugin-host-guarded run 291
+- `c22e1a73b7384dd4b02bd777b2d84ccd3764d06cba71b36d1d836aa97a4be4e2` plugin-host-guarded run 292
+- `3c910edd0066d057e5374125e7a9022b20cbdffb98df8cdde97f3a60685848d8` plugin-host-guarded run 293
+- `cfbe805c345bb6c31f5b3b4e365110cdaf572f0ca2b5b3a2000444ba753a5202` plugin-host-guarded run 294
+- `6a318444bb93bd1ea1131b886c7f0f8ac2fa1060b4b0ea7e9a8558018521dea9` plugin-host-guarded run 295
+- `ec6d48819b5a0abca1e86bd7eb7427b2ab9f5aba484cef6511438f064f3b3b74` plugin-host-guarded run 296
+- `87d20d7fabe218cb26bb4b744ab71d5f9bb500dea6c8b031d65da20f245787a4` plugin-host-guarded run 297
+- `693d7780466a3c8c493c34d7b9bd30b87a61e52925305672d6e652a902c21490` plugin-host-guarded run 298
+- `fb1695d530437e4bf778ff4e457c8976951fe0c5ed848f3fea2bc13934ae976b` agent-workflow run 290
+- `cc7d97879eb9652292e384ca05af1e81a6ff650209e4c1fb6c9e418996595541` agent-workflow run 291
+- `da7845b20506b96a5de54859b43e543d6ec4962658d2a30b634d0fb89b5eadfb` agent-workflow run 292
+- `2d072428e769c24b766754ac9a7d8627b7c6576e25ac2a7ad96f50cda2f30a4b` agent-workflow run 293
+- `3463869b59af1a0314eaf7a3d842e64e75dd020b5d273233cea3647790dc7a79` agent-workflow run 294
+- `45d6c29383c7bd6fd16f0fd19e58de2e2d0d69a90ddf26e07c7e7a24faece0b9` agent-workflow run 295
+- `979ec4ea7a0cdfdeec0192f28e68e9dbd9c6b7c6fc52de52867c8793208f30ae` agent-workflow run 296
+- `df70483ca08c8138c1197e3f73f072501493652bdb24fd5fe7ddcfee81774c68` agent-workflow run 297
+- `a0be51c7b5dabdce6d9d40b34cf459d9fade77d74943f726e0c7c2b7f62972b5` agent-workflow run 298
+- `e35b06be1364741f06842bc09bfd4b911aeba4c6fea4fa4696a62dbfa1ada9de` review-classifier run 290
+- `0066c2e48f578d23dbe5093df34078f0f263ff169517557f20fa237fae14ad14` review-classifier run 291
+- `67f1fe6a024d237c3456ced7d09d7312e8d38d143ab5fc3e697caffd28d83e53` review-classifier run 292
+- `822dc4420a9d4b38040869858dfa8b112b430d41df579e44137c441199645c4e` review-classifier run 293
+- `1a9f7808383d6565ef68fb968be5fef281fe74fe312ceb3061a3c889e6d00bfd` review-classifier run 294
+- `8313a982b1ec2f13a8545f1ebac83750f4dd10cc2ac66edfc4c854185119e0ef` review-classifier run 295
+- `72316bc29db3622bd72372331248cac84f2c47e60e21dad7a1d4c4b574ce07ff` review-classifier run 296
+- `0a1b4d464c8f51ef3f53b0f241442fcb29c7f146c0ff89e6b4509e077e7cc737` review-classifier run 297
+- `b3bd91cc39b86f596029ad0b33a58728c7c0f8e8094a478d50eabb5f06a131d3` review-classifier run 298
