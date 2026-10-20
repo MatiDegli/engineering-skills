@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.2.2 — 2026-10-20
 
 ### auditing-repositories
 
@@ -62,8 +62,9 @@
   the sample can detect the differences the decision rules act on, evaluated code cannot read
   held-out answers, and synthetic data covers the real cases. On a new research case, Sonnet found
   all six seeded defects in every report with the skill, with the previous skill, and without any
-  skill (runs 214 to 228), so the case shows no effect yet; re-auditing the trial repositories
-  where audits missed such defects is the test that remains.
+  skill (runs 214 to 228), so the case shows no effect yet. On three of the maintainer's
+  repositories, where runs 188 and 189 had missed six such defects, four runs with this step found
+  2 to 4 of them (runs 241 to 256).
 
 ### Evaluations and tooling
 
@@ -91,6 +92,11 @@
   history, or on a kept branch's, dated no later than the pin, a lightweight tag by its commit's
   date. Audits of real repositories could not compare releases by tag before. A case with seeds
   keeps none, and `verify` reports a tag that was added, removed, or moved.
+- On three of the maintainer's repositories, two runs of this release found 48 and 57 useful items,
+  against 36 with the expert prompt and 35 without the skill, at 1.27 and 1.61 USD an audit against
+  0.66 and 0.33. 18% and 22% of its items were wrong or moot, against the expert prompt's 18%
+  (runs 241 to 256). Two runs shared about two thirds of the useful items they found between them,
+  so how much one audit covers is the next front.
 
 ## v0.2.1 — 2026-10-18
 
