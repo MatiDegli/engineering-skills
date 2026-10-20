@@ -3329,3 +3329,84 @@ Report SHA-256 hashes for the fictional cases, as printed by the summary:
 - Research and evaluation code (#23): runs 255 and 256 found 2 and 3 of the 6 items.
 - Decision, as the criteria set: Q1 and Q2 hold, so v0.2.2 is proposed for release, and how much of
   a repository one audit covers becomes the next front.
+
+## 2026-10-20 — Runs 257 to 269 (passes with subagents)
+
+- Question: one audit found 48 to 57 of the useful items known in three of the maintainer's
+  repositories, and two runs shared about two thirds of theirs (runs 241 to 256). A candidate
+  skill splits the reading among subagents: one per slice of the code for behavior, one that checks
+  the documentation's claims, and one fresh look without the criteria; the lead walks the criteria
+  and confirms each helper's evidence before reporting it. The maintainer approved the round, and
+  criteria were fixed before planning.
+- Pilots, Sonnet 5.5, not part of the round. Runs 257 to 259 on 17-file fictional cases started no
+  subagent, even when the text said "whatever the repository's size": each report said every file
+  had been read. Run 260 on one real repository started three, and its lead also listed the
+  maintainer's other Claude sessions and tried workflow and monitor tools to wait for its helpers;
+  `468dfcf` now gives audits only Bash, Read, Grep, Glob, and Agent. Run 261 ran clean under that list.
+- Round: candidate `cbfec9d`. Runs 262 and 263 on the three repositories of runs 241 to 256,
+  against v0.2.2's runs 254 and 256; runs 264 to 266 (v0.2.2) and 267 to 269 (candidate) on four
+  fictional cases. Every real-repository audit started four or five subagents. Items were matched
+  to the list of earlier rounds; the 68 new ones were verified against clean copies and rated by the
+  repositories' sessions.
+
+| Run | Skill | Items | U | K-rec | K-unrec | W-false | W-moot | W-harness | Total USD |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 254 | `ed912ec` | 80 | 29 | 17 | 19 | 2 | 12 | 1 | 3.82 |
+| 256 | `ed912ec` | 96 | 38 | 17 | 19 | 3 | 18 | 1 | 4.84 |
+| 262 | `cbfec9d` | 146 | 56 | 23 | 25 | 2 | 38 | 2 | 13.63 |
+| 263 | `cbfec9d` | 143 | 51 | 24 | 22 | 10 | 35 | 1 | 12.94 |
+
+| Criterion | Result | Met |
+| --- | --- | --- |
+| C1, at least 74 useful items per run, what four runs of the skill found together | 81 and 73 | no, by 1 |
+| C2, the two runs share at least 75% of the useful items they found | 60 of 94, 64% (v0.2.2: 69%) | no |
+| C3, wrong items at most 22% of each run's items | 27% and 31% | no |
+| C4, at most 7.20 USD per audit | 4.43 | yes |
+| C5, per fictional case, seeded gaps at least the control's minus 1 and `must_not_flag` false flags at most its plus 1; `review-classifier`'s six defects in every candidate report | gaps 15/14, 9/9, 18/18, 17/17; false flags 4/3; six defects 3 of 3 by hand | yes |
+
+- Value: the candidate's two runs averaged 77 useful items against v0.2.2's 52.5, and together
+  found 94 of the 116 useful items now known in these repositories.
+- Consistency: the passes find more, but not the same things. Of the items new to this round, the
+  two runs shared 1 of 30, 0 of 21, and 3 of 17 per repository.
+- Noise: one repository holds 52 of the 85 wrong items, 38 of them on the code path its README
+  calls disabled and its maintainer considers retired; the deeper reading reports many defects
+  there. On another, the helpers reported true edge cases out of proportion, such as symlinks and
+  uncommon path prefixes in a private leak scan, and the lead kept them.
+- A helper left two scratch directories under the temporary directory, one with a copy of the
+  audited source; the coordinator deleted them.
+- On the fictional cases the candidate started subagents in 4 of 12 reports and cost 0.66 USD a
+  run against 0.45.
+- Decision, as the criteria set: C3 fails, so the candidate is not merged. The passes raised
+  coverage by half at three times the cost; the noise they add is what a next candidate has to
+  remove.
+
+Report SHA-256 hashes for the fictional cases, as printed by the summaries:
+
+- `10f227a37d48a3204c85a805c3858ebb04c71501348c310ab1e3ac15820ccfa1` plugin-host run 257
+- `a3591e0b68becac2127756bb4204a11949117c1ac41f57c02d0ecf096b895a1b` review-classifier run 257
+- `2ca650754e747991f9e66184377b5c09bc76a61efd03accae26c4a0500aae94e` plugin-host run 258
+- `bba833a68a178bdf39cfac015d29d1ad51833e58576896ca66f5de9811a174d8` plugin-host run 259
+- `0560dcd65d6258313e44e59b4c2e94be026b8437104f63e2302297135b2efbd2` plugin-host run 264
+- `64876f9b4cd1d29cdd12516ad3be2cd811f99c2fb395748757b5b43a6ac64115` plugin-host run 265
+- `de6feb2e82dc5ca0a3013ac9ba10c50c8a64703664ee2b28cf33efb5adbc40d1` plugin-host run 266
+- `c1b811333886360d223e2a136325cce303c2c74c774c59e7edb6327f7c04fed4` plugin-host run 267
+- `a02c6d8f6abcd1a43cb42fbb0660489c3b8a3eb8c20216b9e68c7e36968eef82` plugin-host run 268
+- `74e969ba7b64850de72eeb1cea70aa0e9241e544ff02f91db68632ec9295309c` plugin-host run 269
+- `4fcb67fd888e543d1a982cbf9ca22b6f3f61e948b269d255c00e47df1d5c068a` plugin-host-guarded run 264
+- `486284385b4c3aadf8db9fb6ad0550b25890fa8f73a244f45cd47c379421655b` plugin-host-guarded run 265
+- `14e28e74baf789db7fb6fa2188c12f04111428ba0128ed26cd5f5443e5b7d0a5` plugin-host-guarded run 266
+- `25fd28c8a4c97aac55aaaed5f45c913f67710735f0430d6312116ebeccc4486f` plugin-host-guarded run 267
+- `41737ab6ebc4a8dcf31bfe6373c79ac58b40ae8a37f1d894cafe9d4fab997348` plugin-host-guarded run 268
+- `6ff2f152ea64b436b9c7ccd879efbdc26a529a457dd8784ade783b8a6df3ce06` plugin-host-guarded run 269
+- `49e0cb52e2a8a5f5a22f853470842b826dbba3bbfec3cc0f1082867bd7b7515f` agent-workflow run 264
+- `2f5ced80d365dfada51181a0f7eefcec7c94e7e500a8841b4b5899d89c19393e` agent-workflow run 265
+- `3db82d1db7b9ec640be921c01c20a14e70a59fbd06196dab8210e41061a5c313` agent-workflow run 266
+- `c6e6c14263b13d42baffa4f1b36ad432ee8cd31cc6a707665d59d7de278c3b86` agent-workflow run 267
+- `ffca90db7c3c85ca32dd529f0f46d790cd7767af3f3e37f1ef6f1ada9e0c523f` agent-workflow run 268
+- `58208157a0242f6d165876e2e94c8491d5b9775ae1f04fbb473f392680f5b587` agent-workflow run 269
+- `675b9a2be058a9a431cc6af057822f326573066b1c03168cda77fe2b05a2342e` review-classifier run 264
+- `40c93ea60b2f4faa56ba7e15a4227cc3b974768337d10b504b20918e2b11c01a` review-classifier run 265
+- `69d3ef22172185ab2fa7666d400feec464146a2a47168d2b172e377830129f00` review-classifier run 266
+- `5eeb464f2e1d1413534f46ae290c82014327d22dbc3009f42558a6c8a0c1cb8a` review-classifier run 267
+- `6b4945ce6ac07b32a2dd2b96d0f2beb52e28c3beb0a9e6b36a82dc9fb372f5dc` review-classifier run 268
+- `ab1648aafa7d82ce2b8bf9830894256589293dff6d7536a0492a6dce8972ae25` review-classifier run 269
