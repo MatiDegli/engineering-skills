@@ -722,6 +722,8 @@ class RoundTests(unittest.TestCase):
         for flags in (["--setting-sources", "user"], ["--effort", "high"], ["--strict-mcp-config"]):
             self.assertTrue(any(command[i : i + len(flags)] == flags for i in range(len(command))))
         self.assertIn('{"disableAllHooks": true}', command)
+        start = command.index("--tools") + 1
+        self.assertEqual(command[start : start + 6], ["Bash", "Read", "Grep", "Glob", "Agent", "--allowedTools"])
 
 
     def test_a_held_round_lock_stops_a_second_round_before_any_audit(self):

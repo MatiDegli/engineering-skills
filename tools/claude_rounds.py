@@ -339,6 +339,10 @@ def overlap_note(log: str) -> str | None:
     return "Overlap unknown." if unknown or started else None
 
 
+# Every tool an audit may have. Agent starts subagents for the skill's passes.
+AUDIT_TOOLS = ("Bash", "Read", "Grep", "Glob", "Agent")
+
+
 def claude_command(
     prompt: str, model: str, directories: list[Path], settings: str | None = None
 ) -> list[str]:
@@ -348,16 +352,19 @@ def claude_command(
     hooks, skills, and agents never load; the effort is fixed rather than inherited. A run served by
     another provider passes the settings file of `provider_launch`, which also turns hooks off.
 
-    The audit is not confined. Bash is allowed without a pattern, and this command sets neither a
-    permission mode nor a sandbox (the user settings it loads could), so a shell command runs with
-    the rights of the user who started the runner: it can read every file that user can read, and
-    it can still write files. Only the web and file-editing tools are disallowed. What keeps an
-    audit in its repository is the prompt's instruction; afterwards `summarize` verifies the
-    prepared repository and lists the home paths that tool calls name in full.
+    The audit has only the tools in `AUDIT_TOOLS` (`--tools`), which its subagents inherit, so it
+    cannot list or message other sessions, schedule work, or start workflows; the web and
+    file-editing tools stay disallowed as well. It is still not confined. Bash is allowed without a
+    pattern, and this command sets neither a permission mode nor a sandbox (the user settings it
+    loads could), so a shell command runs with the rights of the user who started the runner: it
+    can read every file that user can read, and it can still write files. What keeps an audit in its
+    repository is the prompt's instruction; afterwards `summarize` verifies the prepared repository
+    and lists the home paths that tool calls name in full.
     """
     return [
         *("claude", "-p", prompt, "--model", model, "--effort", "high"),
         *(item for directory in directories for item in ("--add-dir", str(directory))),
+        *("--tools", *AUDIT_TOOLS),
         *("--allowedTools", "Bash", "Read", "Grep", "Glob"),
         *("--disallowedTools", "WebFetch", "WebSearch", "Edit", "Write", "NotebookEdit"),
         *("--setting-sources", "user", "--settings", settings or '{"disableAllHooks": true}'),

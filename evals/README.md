@@ -143,6 +143,7 @@ Each mechanism answers an incident in this repository's evaluations:
 | The same skill cost 43% more in the afternoon than in the morning, and the rise was first blamed on a rule (runs 59 to 63) | A control arm in the same round, with jobs interleaved case by case |
 | Audits of a rewritten private clone queried the hosted repository with the maintainer's GitHub login, found that its history did not match, and one run reported three of ten gaps (run 56) | Runs see no GitHub CLI login or token, so remote settings are unverified the same way in every round |
 | Audits of real repositories could not read CI runs, branch protection, or other branches, because a prepared case has one branch, no remote, and no GitHub login (runs 188 and 189) | A case's `source.json` may keep the source's branches no newer than the pin and ask for a snapshot of the hosted state, read once when the round is planned (see [Cases from a pinned repository](#cases-from-a-pinned-repository)) |
+| An audit that started subagents listed the maintainer's other Claude sessions and could have messaged them, and tried workflow and monitor tools to wait for its helpers (run 260) | Runs get only Bash, Read, Grep, Glob, and Agent (`--tools`), and their subagents inherit that list |
 
 Each run also has a time limit and its own process group, which is stopped as a whole when the limit
 passes or when the runner receives SIGTERM or SIGINT; the runner then starts no other audit, logs the
