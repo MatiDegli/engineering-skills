@@ -72,8 +72,10 @@ The evaluation runner's mechanisms, each with its incident, are listed under
   (runs 59 to 63). *Mechanism:* a control arm in every round, with jobs interleaved case by case
   ([Headless rounds](../evals/README.md#headless-rounds-with-claude-code)).
 - **Write results from the source, not from memory.** Numbers, times, and states come from logs,
-  run records, or code. *Mechanism:* `summarize` builds the result tables from the run records, and
-  the entries in [RESULTS.md](../evals/RESULTS.md) list their reports' hashes.
+  run records, or code. A generated report's fixed text goes stale too: in the maintainer's
+  projects, a ledger script rerun on a new window kept sentences that had become false and counted
+  one compaction twice (2026-10-21). *Mechanism:* `summarize` builds the result tables from the run
+  records, and the entries in [RESULTS.md](../evals/RESULTS.md) list their reports' hashes.
 - **Check each commit on its own tree when it is made.** *Mechanism:*
   `python3 -m tools.check_range origin/main..HEAD`
   ([decision](decisions.md#2026-10-17--intermediate-commits-that-need-repository-history)).
@@ -123,10 +125,42 @@ The evaluation runner's mechanisms, each with its incident, are listed under
 - **A coordinator's cost is rereading its context.** On 2026-10-17 the coordinating sessions spent
   about 45% of all tokens, 79% of them cache reads over 1,035 turns; one session reread about 906k
   tokens on every turn. Batch independent steps into one call, write long outputs to files and show
-  counts, and delegate long mechanical work to fresh subagents. *Mechanism:*
-  `python3 -m tools.claude_ledger` measures it
+  counts, and delegate long mechanical work to fresh subagents. In two of the maintainer's projects,
+  automatic compaction at 400k tokens later cut one coordinator's mean context from 503k to 312k,
+  yet over the next four days the coordinator still cost about 84 USD in each, among the largest
+  drivers (2026-10-21). *Mechanism:* `python3 -m tools.claude_ledger` measures it
   ([Headless rounds](../evals/README.md#headless-rounds-with-claude-code)). *Follow-up:* a
   checkpoint that a tool generates, so a fresh session can resume from a file.
+- **Bound each agent's context, and start a fresh agent instead of resuming a large one.** In the
+  same two projects, ledgers rerun on 2026-10-21 with the scripts of 2026-10-17 found cost per
+  active hour down 63% in one and the list-price total down 52% in the other. Most of the fall was
+  in what these rules targeted: fix rounds that resumed the same implementer fell from 284 to 12
+  USD, and requests above 300k tokens from 763 to 76 USD. *Follow-up:* context caps and a fresh
+  agent per fix round in `coordinating-agents`.
+- **A cap needs an exit.** A cap of 250 turns stopped four implementers with no report, and two were
+  then resumed above the 150k tokens their project allows; a cheaper model's only real task reached
+  its 40-turn cap with a partly wrong result and was redone. Compaction keeps the state, and cut
+  cost without losing work. *Follow-up:* every cap in `coordinating-agents` asks for a partial
+  report before it stops the agent.
+- **A saving can move the cost; measure where it went.** A fresh reviewer for each re-verification
+  cost about what a resumed one had, about 1.5 USD a round, and Opus reviewers became the largest
+  driver at 32%. A cap at 300k tokens saved 687 USD above it and moved 181 USD into the bands below.
+  Writing long output to files cut large reports to the coordinator from 18 to 2, while subagents'
+  reads of whole files rose from 48 to 113. *Follow-up:* in `coordinating-agents`, each cost change
+  names the driver it should cut and the one it could raise, and the next ledger measures both.
+- **Count rounds, not only their price.** A checklist and a self-review before hand-off did not cut
+  fix rounds: implementer rounds per merged change went from 1.16 to 1.03 and reviewer
+  re-verifications rose from 1.08 to 1.25, counted from agent descriptions, while each round got
+  cheaper. *Follow-up:* the review reference of `coordinating-agents` measures rounds per change.
+- **A one-hour cache pays only for agents that wait.** Once waits were short, its premium was close
+  to the rebuilds it avoided: 7.26 USD paid against about 7.85 estimated in one project, and 19.2
+  against about 29.5 in the other. *Follow-up:* `coordinating-agents` gives the longer cache only to
+  agents expected to wait more than five minutes.
+- **Compare cost windows by the work done, in more than one unit.** Cost per active hour fell 63%
+  and per merged change 59%, but per thousand changed lines only 6%, because changes had become
+  smaller (985 lines against 2,234). A window of 87 hours had about as many active hours as one of
+  45. *Follow-up:* `python3 -m tools.claude_ledger` reports cost per active hour and per merged
+  change beside the total.
 - **Rounds as small as the question.** While a skill changes often, diagnostic rounds use one
   cheaper model sized to the one question; the strongest model and the large case validate release
   candidates. *Follow-up:* record the protocol by kind of change in
