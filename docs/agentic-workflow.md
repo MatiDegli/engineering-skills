@@ -149,9 +149,14 @@ The evaluation runner's mechanisms, each with its incident, are listed under
   reads of whole files rose from 48 to 113. *Follow-up:* in `coordinating-agents`, each cost change
   names the driver it should cut and the one it could raise, and the next ledger measures both.
 - **Count rounds, not only their price.** A checklist and a self-review before hand-off did not cut
-  fix rounds: implementer rounds per merged change went from 1.16 to 1.03 and reviewer
-  re-verifications rose from 1.08 to 1.25, counted from agent descriptions, while each round got
-  cheaper. *Follow-up:* the review reference of `coordinating-agents` measures rounds per change.
+  fix rounds: implementer rounds per merged change went from 1.16 to 1.03, and reviewer
+  re-verifications rose from about 0.82 to about 1.00 once re-reviews of plans and first reviews of
+  fix changes were taken out of a count from agent descriptions, while each round got cheaper. In a
+  sample of 21 such rounds, 42% of the findings were sibling paths of the same problem that the fix
+  left open and 27% were defects the fix added; one implementer had marked as checked the class of
+  defect the reviewer then found. *Follow-up:* the review reference of `coordinating-agents`
+  measures rounds per change, and asks each fix for the search that found its sibling paths and a
+  mutation for each new guard.
 - **A one-hour cache pays only for agents that wait.** Once waits were short, its premium was close
   to the rebuilds it avoided: 7.26 USD paid against about 7.85 estimated in one project, and 19.2
   against about 29.5 in the other. *Follow-up:* `coordinating-agents` gives the longer cache only to
