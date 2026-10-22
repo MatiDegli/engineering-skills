@@ -3685,3 +3685,38 @@ Report SHA-256 hashes for the fictional cases, as printed by the summary:
   18/18; false flags 4 against 7), runs 283 to 285 show no regression.
 - Decision: `dde0696`'s procedure becomes the skill's and the base for later rounds. The catalog
   rules of runs 286 and 287, aimed at W-moot items, are set aside.
+
+## 2026-10-21 — Runs 299 and 300 (Codex smoke test)
+
+- Question: can the audit run on OpenAI's Codex CLI, so that rounds spend less Anthropic quota and
+  show how the skill works with another provider, and what would a runner backend need?
+- Skill v0.2.3 (`1a4d09c`), exported with `git archive` and named in the runner's `full` prompt;
+  case `review-classifier`, unchanged since v0.2.3, prepared with `python3 -m tools.evals prepare`.
+  Both runs were launched by hand, one at a time, with `--sandbox workspace-write` and reasoning
+  effort high, on the maintainer's ChatGPT login.
+- Run 299: Codex CLI 0.149.1, `gpt-5.6-sol`, 7.5 minutes. Run 300: Codex CLI 0.163.0,
+  `gpt-6.1-sol`, 7.7 minutes. The model is recorded in the session files, not in the JSON stream.
+
+| Run | Model | Seeded gaps found | Defects at location (scorer) | Defects by hand | Input tokens (cached) | Output tokens |
+| --- | --- | --- | --- | --- | --- | --- |
+| 299 | gpt-5.6-sol | 5 of 6 | 3 of 6 | 5 of 6 | 1,370,887 (1,309,056), main thread only | 22,926 |
+| 300 | gpt-6.1-sol | 6 of 6 | 4 of 6 | 5 of 6 | 2,105,098, main and three helpers | 29,942 |
+
+- Both runs followed the skill: they read SKILL.md and the area files, ran the helper passes, and
+  wrote reports the scorer parsed. With the same skill, each Sonnet report of runs 283 to 285
+  stated all six gaps and all six defects, counted by hand.
+- Run 299 missed PERF-01 and the smoke-run defect. Run 300 missed the power analysis against the
+  1-point rule; it named the smoke run as a confound, a borderline match counted as found.
+- In run 300 the helpers used 63% of the input tokens. They appear only in Codex's session files,
+  linked to the main thread by its ID; the main stream on 0.163.0 has no helper items.
+- Both prepared repositories stayed clean, with no scratch directory left. Codex waited for more
+  input on stdin unless it came from `/dev/null`, and 0.149.1 refused `gpt-6.1-sol` on a ChatGPT
+  login.
+- Two runs of one fictional case show that the skill runs on Codex. They do not compare Codex
+  with Claude. The runner's Codex backend follows from them
+  ([decision](../docs/decisions.md#2026-10-21--one-round-runner-with-claude-and-codex-backends)).
+
+Report hashes (SHA-256):
+
+- `62015a66bb3afc79010357fe68c0e672553e493e41f0087acc9af2f28ffc68e6` review-classifier run 299
+- `b2fa42fe10f440734db9d783e6be4319af408422d4a3fda570fcb45fcc12c821` review-classifier run 300
