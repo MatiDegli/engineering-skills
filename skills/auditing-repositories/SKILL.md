@@ -135,10 +135,23 @@ start subagents, such as through a Task or Agent tool, start these passes after 
 parallel, whatever the repository's size:
 
 - **Behavior:** split the maintained code into slices of related modules, each with its tests and
-  small enough for one helper to read in full, and give each slice to a helper that does step 4 on
-  it. The helper first lists the slice's entry points, such as commands, public functions, request
-  handlers, and scheduled jobs, then checks each against step 4's list and names the ones it
-  checked.
+  small enough for one helper to read in full, and give each slice to two helpers that do step 4
+  on it in opposite orders. One first lists the slice's entry points, such as commands, public
+  functions, request handlers, and scheduled jobs, then follows each inward. The other first lists
+  the slice's tests, error handlers, retries, fallbacks, and code that runs concurrently or on a
+  schedule, then follows each to the code it exercises and to what triggers it. Each checks every
+  starting point against step 4's list and names the ones it checked.
+- **Sweeps:** one helper, over the repository or its sample, looks for the problems that reading
+  alone rarely finds:
+  - in a scratch copy, run each command and procedure that the README, the documentation, and the
+    agent instructions give, except those the safety rules forbid, and compare each result with
+    what the documentation says; list the commands it skipped;
+  - for the tests of each main path, look for a plausible wrong change to the code under them that
+    they would still pass, and confirm it in a scratch copy when that is safe;
+  - for each number the project reports or acts on, such as a metric, a score, or a threshold,
+    compare how the code computes it with how the documentation defines it;
+  - in a scratch copy, try each input check and each secret or leak scan with an input built to
+    slip past it, masking any secret-like value.
 - **Claims:** one helper first lists every factual claim of the README, the documentation, and the
   agent instructions: numbers, commands, guarantees, states such as disabled or deprecated, and what
   the project says it does not do. It then checks each claim against the code, configuration,
@@ -149,9 +162,10 @@ parallel, whatever the repository's size:
 Give each helper the safety rules above, including that it must not edit files and must delete its
 scratch directories, the project's shape and stage from step 2, its scope, step 5's rule for a claim
 that something is missing, and the evidence rule: a path with line numbers and, for a behavior
-defect, an input that shows it and who in this project would give that input. Ask for candidate
-problems, not a report, and for the path of every scratch directory it created. While they read, do
-steps 4 to 7 yourself, then wait for every helper's answer before you write the report.
+defect, an input that shows it and who in this project would give that input, or for a sweep
+finding, the command or change and its result. Ask for candidate problems, not a report, and for the
+path of every scratch directory it created. While they read, do steps 4 to 7 yourself, then wait for
+every helper's answer before you write the report.
 
 Before you report a helper's problem, open its evidence and confirm it; for a claim that something
 is missing, run the search again yourself. Merge duplicates and file each problem under the closest
