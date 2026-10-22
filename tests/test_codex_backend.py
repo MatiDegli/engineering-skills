@@ -69,6 +69,8 @@ def session(identity, parent=None, spawns=0, finished=True, wrong=False):
         events += [call("exec", identity + "-outside", arguments="cat /root/round-fixture/notes.txt; ls " + str(state / "scratch-location"))]
         if (state / "scratch-location").is_file():
             events[-1]["payload"]["arguments"] = "cat /root/round-fixture/notes.txt; ls " + (state / "scratch-location").read_text()
+        events += [call("send_message", identity + "-message", "collaboration",
+                        arguments='{"target":"/root/agent-address","message":"done"}')]
     for i in range(spawns):
         key = identity + "-spawn-" + str(i)
         answer = config.get("spawn_output", "spawn failed" if mode == "failed_spawn" else '{"task_name":"helper"}')
@@ -211,7 +213,8 @@ class CodexTests(unittest.TestCase):
         args = events[-1]["args"]
         for feature in codex.FEATURES:
             self.assertIn(["--disable", feature], [args[i:i+2] for i in range(len(args))])
-        for value in ('model_reasoning_effort="high"', "project_doc_max_bytes=0", "check_for_update_on_startup=false", "workspace-write"):
+        for value in ('model_reasoning_effort="high"', "project_doc_max_bytes=0", "check_for_update_on_startup=false",
+                      'web_search="disabled"', "workspace-write"):
             self.assertIn(value, args)
         self.assertNotIn("--ephemeral", args)
         self.assertEqual(args[args.index("-m") + 1], "gpt-6.1-sol")
@@ -347,7 +350,7 @@ class CodexTests(unittest.TestCase):
         self.assertEqual(record["usage"]["tokens_out"], 60)
         self.assertEqual(record["usage"]["tokens_uncached"], 120)
         self.assertEqual(record["usage"]["tokens_reasoning"], 24)
-        self.assertEqual(record["usage"]["tools"], 7)
+        self.assertEqual(record["usage"]["tools"], 9)
 
     def test_a_missing_or_unfinished_helper_leaves_accounting_incomplete_not_zero(self):
         for mode in ("missing", "unfinished"):
@@ -645,6 +648,7 @@ class CodexTests(unittest.TestCase):
         self.assertEqual(self.run_round(round_dir), 0)
         stream = round_dir / "streams/run1-case.jsonl"
         self.assertIn("/root/round-fixture/notes.txt", runner.outside_paths(stream, []))
+        self.assertFalse(any("agent-address" in path for path in runner.outside_paths(stream, [])))
         summary = runner.summarize(round_dir)
         self.assertIn("left in the temporary directory: " + scratch.name, summary)
         self.assertIn("/root/round-fixture/notes.txt", summary)
@@ -881,6 +885,19 @@ class CodexTests(unittest.TestCase):
         tools = ["functions." + name for name in reversed(sorted(codex.EXPECTED_TOOLS))]
         self.configure(answer_tools=tools + tools[:1])
         self.assertEqual(self.run_round(self.codex_plan()), 0)
+
+    def test_the_warm_up_accepts_nested_tools_and_refuses_web_search(self):
+        listed = ["functions." + name for name in sorted(codex.EXPECTED_TOOLS)]
+        for extra, passes in ((["tools.apply_patch", "tools.clock__curr_time", "functions.exec_command"], True),
+                              (["web.run"], False), (["tools.browser_open"], False)):
+            with self.subTest(extra=extra):
+                self.configure(answer_tools=listed + extra)
+                round_dir = self.codex_plan()
+                if passes:
+                    self.assertEqual(self.run_round(round_dir), 0)
+                else:
+                    with self.assertRaisesRegex(SystemExit, "unexpected tools"):
+                        self.run_round(round_dir)
 
     def test_tool_list_errors_show_parsed_and_expected_lists(self):
         self.configure(answer_tools=["functions.exec"])

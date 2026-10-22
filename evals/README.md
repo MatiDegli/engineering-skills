@@ -167,7 +167,7 @@ round runs no Claude command. Each audit runs:
 
 ```text
 codex exec --json -C <repo> -m <model> -c model_reasoning_effort="high" --sandbox workspace-write
-  -c project_doc_max_bytes=0 -c check_for_update_on_startup=false
+  -c project_doc_max_bytes=0 -c check_for_update_on_startup=false -c web_search="disabled"
   --disable plugins --disable goals --disable personality --disable apps --disable browser_use
   --disable browser_use_external --disable computer_use --disable image_generation
   --disable in_app_browser --disable memories -o <streams>/<label>.last-message.md "<prompt>"
@@ -175,16 +175,19 @@ codex exec --json -C <repo> -m <model> -c model_reasoning_effort="high" --sandbo
 
 It gets stdin from `/dev/null`, keeps `HOME` so that the user's Codex login is used, and gets an
 empty `GH_CONFIG_DIR` and no hosting tokens, API keys, `CODEX_HOME`, or `ANTHROPIC_*` or `CLAUDE_*`
-variables. `project_doc_max_bytes=0` keeps a case's `AGENTS.md` out, and the disables leave the
-agent its shell, waits, requests for user input, a clock, and helper agents.
+variables. `project_doc_max_bytes=0` keeps a case's `AGENTS.md` out, `web_search="disabled"` removes
+the hosted web search, and the disables leave the agent its shell, waits, requests for user input,
+a clock, and helper agents.
 
 Before the audits, `codex login status` must pass, and only its exit status is kept. Then one short
 run per model with pending jobs checks the setup in a temporary Git repository whose `AGENTS.md`
-holds a code word. It stops the round when the reply contains the code word; when the agent's tools
-differ from the expected set, read from the session file if it records them, else from a
-`{"tools": [...]}` object the model is asked for; when a command in the agent's own shell prints a
-forbidden variable name or finds another GitHub configuration; or when the run errs, does not
-finish, or records another model. The probe prints names, never values.
+holds a code word. On Codex 0.163.0 the session file does not record the agent's tools, so the model
+is asked for them as a `{"tools": [...]}` object. The round stops when the reply contains the code
+word; when the tools lack one of the expected set, or include one outside it and outside the tools
+inside `exec` (file patches, commands, images, a clock, MCP resources), which the model lists in
+some answers only; when a command in the agent's own shell prints a forbidden variable name or finds
+another GitHub configuration; or when the run errs, does not finish, or records another model. The
+probe prints names, never values.
 
 The JSON stream carries neither the model nor the helpers' work, so the runner reads Codex's
 session files. It finds the run's helpers, and theirs, by their parent thread ID, waits up to 60
@@ -224,9 +227,11 @@ Each mechanism answers an incident in this repository's evaluations:
 | An audit that started subagents listed the maintainer's other Claude sessions and could have messaged them, and tried workflow and monitor tools to wait for its helpers (run 260) | Runs get only Bash, Read, Grep, Glob, and Agent (`--tools`), and their subagents inherit that list |
 | Codex waited for more input on stdin (run 299) | stdin from `/dev/null` for login checks, warm-ups, and audits |
 | Codex 0.149.1 refused the requested model on a ChatGPT login (2026-10-21) | One short run per model stops the round on an error or a missing final event |
+| Codex's hosted web search was on by default, and the first warm-up through the runner listed it (round 43) | `web_search="disabled"`; the warm-up refuses any tool outside the known set |
 | A case's `AGENTS.md` loads into a Codex run by default (probe, 2026-10-21) | `project_doc_max_bytes=0`, checked by the warm-up's code word |
 | The Codex stream named neither the model nor the helpers, which used 63% of the input tokens (runs 299 and 300) | Session files found by parent thread, each thread's model checked, and accounting marked incomplete when one is missing |
 | Helpers made two scratch directories that the main stream never named (run 299) | Path and leftover listings also read every helper's session |
+| Helpers address the main agent as `/root`, which the path listing read as a home path (round 43) | Path listings skip the calls between agents |
 | In review (2026-10-21): a child could outlive its process group's leader, missing reports dropped out of the scores, and a failed run could pass for a good one | A status for every job, invalid runs in the denominators, a non-zero exit, and SIGKILL by group |
 
 Each run has a time limit and its own process group. When the limit passes or the runner receives
@@ -248,13 +253,13 @@ Limits, reviewed on 2026-10-21:
   clean repository at the end does not prove that nothing was written in it.
 - The catalog and the expectations used for scoring are read when `summarize` runs; they are not
   snapshotted.
-- Checked against the real CLI (runs 299 and 300, Codex 0.163.0): stdin, `AGENTS.md`, the tool
-  set, and reading run 300's session files for helpers, completeness, and tokens. Tested only with
-  a stand-in: helpers of helpers, the error texts, the login output, the memories and update-check
-  settings, and process cleanup inside Codex's sandbox. Not known: whether the server can serve
-  another model than the one it records, whether cached input is always part of input, and what a
-  request for user input does with stdin closed. The warm-up's fallback tool list is the model's
-  own claim.
+- Checked against the real CLI (runs 299 and 300 and round 43, Codex 0.163.0): stdin, `AGENTS.md`,
+  the tool set with web search off, and reading run 300's session files for helpers, completeness,
+  and tokens. Tested only with a stand-in: helpers of helpers, the error texts, the login output,
+  the memories and update-check settings, and process cleanup inside Codex's sandbox. Not known:
+  whether the server can serve another model than the one it records, whether cached input is always
+  part of input, and what a request for user input does with stdin closed. The warm-up's tool list
+  is the model's own claim.
 
 ## Cases from a pinned repository
 

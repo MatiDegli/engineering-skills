@@ -26,6 +26,11 @@ EXPECTED_TOOLS = {
         "spawn_agent", "send_message", "followup_task", "wait_agent", "list_agents", "interrupt_agent",
     )),
 }
+# Tools inside `exec` that a model lists in some answers and not in others (round 43).
+NESTED_TOOLS = {
+    "apply_patch", "exec_command", "write_stdin", "view_image", "clock.curr_time",
+    "list_mcp_resources", "list_mcp_resource_templates", "read_mcp_resource",
+}
 TOKEN_FIELDS = {
     "tokens_in": "input_tokens", "tokens_read": "cached_input_tokens",
     "tokens_written": "cache_write_input_tokens", "tokens_out": "output_tokens",
@@ -34,11 +39,18 @@ TOKEN_FIELDS = {
 THREAD_ID = re.compile(r"([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\.jsonl$")
 
 
+def tool_name(name: str) -> str:
+    for prefix in ("functions.", "tools."):
+        name = name.removeprefix(prefix)
+    return name.replace("__", ".")
+
+
 def command(prompt: str, model: str, repo: Path, last_message: Path) -> list[str]:
     return [
         "codex", "exec", "--json", "-C", str(repo), "-m", model,
         "-c", 'model_reasoning_effort="high"', "--sandbox", "workspace-write",
         "-c", "project_doc_max_bytes=0", "-c", "check_for_update_on_startup=false",
+        "-c", 'web_search="disabled"',
         *(argument for feature in FEATURES for argument in ("--disable", feature)),
         "-o", str(last_message), prompt,
     ]
@@ -353,10 +365,14 @@ def copied_sessions(stream: Path) -> list[Path]:
 
 
 def diagnostic_texts(stream: Path) -> list[str]:
-    """Read call arguments in every copied thread and command/file-change items in the stream."""
+    """Read call arguments in every copied thread and command/file-change items in the stream.
+
+    Collaboration calls address agents, as `/root` for the main one (round 43), not files.
+    """
     texts = []
     for path in copied_sessions(stream):
-        texts += [str(c.get("arguments", c.get("input", ""))) for c in calls(records(path))]
+        texts += [str(c.get("arguments", c.get("input", ""))) for c in calls(records(path))
+                  if not call_name(c).startswith("collaboration.")]
     for event in records(stream):
         item = event.get("item", {})
         if item.get("type") == "command_execution":
@@ -434,7 +450,7 @@ def warm_up(round_dir: Path, models: list[str], host_variables: tuple[str, ...],
                 tools = value.get("tools", []) if isinstance(value, dict) else []
             if isinstance(tools, list):
                 tools = [t.get("name") if isinstance(t, dict) else t for t in tools]
-                tools = [t.removeprefix("functions.") if isinstance(t, str) else repr(t) for t in tools]
+                tools = [tool_name(t) if isinstance(t, str) else repr(t) for t in tools]
             probe_outputs = []
             for info in evidence:
                 ids = {c["call_id"] for c in calls(info["events"]) if all(
@@ -448,7 +464,7 @@ def warm_up(round_dir: Path, models: list[str], host_variables: tuple[str, ...],
             reasons = list(result["reasons"])
             if word in result["report"]:
                 reasons.append("AGENTS.md loaded")
-            if not isinstance(tools, list) or set(tools) != EXPECTED_TOOLS:
+            if not isinstance(tools, list) or not EXPECTED_TOOLS <= set(tools) <= EXPECTED_TOOLS | NESTED_TOOLS:
                 reasons.append(f"unexpected tools: parsed {tools!r}, expected {sorted(EXPECTED_TOOLS)!r}")
             if "ROUND_GH_CONFIG_OK" not in output or "ROUND_GH_CONFIG_WRONG" in output or any(forbidden_name(n) for n in names):
                 reasons.append("shell environment probe failed")
