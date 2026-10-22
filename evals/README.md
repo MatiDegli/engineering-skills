@@ -251,6 +251,10 @@ Limits, reviewed on 2026-10-21:
   skills stay visible, and audit sessions stay in the user's Codex history.
 - The path listings are partial: they miss a path that a command builds or names relatively, and a
   clean repository at the end does not prove that nothing was written in it.
+- Codex 0.163.0 gives the agent four concurrency slots, itself included, so at most three helpers
+  run at once. v0.2.3's passes use three. A procedure that asks for more makes the lead wait for a
+  slot or merge or drop roles, as runs 304 and 305 did (round 44), so compare the helpers in each
+  run's `streams/<label>.sessions/` before reading its result.
 - The catalog and the expectations used for scoring are read when `summarize` runs; they are not
   snapshotted.
 - Checked against the real CLI (runs 299 and 300 and round 43, Codex 0.163.0): stdin, `AGENTS.md`,

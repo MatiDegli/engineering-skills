@@ -3744,3 +3744,83 @@ Report hashes (SHA-256):
 Report hash (SHA-256):
 
 - `889e499b1a905958752d6837d0a1a8049ddf6cb924d216453f934958ccfbc641` review-classifier run 301
+
+## 2026-10-22 — Runs 302 to 306 (two readings per behavior slice and a sweeps helper, on Codex)
+
+- Question: of the 153 useful items known on three of the maintainer's repositories, 57 were found
+  by only one or two of the 16 runs that built the list, 54 of them on two repositories. Candidate
+  `9d32eb0` changes v0.2.3's passes. Each behavior slice gets two helpers reading in opposite
+  orders: one from the entry points inward, one from the tests, error handlers, and concurrent or
+  scheduled code outward. A sweeps helper runs the documented commands in a scratch copy, looks for
+  wrong changes the tests would pass, checks reported numbers against their definitions, and probes
+  input checks and leak scans. Does it find more useful items than v0.2.3, with no more false ones?
+- Round: Codex CLI 0.163.0, `gpt-6.1-sol`, reasoning effort high, through
+  `python3 -m tools.claude_rounds` from `b70feb0`, one audit at a time on the maintainer's ChatGPT
+  login. Runs 302 and 303 used v0.2.3 (`1a4d09c`), 304 and 305 the candidate, and 306 no skill, on
+  the two repositories, with the pins and hosted snapshots of runs 278 and 279. The third
+  repository was left out: runs 278 and 279 had found 23 of its 25 known items. The maintainer
+  approved the arms, and the criteria were fixed before any run:
+  - L1: mean useful items per candidate run at least v0.2.3's plus M, where M is 8 or twice the
+    difference between runs 302 and 303, whichever is larger;
+  - L2: runs 304 and 305 together find at least 8 more of those 54 items, or new items rated
+    useful, than runs 302 and 303 together;
+  - L3: mean false items per candidate run at most v0.2.3's plus 3, and each run's false share at
+    most v0.2.3's higher share plus 2 points;
+  - L4, only if L1 to L3 hold: no regression on the four fictional cases.
+- Claude subagents matched the items to the list of earlier rounds under random labels. The 30 new
+  items of all arms became 19 once duplicates were merged; 18 held against clean copies and 1 held
+  in part. The repositories' sessions rated them blind to the arm: 5 U, 2 K-rec, 1 K-unrec, 11
+  W-moot, none false.
+- All ten audits are valid, with complete token accounting. An overnight pause stopped a first
+  attempt at run 305 on one repository after 10.2 minutes (5,705,269 input tokens, 36,405 output);
+  it is invalid. It and the jobs the pause skipped were planned again with the same revisions and
+  run numbers.
+
+Both repositories together:
+
+| Run | Skill | Items | U | K-rec | K-unrec | W-false | W-moot | W-harness | Useful | Of the 54, or new and useful |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 302 | `1a4d09c` (v0.2.3) | 52 | 25 | 6 | 7 | 0 | 13 | 1 | 32 | 6 |
+| 303 | `1a4d09c` (v0.2.3) | 60 | 28 | 8 | 9 | 1 | 13 | 1 | 37 | 9 |
+| 304 | `9d32eb0` | 72 | 33 | 9 | 11 | 0 | 17 | 2 | 44 | 11 |
+| 305 | `9d32eb0` | 67 | 32 | 7 | 11 | 0 | 15 | 2 | 43 | 12 |
+| 306 | none | 21 | 16 | 2 | 2 | 0 | 1 | 0 | 18 | 6 |
+| 278 (Sonnet) | `dde0696` | 100 | 51 | 11 | 15 | 1 | 20 | 2 | 66 | 10 |
+| 279 (Sonnet) | `dde0696` | 91 | 48 | 10 | 11 | 4 | 17 | 1 | 59 | 7 |
+
+| Criterion | Result | Met |
+| --- | --- | --- |
+| L1, M = 2 x (37 - 32) = 10 | 43.5 against 34.5 + 10 = 44.5 | no |
+| L2 | 14 against 10 + 8 = 18 | no |
+| L3 | no false items in either candidate run; v0.2.3 0 and 1 (1.7%) | yes |
+| L4 | not run | — |
+
+Per audit, four audits per skill and two without one:
+
+| Skill | Minutes | Input tokens | Uncached input | Output tokens | Reasoning tokens | Tool calls |
+| --- | --- | --- | --- | --- | --- | --- |
+| `1a4d09c` (v0.2.3) | 8.8 | 4,815,209 | 330,825 | 33,790 | 10,007 | 73.8 |
+| `9d32eb0` | 11.6 | 6,714,216 | 433,768 | 38,899 | 14,216 | 95.2 |
+| none | 2.7 | 680,124 | 89,980 | 7,256 | 2,984 | 12.0 |
+
+- Both candidate runs found more useful items than both v0.2.3 runs on each repository (20 to 23
+  against 15 to 19). Each candidate run alone found more than runs 302 and 303 together (44 and 43
+  against 39). The margin came from v0.2.3's own spread, and the mean fell one item short of it.
+- On one repository the candidate's runs found 8 of the 54 items or new useful ones against
+  v0.2.3's 4; the 4 that only the candidate found are one of each kind the sweeps target. On the
+  other, each skill found 6, 4 of them in common. Of the 6 new items rated useful, the candidate found 4, v0.2.3 none, and the run
+  without the skill 2 that no run with it found.
+- W-moot items rose with the items, 17 and 15 against 13 and 13, at a similar share of each run.
+- The candidate took 32% more time per audit and 39% more input tokens, for 26% more useful items.
+- Codex gives the agent four concurrency slots, itself included, so at most three helpers run at
+  once. v0.2.3's passes use three, as all its runs did. The candidate asks for more. On one
+  repository its runs waited for a free slot and started four and five helpers. On the other they
+  merged or dropped roles and started three. The gain over v0.2.3 was about the same on both, 5 and
+  4 useful items per run. The runner's notes now state the limit ([Codex](README.md#codex)).
+- Descriptive, deciding nothing: without the skill, Codex found 18 useful items, about half of
+  v0.2.3's mean of 34.5. On the same two repositories, Sonnet runs 278 and 279 found 66 and 59,
+  with 1 and 4 false, and 77 together.
+- Run 306 left a scratch directory holding one test log in the system temporary directory. Every
+  prepared repository stayed clean.
+- Decision, as the criteria set: L1 and L2 fail, so the candidate is not merged, and L4 was not
+  run.
