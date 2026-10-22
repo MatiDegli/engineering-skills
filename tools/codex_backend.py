@@ -31,6 +31,9 @@ NESTED_TOOLS = {
     "apply_patch", "exec_command", "write_stdin", "view_image", "clock.curr_time",
     "list_mcp_resources", "list_mcp_resource_templates", "read_mcp_resource",
 }
+# Codex runs three helpers at once unless configured, and refuses a fourth (round 44).
+HELPER_SLOTS = 8
+SLOTS = re.compile(r"There are (\d+) available concurrency slots")
 TOKEN_FIELDS = {
     "tokens_in": "input_tokens", "tokens_read": "cached_input_tokens",
     "tokens_written": "cache_write_input_tokens", "tokens_out": "output_tokens",
@@ -51,6 +54,7 @@ def command(prompt: str, model: str, repo: Path, last_message: Path) -> list[str
         "-c", 'model_reasoning_effort="high"', "--sandbox", "workspace-write",
         "-c", "project_doc_max_bytes=0", "-c", "check_for_update_on_startup=false",
         "-c", 'web_search="disabled"',
+        "-c", f"agents.max_concurrent_threads_per_session={HELPER_SLOTS}",
         *(argument for feature in FEATURES for argument in ("--disable", feature)),
         "-o", str(last_message), prompt,
     ]
@@ -461,6 +465,9 @@ def warm_up(round_dir: Path, models: list[str], host_variables: tuple[str, ...],
                                   and e.get("payload", {}).get("type") in ("function_call_output", "custom_tool_call_output")]
             output = "\n".join(probe_outputs)
             names = re.findall(r"\b[A-Z][A-Z0-9_]+\b", output)
+            slots = sorted({int(n) for info in evidence for e in info["events"]
+                            if e.get("type") == "response_item" and e.get("payload", {}).get("role") == "developer"
+                            for n in SLOTS.findall(output_text(e["payload"].get("content", "")))})
             reasons = list(result["reasons"])
             if word in result["report"]:
                 reasons.append("AGENTS.md loaded")
@@ -468,6 +475,8 @@ def warm_up(round_dir: Path, models: list[str], host_variables: tuple[str, ...],
                 reasons.append(f"unexpected tools: parsed {tools!r}, expected {sorted(EXPECTED_TOOLS)!r}")
             if "ROUND_GH_CONFIG_OK" not in output or "ROUND_GH_CONFIG_WRONG" in output or any(forbidden_name(n) for n in names):
                 reasons.append("shell environment probe failed")
+            if slots != [HELPER_SLOTS + 1]:
+                reasons.append(f"helper slots: instructions state {slots}, expected [{HELPER_SLOTS + 1}]")
             if reasons:
                 raise SystemExit(f"Codex warm-up failed for {model}: {', '.join(reasons)}; see {stream}")
             print(f"warm-up ok: Codex {model}", flush=True)

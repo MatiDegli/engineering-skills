@@ -168,7 +168,7 @@ round runs no Claude command. Each audit runs:
 ```text
 codex exec --json -C <repo> -m <model> -c model_reasoning_effort="high" --sandbox workspace-write
   -c project_doc_max_bytes=0 -c check_for_update_on_startup=false -c web_search="disabled"
-  --disable plugins --disable goals --disable personality --disable apps --disable browser_use
+  -c agents.max_concurrent_threads_per_session=8 --disable plugins --disable goals --disable personality --disable apps --disable browser_use
   --disable browser_use_external --disable computer_use --disable image_generation
   --disable in_app_browser --disable memories -o <streams>/<label>.last-message.md "<prompt>"
 ```
@@ -177,7 +177,9 @@ It gets stdin from `/dev/null`, keeps `HOME` so that the user's Codex login is u
 empty `GH_CONFIG_DIR` and no hosting tokens, API keys, `CODEX_HOME`, or `ANTHROPIC_*` or `CLAUDE_*`
 variables. `project_doc_max_bytes=0` keeps a case's `AGENTS.md` out, `web_search="disabled"` removes
 the hosted web search, and the disables leave the agent its shell, waits, requests for user input,
-a clock, and helper agents.
+a clock, and helper agents. Codex runs three helpers at once unless configured and refuses a
+fourth, so `agents.max_concurrent_threads_per_session=8` lets eight run, and the warm-up checks
+that the setting took effect.
 
 Before the audits, `codex login status` must pass, and only its exit status is kept. Then one short
 run per model with pending jobs checks the setup in a temporary Git repository whose `AGENTS.md`
@@ -186,7 +188,8 @@ is asked for them as a `{"tools": [...]}` object. The round stops when the reply
 word; when the tools lack one of the expected set, or include one outside it and outside the tools
 inside `exec` (file patches, commands, images, a clock, MCP resources), which the model lists in
 some answers only; when a command in the agent's own shell prints a forbidden variable name or finds
-another GitHub configuration; or when the run errs, does not finish, or records another model. The
+another GitHub configuration; when the agent's instructions do not state nine concurrency slots,
+eight helpers and the agent; or when the run errs, does not finish, or records another model. The
 probe prints names, never values.
 
 The JSON stream carries neither the model nor the helpers' work, so the runner reads Codex's
@@ -232,6 +235,7 @@ Each mechanism answers an incident in this repository's evaluations:
 | The Codex stream named neither the model nor the helpers, which used 63% of the input tokens (runs 299 and 300) | Session files found by parent thread, each thread's model checked, and accounting marked incomplete when one is missing |
 | Helpers made two scratch directories that the main stream never named (run 299) | Path and leftover listings also read every helper's session |
 | Helpers address the main agent as `/root`, which the path listing read as a home path (round 43) | Path listings skip the calls between agents |
+| Codex ran at most three helpers at once, so a candidate's lead waited for a slot or merged or dropped roles (round 44); in a probe with five helpers that each slept 45 seconds, the fourth and fifth spawns failed with "agent thread limit reached" | `agents.max_concurrent_threads_per_session=8`, with which the probe's five helpers ran; the warm-up checks the slots the agent is told |
 | In review (2026-10-21): a child could outlive its process group's leader, missing reports dropped out of the scores, and a failed run could pass for a good one | A status for every job, invalid runs in the denominators, a non-zero exit, and SIGKILL by group |
 
 Each run has a time limit and its own process group. When the limit passes or the runner receives
@@ -251,15 +255,14 @@ Limits, reviewed on 2026-10-21:
   skills stay visible, and audit sessions stay in the user's Codex history.
 - The path listings are partial: they miss a path that a command builds or names relatively, and a
   clean repository at the end does not prove that nothing was written in it.
-- Codex 0.163.0 gives the agent four concurrency slots, itself included, so at most three helpers
-  run at once. v0.2.3's passes use three. A procedure that asks for more makes the lead wait for a
-  slot or merge or drop roles, as runs 304 and 305 did (round 44), so compare the helpers in each
-  run's `streams/<label>.sessions/` before reading its result.
+- Runs 302 to 306 ran with Codex's default of three helpers at once. v0.2.3's passes use three; a
+  procedure that asks for more is compared fairly only from later rounds. Compare the helpers in
+  each run's `streams/<label>.sessions/` before reading its result.
 - The catalog and the expectations used for scoring are read when `summarize` runs; they are not
   snapshotted.
 - Checked against the real CLI (runs 299 and 300 and round 43, Codex 0.163.0): stdin, `AGENTS.md`,
-  the tool set with web search off, and reading run 300's session files for helpers, completeness,
-  and tokens. Tested only with a stand-in: helpers of helpers, the error texts, the login output,
+  the tool set with web search off, reading run 300's session files for helpers, completeness, and
+  tokens, and, by probe on 2026-10-22, the helper-slot setting. Tested only with a stand-in: helpers of helpers, the error texts, the login output,
   the memories and update-check settings, and process cleanup inside Codex's sandbox. Not known:
   whether the server can serve another model than the one it records, whether cached input is always
   part of input, and what a request for user input does with stdin closed. The warm-up's tool list

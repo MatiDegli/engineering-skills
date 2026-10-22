@@ -63,6 +63,11 @@ def session(identity, parent=None, spawns=0, finished=True, wrong=False):
     if parent:
         events += [{"type": "session_meta", "payload": {"id": thread, "source": "cli"}}]
     events += [record("turn_context", model="gpt-0.0-other" if wrong else model, sandbox_policy={"type": "workspace-write"})]
+    if not parent and mode != "no_slots":
+        helpers = 3 if mode == "default_slots" else next((int(a.split("=", 1)[1]) for a in args
+            if a.startswith("agents.max_concurrent_threads_per_session=")), 3)
+        text = f"There are {helpers + 1} available concurrency slots, meaning that up to {helpers + 1} agents can be active at once, including you."
+        events += [record("response_item", type="message", role="developer", content=[{"type": "input_text", "text": text}])]
     events += [call("exec", identity + "-exec", arguments="read README.md")]
     events += [call("exec", identity + "-exec", arguments="duplicate lifecycle record")]
     if parent:
@@ -214,7 +219,7 @@ class CodexTests(unittest.TestCase):
         for feature in codex.FEATURES:
             self.assertIn(["--disable", feature], [args[i:i+2] for i in range(len(args))])
         for value in ('model_reasoning_effort="high"', "project_doc_max_bytes=0", "check_for_update_on_startup=false",
-                      'web_search="disabled"', "workspace-write"):
+                      'web_search="disabled"', "agents.max_concurrent_threads_per_session=8", "workspace-write"):
             self.assertIn(value, args)
         self.assertNotIn("--ephemeral", args)
         self.assertEqual(args[args.index("-m") + 1], "gpt-6.1-sol")
@@ -329,6 +334,15 @@ class CodexTests(unittest.TestCase):
                 else:
                     with self.assertRaisesRegex(SystemExit, "unexpected tools"):
                         self.run_round(round_dir)
+
+    def test_the_warm_up_stops_the_round_unless_the_instructions_state_the_helper_slots(self):
+        for mode, stated in (("default_slots", r"\[4\]"), ("no_slots", r"\[\]")):
+            with self.subTest(mode=mode):
+                self.configure(warmup=mode)
+                round_dir = self.codex_plan()
+                with self.assertRaisesRegex(SystemExit, rf"helper slots: instructions state {stated}, expected \[9\]"):
+                    self.run_round(round_dir)
+                self.assertEqual(self.audit_calls(), [])
 
     def test_the_warm_up_stops_the_round_when_a_profile_restores_a_token(self):
         (self.home / ".profile").write_text("export OPENAI_API_KEY=fake-profile-token\n")
