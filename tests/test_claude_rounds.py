@@ -5,9 +5,11 @@ import json
 import os
 import re
 import signal
+import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from datetime import date
@@ -71,6 +73,8 @@ if model == "claude-flaky-1-0" and not state.exists():
     state.write_text("failed once")
     print(json.dumps({{"type": "result", "result": "Failed to refresh OAuth token: another process"}}))
     raise SystemExit(1)
+if model == "claude-no-report-1-0":
+    raise SystemExit(2)
 used = "claude-other-1-0" if model == "claude-mismatch-1-0" else model
 command = "cat /home/someone/notes.txt; grep -E '/home/|/Users/' x; cat /home/u/.claude/projects/-tmp-audit-x/out.txt"
 tool = {{"type": "tool_use", "name": "Bash", "input": {{"command": command}}}}
@@ -82,6 +86,8 @@ report += "| REPO-01 | partial | low | `README.md:1` | Say more |\n"
 usage = {{"inputTokens": 10, "cacheReadInputTokens": 1000, "outputTokens": 200}}
 print(json.dumps({{"type": "result", "result": report, "duration_ms": 60000, "total_cost_usd": 0.5,
                   "modelUsage": {{used: usage}}}}))
+if model == "claude-nonzero-1-0":
+    raise SystemExit(3)
 '''
 FAKE_GH = r'''#!{python}
 """A stand-in for the GitHub CLI: `gh api` answers from the test's file and reaches no host."""
@@ -599,7 +605,9 @@ class RoundTests(unittest.TestCase):
         round_dir = self.plan("round", ("1", "claude-test-1-0"), ("2", "claude-unknown-1-0"))
         with mock.patch("builtins.print"), self.assertRaises(SystemExit):
             claude_rounds.run(round_dir, jobs=2, timeout=60, budget=100, pause=(0, 0))
-        self.assertEqual(list((round_dir / "streams").iterdir()), [])
+        self.assertEqual(list((round_dir / "streams").glob("*.jsonl")), [])
+        records = [claude_rounds.read_record(round_dir, job) for job in json.loads((round_dir / "plan.json").read_text())["jobs"]]
+        self.assertTrue(all(r["status"] == "skipped" and r["reasons"] == ["preflight failed"] for r in records))
 
     def test_a_timeout_stops_the_whole_process_group(self):
         pid_file = self.root / "child.pid"
@@ -649,7 +657,10 @@ class RoundTests(unittest.TestCase):
                 self.assertEqual([gone(pid) for pid in pids], [True, True])
                 self.assertIn(f"by {sent.name}: 1 running audits ended", (round_dir / "log.txt").read_text())
                 self.assertEqual(list((round_dir / "reports").iterdir()), [])
-                self.assertEqual([p.name for p in (round_dir / "streams").iterdir() if "run2" in p.name], [])
+                self.assertEqual([p.name for p in (round_dir / "streams").glob("*.jsonl") if "run2" in p.name], [])
+                record = json.loads((round_dir / "streams/run2-case.run.json").read_text())
+                self.assertEqual(record["status"], "skipped")
+                self.assertEqual(record["reasons"], ["stopped"])
 
     def test_a_stop_signal_kills_an_audit_that_ignores_sigterm(self):
         with mock.patch.object(claude_rounds, "GRACE", 1):
@@ -665,6 +676,326 @@ class RoundTests(unittest.TestCase):
         code = claude_rounds.run_command(command, self.root, self.root / "out", self.root / "err", 60, running=running)
         self.assertEqual(code, -signal.SIGTERM)
         self.assertFalse(marker.exists())
+
+    def test_every_planned_job_has_a_status_and_an_invalid_run_fails_the_round(self):
+        round_dir = self.plan("round", ("1", "claude-test-1-0"), ("2", "claude-nonzero-1-0"), ("3", "claude-no-report-1-0"))
+        with mock.patch("builtins.print"):
+            self.assertEqual(claude_rounds.run(round_dir, jobs=3, timeout=10, budget=100), 1)
+        data = json.loads((round_dir / "plan.json").read_text())
+        records = [claude_rounds.read_record(round_dir, j) for j in data["jobs"]]
+        self.assertEqual([r["status"] for r in records], ["valid", "invalid", "invalid"])
+        self.assertIn("nonzero exit 3", records[1]["reasons"])
+        self.assertIn("no report", records[2]["reasons"])
+        summary = claude_rounds.summarize(round_dir)
+        self.assertIn("| Status |", summary)
+        self.assertIn("invalid: nonzero exit 3", summary)
+        self.assertIn("| case | 3 | claude-no-report-1-0 | 0 of 1 | no |", summary)
+
+    def test_a_job_without_a_report_stays_in_the_denominators(self):
+        round_dir = self.plan("round", ("1", "claude-test-1-0"), ("2", "claude-test-1-0"))
+        with mock.patch("builtins.print"):
+            self.assertEqual(claude_rounds.run(round_dir, jobs=1, timeout=10, budget=0.3), 1)
+        summary = claude_rounds.summarize(round_dir)
+        self.assertIn("| case | 2 | Test 1.0 | 0 of 1 | no |", summary)
+        self.assertIn("| Test 1.0 | 1 of 2 | 0 of 2 |", summary)
+        data = json.loads((round_dir / "plan.json").read_text())
+        job = data["jobs"][1]
+        (Path(job["dir"]) / job["name"] / "README.md").write_text("changed\n")
+        self.assertIn("prepared repository changed", claude_rounds.summarize(round_dir))
+        shutil.rmtree(Path(job["dir"]) / job["name"])
+        self.assertIn("repository removed", claude_rounds.summarize(round_dir))
+
+    def test_a_logged_out_claude_response_is_checked_without_saving_login_output(self):
+        fake = self.root / "bin/claude"
+        fake.write_text(fake.read_text().replace('{"loggedIn": True}', '{"loggedIn": False, "account": "fixture-private-login"}'))
+        round_dir = self.plan("logged-out", ("1", "claude-test-1-0"))
+        with self.assertRaisesRegex(SystemExit, "not logged in"):
+            claude_rounds.run(round_dir, jobs=1, timeout=10, budget=100)
+        self.assertEqual(json.loads((round_dir / "auth-status.json").read_text()), {"exit_code": 0})
+        for path in round_dir.rglob("*"):
+            if path.is_file():
+                self.assertNotIn("fixture-private-login", path.read_text(errors="replace"))
+
+    def test_a_legacy_report_is_skipped_without_launches_or_a_failure(self):
+        round_dir = self.plan("legacy", ("1", "claude-test-1-0"))
+        data = json.loads((round_dir / "plan.json").read_text())
+        job = data["jobs"][0]
+        with mock.patch("builtins.print"):
+            self.assertEqual(claude_rounds.run(round_dir, jobs=1, timeout=10, budget=100), 0)
+        job.pop("backend")
+        (round_dir / "plan.json").write_text(json.dumps(data))
+        claude_rounds.record_path(round_dir, job).unlink()
+        report = round_dir / "reports/run1-case.md"
+        stream = round_dir / "streams/run1-case.jsonl"
+        before = (report.read_bytes(), stream.read_bytes())
+        self.assertIn("legacy, unverified", claude_rounds.summarize(round_dir))
+        with mock.patch.object(claude_rounds, "run_command", side_effect=AssertionError("legacy job relaunched")):
+            self.assertEqual(claude_rounds.run(round_dir, jobs=1, timeout=10, budget=100), 0)
+            self.assertEqual(claude_rounds.run(round_dir, jobs=1, timeout=10, budget=100), 0)
+        self.assertEqual((report.read_bytes(), stream.read_bytes()), before)
+        self.assertEqual(claude_rounds.read_record(round_dir, job)["status"], "legacy")
+        summary = claude_rounds.summarize(round_dir)
+        self.assertIn("legacy, unverified", summary)
+        self.assertIn("| Test 1.0 | 1 of 1 |", summary)
+        self.assertIn("| Valid runs |", summary)
+        self.assertIn("| 0 of 1 |", summary)
+
+    def test_an_old_report_survives_the_last_stop_and_budget_checks(self):
+        for gate in ("stop", "budget", "codex_stop"):
+            with self.subTest(gate=gate):
+                round_dir = self.plan("kept-" + gate, ("1", "claude-test-1-0"))
+                data = json.loads((round_dir / "plan.json").read_text())
+                job = data["jobs"][0]
+                if gate == "codex_stop":
+                    job["backend"] = "codex"
+                report = round_dir / "reports/run1-case.md"
+                report.write_text("previous report")
+                launch = {"running": claude_rounds.Running(), "spending": claude_rounds.Spending(1),
+                          "codex_stop": threading.Event(), "codex_stop_reason": "login", "providers": {}}
+                def gate_during_stagger():
+                    if gate == "stop":
+                        launch["running"].stopped.set()
+                    elif gate == "budget":
+                        launch["spending"].add(1)
+                    else:
+                        launch["codex_stop"].set()
+                launch["starts"] = mock.Mock(wait=gate_during_stagger)
+                with mock.patch.object(claude_rounds, "run_command", side_effect=AssertionError("launched")):
+                    line = claude_rounds.audit_ready(round_dir, data, job, launch, 0)
+                self.assertIn("skipped", line)
+                self.assertEqual(report.read_text(), "previous report")
+
+    def test_invalid_reports_keep_denominators_but_credit_no_findings(self):
+        round_dir = self.plan("invalid", ("1", "claude-test-1-0"), ("2", "claude-test-1-0"))
+        with mock.patch("builtins.print"):
+            self.assertEqual(claude_rounds.run(round_dir, jobs=1, timeout=10, budget=100), 0)
+        data = json.loads((round_dir / "plan.json").read_text())
+        job = data["jobs"][1]
+        record = claude_rounds.read_record(round_dir, job)
+        claude_rounds.write_record(round_dir, data, job, ["MODEL MISMATCH"], usage=record["usage"])
+        summary = claude_rounds.summarize(round_dir)
+        model = next(line for line in summary.splitlines() if line.startswith("| Test 1.0 |"))
+        self.assertTrue(model.startswith("| Test 1.0 | 1 of 2 | 0 of 2 |"))
+        self.assertTrue(model.endswith("| 1 of 2 |"))
+        self.assertIn("| case | 2 | Test 1.0 | 0 of 1 | no |", summary)
+        self.assertIn("invalid: MODEL MISMATCH", summary)
+        self.assertIn("Available usage", summary)
+        self.assertIn("200 output", summary)
+
+    def test_replacing_a_run_record_archives_every_previous_record(self):
+        round_dir = self.plan("records", ("1", "claude-test-1-0"))
+        data = json.loads((round_dir / "plan.json").read_text())
+        job = data["jobs"][0]
+        first = claude_rounds.write_record(round_dir, data, job, ["first failure"], usage={"tokens_in": 123})
+        second = claude_rounds.write_record(round_dir, data, job, ["second failure"], usage={"tokens_in": 456})
+        claude_rounds.write_record(round_dir, data, job, [], usage={"tokens_in": 789})
+        claude_rounds.skipped_job(round_dir, data, job, "preflight failed")
+        self.assertEqual(json.loads((round_dir / "streams/run1-case.run.1.json").read_text()), first)
+        self.assertEqual(json.loads((round_dir / "streams/run1-case.run.2.json").read_text()), second)
+
+    def test_clean_preserves_recorded_status_and_a_later_run_does_not_crash(self):
+        round_dir = self.plan("cleaned", ("1", "claude-test-1-0"))
+        with mock.patch("builtins.print"):
+            self.assertEqual(claude_rounds.run(round_dir, jobs=1, timeout=10, budget=100), 0)
+        data = json.loads((round_dir / "plan.json").read_text())
+        job = data["jobs"][0]
+        before = {p.name: p.read_bytes() for p in (round_dir / "streams").glob("*.run*.json")}
+        claude_rounds.clean(round_dir)
+        self.assertFalse(claude_rounds.repository_clean(Path(job["dir"]) / job["name"]))
+        summary = claude_rounds.summarize(round_dir)
+        self.assertIn("repository removed", summary)
+        self.assertIn("| valid |", summary)
+        self.assertNotIn("invalid: changed repository", summary)
+        with mock.patch("builtins.print"), mock.patch.object(claude_rounds, "run_command") as command:
+            self.assertEqual(claude_rounds.run(round_dir, jobs=1, timeout=10, budget=100), 0)
+        command.assert_not_called()
+        self.assertEqual(claude_rounds.read_record(round_dir, job)["status"], "valid")
+        self.assertEqual(before, {p.name: p.read_bytes() for p in (round_dir / "streams").glob("*.run*.json")})
+        self.assertEqual((round_dir / "log.txt").read_text().count("prepared repository removed; record unchanged"), 1)
+
+    def test_summary_uses_recorded_status_even_when_the_repository_later_changes(self):
+        round_dir = self.plan("changed-after-run", ("1", "claude-test-1-0"))
+        with mock.patch("builtins.print"):
+            self.assertEqual(claude_rounds.run(round_dir, jobs=1, timeout=10, budget=100), 0)
+        job = json.loads((round_dir / "plan.json").read_text())["jobs"][0]
+        (Path(job["dir"]) / job["name"] / "README.md").write_text("changed after completion")
+        summary = claude_rounds.summarize(round_dir)
+        self.assertIn("| valid |", summary)
+        self.assertIn("prepared repository changed", summary)
+        self.assertNotIn("invalid: changed repository", summary)
+
+    def test_a_failed_record_write_keeps_the_previous_record_in_place(self):
+        round_dir = self.plan("atomic", ("1", "claude-test-1-0"))
+        data = json.loads((round_dir / "plan.json").read_text())
+        job = data["jobs"][0]
+        original = claude_rounds.write_record(round_dir, data, job, [], usage={"tokens_out": 123})
+        path = claude_rounds.record_path(round_dir, job)
+        before = path.read_bytes()
+        with self.assertRaises(TypeError):
+            claude_rounds.write_record(round_dir, data, job, [], unserializable=object())
+        self.assertEqual(path.read_bytes(), before)
+        self.assertFalse(list(path.parent.glob("*.run.*.json")))
+        temporary = path.parent / ".failed-write.tmp"
+        temporary.touch()
+        output = mock.MagicMock(name=str(temporary))
+        output.name = str(temporary)
+        output.__enter__.return_value = output
+        output.write.side_effect = OSError("fixture write failure")
+        with mock.patch.object(claude_rounds.tempfile, "NamedTemporaryFile", return_value=output), self.assertRaises(OSError):
+            claude_rounds.write_record(round_dir, data, job, ["replacement"])
+        self.assertEqual(path.read_bytes(), before)
+        self.assertFalse(temporary.exists())
+        self.assertFalse(list(path.parent.glob("*.run.*.json")))
+        def failed_replace(source, destination):
+            self.assertEqual(Path(source).parent, path.parent)
+            self.assertEqual(destination, path)
+            self.assertEqual(json.loads(Path(source).read_text())["reasons"], ["replacement"])
+            self.assertEqual(json.loads(path.read_text()), original)
+            raise OSError("fixture replace failure")
+        with mock.patch.object(claude_rounds.os, "replace", side_effect=failed_replace), self.assertRaises(OSError):
+            claude_rounds.write_record(round_dir, data, job, ["replacement"])
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(json.loads((path.parent / "run1-case.run.1.json").read_text()), original)
+        self.assertFalse(list(path.parent.glob("*.tmp")))
+        with mock.patch.object(claude_rounds.shutil, "copyfile", side_effect=OSError("fixture archive failure")), self.assertRaises(OSError):
+            claude_rounds.write_record(round_dir, data, job, ["replacement"])
+        self.assertEqual(path.read_bytes(), before)
+        self.assertFalse(list(path.parent.glob("*.tmp")))
+
+    def test_placeholders_never_replace_or_archive_an_existing_record(self):
+        round_dir = self.plan("placeholders", ("1", "claude-test-1-0"))
+        data = json.loads((round_dir / "plan.json").read_text())
+        job = data["jobs"][0]
+        claude_rounds.write_record(round_dir, data, job, ["real failure"], usage={"tokens_out": 123})
+        path = claude_rounds.record_path(round_dir, job)
+        before = path.read_bytes()
+        for reason in ("not launched", "preflight failed", "stopped", "budget reached", "login", "usage limit"):
+            with self.subTest(reason=reason):
+                self.assertIn(reason, claude_rounds.skipped_job(round_dir, data, job, reason))
+                self.assertEqual(path.read_bytes(), before)
+                self.assertFalse(list(path.parent.glob("*.run.*.json")))
+
+    def test_a_new_claude_job_with_its_record_removed_is_never_legacy(self):
+        round_dir = self.plan("new-plan", ("1", "claude-mismatch-1-0"))
+        data = json.loads((round_dir / "plan.json").read_text())
+        job = data["jobs"][0]
+        self.assertEqual(job["backend"], "claude")
+        with mock.patch("builtins.print"):
+            self.assertEqual(claude_rounds.run(round_dir, jobs=1, timeout=10, budget=100), 1)
+            claude_rounds.record_path(round_dir, job).unlink()
+            self.assertFalse(claude_rounds.legacy_job(round_dir, job))
+            self.assertIn("unverified: no run record", claude_rounds.summarize(round_dir))
+            self.assertEqual(claude_rounds.run(round_dir, jobs=1, timeout=10, budget=100), 1)
+        record = claude_rounds.read_record(round_dir, job)
+        self.assertEqual(record["status"], "invalid")
+        self.assertIn("MODEL MISMATCH", record["reasons"])
+
+    def test_an_old_round_without_records_stays_unverified_after_clean(self):
+        round_dir = self.plan("old-cleaned", ("1", "claude-test-1-0"))
+        with mock.patch("builtins.print"):
+            self.assertEqual(claude_rounds.run(round_dir, jobs=1, timeout=10, budget=100), 0)
+        data = json.loads((round_dir / "plan.json").read_text())
+        job = data["jobs"][0]
+        job.pop("backend")
+        (round_dir / "plan.json").write_text(json.dumps(data))
+        claude_rounds.record_path(round_dir, job).unlink()
+        claude_rounds.clean(round_dir)
+        summary = claude_rounds.summarize(round_dir)
+        self.assertIn("unverified: no run record", summary)
+        self.assertIn("uncredited report", summary)
+        self.assertIn("| Test 1.0 | 0 of 1 |", summary)
+
+    def test_a_claude_runner_error_after_launch_keeps_times_and_usage(self):
+        round_dir = self.plan("runner-error", ("1", "claude-test-1-0"))
+        with mock.patch.object(claude_rounds, "report_text", side_effect=KeyError("fixture")), mock.patch("builtins.print"):
+            self.assertEqual(claude_rounds.run(round_dir, jobs=1, timeout=10, budget=100), 1)
+        job = json.loads((round_dir / "plan.json").read_text())["jobs"][0]
+        record = claude_rounds.read_record(round_dir, job)
+        self.assertEqual(record["status"], "invalid")
+        self.assertEqual(record["reasons"], ["runner error: KeyError"])
+        self.assertIsNotNone(record["started"])
+        self.assertIsNotNone(record["ended"])
+        self.assertGreater(record["seconds"], 0)
+        self.assertEqual(record["usage"]["tokens_out"], 200)
+
+    def test_a_stop_ends_the_stagger_wait_early(self):
+        round_dir = self.plan("stagger-stop", ("1", "claude-stuck-1-0"),
+                              ("2", "claude-test-1-0"), ("3", "claude-test-1-0"))
+        first_spaced, all_waiting = threading.Event(), threading.Event()
+        lock, count = threading.Lock(), 0
+        original_wait = claude_rounds.StartSpacer.wait
+        original_ready, original_command = claude_rounds.audit_ready, claude_rounds.run_command
+        def observed_wait(spacer):
+            nonlocal count
+            with lock:
+                count += 1
+                if count == 3:
+                    all_waiting.set()
+            original_wait(spacer)
+            first_spaced.set()
+        def ordered_ready(directory, data, job, launch, queued):
+            if job["run"] != "1":
+                self.assertTrue(first_spaced.wait(2))
+            return original_ready(directory, data, job, launch, queued)
+        def observed_command(command, *args, **kwargs):
+            if "stream-json" in command:
+                self.assertTrue(all_waiting.wait(2))
+            return original_command(command, *args, **kwargs)
+        started = time.monotonic()
+        with mock.patch("builtins.print"), mock.patch.object(claude_rounds, "GRACE", 0.1), \
+             mock.patch.object(claude_rounds.StartSpacer, "wait", observed_wait), \
+             mock.patch.object(claude_rounds, "audit_ready", side_effect=ordered_ready), \
+             mock.patch.object(claude_rounds, "run_command", side_effect=observed_command):
+            code = claude_rounds.run(round_dir, jobs=3, timeout=10, budget=100, stagger=3)
+        elapsed = time.monotonic() - started
+        pids = [int(pid) for pid in (self.root / "state/pids-claude-stuck-1-0").read_text().split()]
+        for pid in pids:
+            self.addCleanup(lambda pid=pid: alive(pid) and os.kill(pid, signal.SIGKILL))
+        self.assertEqual(code, 128 + signal.SIGTERM)
+        self.assertLess(elapsed, 2.5, "stagger waiting did not wake on stop")
+        self.assertEqual(len(list((self.root / "state").glob("args-*"))), 1)
+
+    def group_with_stubborn_child(self, normal_exit):
+        marker = self.root / "child-ready"
+        child_code = "import os, signal, time; from pathlib import Path; signal.signal(signal.SIGTERM, signal.SIG_IGN); Path(" + repr(str(marker)) + ").write_text(str(os.getpid())); time.sleep(60)"
+        leader_code = "import subprocess, sys, time; from pathlib import Path; subprocess.Popen([sys.executable, '-c', " + repr(child_code) + "]); p=Path(" + repr(str(marker)) + ");\nwhile not p.exists(): time.sleep(0.01)\n" + ("" if normal_exit else "time.sleep(60)")
+        process = subprocess.Popen([sys.executable, "-c", leader_code], start_new_session=True,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.addCleanup(lambda: claude_rounds.stop_groups([process], 0))
+        deadline = time.monotonic() + 3
+        while not marker.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertTrue(marker.exists())
+        child = int(marker.read_text())
+        self.addCleanup(lambda: alive(child) and os.kill(child, signal.SIGKILL))
+        return process, child
+
+    def test_a_child_that_ignores_sigterm_is_killed_after_its_leader_exits(self):
+        process, child = self.group_with_stubborn_child(False)
+        with mock.patch.object(claude_rounds, "GRACE", 0.05):
+            claude_rounds.stop_groups([process])
+        self.assertIsNotNone(process.poll())
+        self.assertTrue(gone(child))
+
+    def test_a_child_that_outlives_its_leader_is_killed_after_a_normal_exit(self):
+        marker = self.root / "normal-child"
+        child_code = "import os, signal, time; from pathlib import Path; signal.signal(signal.SIGTERM, signal.SIG_IGN); Path(" + repr(str(marker)) + ").write_text(str(os.getpid())); time.sleep(60)"
+        leader_code = "import subprocess, sys, time; from pathlib import Path; subprocess.Popen([sys.executable, '-c', " + repr(child_code) + "]); p=Path(" + repr(str(marker)) + ");\nwhile not p.exists(): time.sleep(0.01)"
+        with mock.patch.object(claude_rounds, "EXIT_GRACE", 0.05):
+            self.assertEqual(claude_rounds.run_command([sys.executable, "-c", leader_code], self.root,
+                self.root / "out", self.root / "err", 3), 0)
+        child = int(marker.read_text())
+        self.addCleanup(lambda: alive(child) and os.kill(child, signal.SIGKILL))
+        self.assertTrue(gone(child))
+
+    def test_running_stop_signals_registered_groups_even_after_the_leader_exits(self):
+        process, child = self.group_with_stubborn_child(True)
+        process.wait(timeout=3)
+        running = claude_rounds.Running()
+        running.processes.add(process)
+        with mock.patch.object(claude_rounds, "GRACE", 0.05):
+            self.assertEqual(running.stop(), 1)
+        self.assertTrue(gone(child))
 
     def test_round_directories_stay_outside_the_repository_and_clean_keeps_foreign_paths(self):
         with self.assertRaises(SystemExit):

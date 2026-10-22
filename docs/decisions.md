@@ -1,5 +1,28 @@
 # Decisions
 
+## 2026-10-21 — One round runner with Claude and Codex backends
+
+The maintainer asked for rounds on OpenAI's Codex CLI, to spend less Anthropic quota and to see how
+the skills work with another provider. This amends the 2026-10-17 decision that another agent needs
+its own runner: `tools/claude_rounds.py` keeps plans, locks, process groups, scoring, and cleanup
+for both backends, and `tools/codex_backend.py` holds what differs. Separate runners would
+duplicate those controls. A job without a backend is Claude, so old plans read unchanged, and a
+Codex arm can share a round with a Claude control.
+
+Runs 299 and 300 set what the backend needs: stdin from `/dev/null`, a case's `AGENTS.md` kept out,
+and Codex's session files, because its JSON stream omits the model and the helpers, which used 63%
+of the input tokens in run 300. Codex audits run one at a time on the maintainer's ChatGPT login,
+and their usage is counted in tokens, not USD. The maintainer accepts for now that reads are not
+confined, that skills outside the repository stay visible, and that path scans are partial
+diagnostics ([issue 9](https://github.com/MatiDegli/engineering-skills/issues/9)).
+
+The same change gives both backends a status for every planned job. A job that is not valid fails
+the round and credits no findings, but stays in the denominators. A job from before this change,
+with a report and a clean repository but no record, is kept as legacy and unverified instead of
+being run again. The maintainer left these choices, and the shared fixes, to the coordinator. The
+skill and the scoring of reports do not change. The mechanisms and their limits are under
+[Headless rounds](../evals/README.md#headless-rounds).
+
 ## 2026-10-20 — Moot items are neutral; helpers become the base
 
 Four candidates that add read-only helpers to the audit (runs 262 to 289) found 72 to 85 useful

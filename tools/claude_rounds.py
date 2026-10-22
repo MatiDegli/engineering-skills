@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run evaluation rounds headless with Claude Code, and summarize them.
+"""Run evaluation rounds headless with Claude Code or Codex, and summarize them.
 
 `plan` exports the skill and prepares one repository per run, with a snapshot of GitHub's state
 beside it when the case names its GitHub repository; `run` makes the audits, so run it yourself;
@@ -34,9 +34,11 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
+from tools import codex_backend
 from tools.evals import (
     CASES,
     case_files,
+    counted_defects,
     check_text,
     finding_rows,
     git_at,
@@ -153,13 +155,17 @@ def provider_resource(url: str) -> str:
     return host if port in (None, DEFAULT_PORTS.get(parts.scheme)) else f"{host}_{port}"
 
 
-def round_resources(models: list[str], providers: dict[str, dict]) -> tuple[str, ...]:
+def round_resources(models: list[str | dict], providers: dict[str, dict]) -> tuple[str, ...]:
     """Return the resources a round's models need, sorted and without repeats.
 
     A model served by the Claude login needs `anthropic`, and one served by `--provider-url` its
     provider's resource; a provider of a model the round does not run adds nothing.
     """
-    needed = {provider_resource(providers[m]["url"]) if m in providers else ANTHROPIC for m in models}
+    needed = set()
+    for item in models:
+        model = item["model"] if isinstance(item, dict) else item
+        backend = item.get("backend", "claude") if isinstance(item, dict) else "claude"
+        needed.add("codex" if backend == "codex" else provider_resource(providers[model]["url"]) if model in providers else ANTHROPIC)
     return tuple(sorted(needed))
 
 
@@ -647,15 +653,19 @@ def plan(round_dir: Path, runs: list[tuple], cases: list[str], revision: str) ->
         if not (case_path(case) / "expected.json").is_file():
             raise SystemExit(f"unknown case: {case}")
         case_github(case_path(case))
+    names = [case_path(case).name for case in cases]
+    if len(names) != len(set(names)) or len({r[0] for r in runs}) != len(runs):
+        raise SystemExit("duplicate run artifact labels")
     specs = []
     for number, model, *rest in runs:
+        backend, model = parse_backend(model, rest[2] if len(rest) > 2 else None)
         wanted = rest[0] if rest and rest[0] else revision
         level = rest[1] if len(rest) > 1 and rest[1] else "full"
         if level not in PROMPTS:
             raise SystemExit(f"unknown level {level!r}; use one of {', '.join(PROMPTS)}")
         # A tag names its commit: an annotated tag is an object of its own.
         commit = repository_git("rev-parse", "--short", f"{wanted}^{{commit}}").decode().strip()
-        specs.append((number, model, commit, level))
+        specs.append((number, model, commit, level, backend))
     for name in ("streams", "reports"):
         paths[name].mkdir(parents=True, exist_ok=True)
     listing = sorted(os.listdir(tempfile.gettempdir()))
@@ -667,12 +677,12 @@ def plan(round_dir: Path, runs: list[tuple], cases: list[str], revision: str) ->
     jobs = []
     for case in cases:
         hosted = write_hosted_state(case_path(case), paths["hosted"])
-        for run, model, commit, level in specs:
+        for run, model, commit, level, backend in specs:
             directory = Path(tempfile.mkdtemp(prefix="audit."))
             name = case_path(case).name
             prepare(case_path(case), directory / name)
             job = {"run": run, "model": model, "case": case, "name": name, "dir": str(directory)}
-            job |= {"revision": commit, "level": level}
+            job |= {"revision": commit, "level": level, "backend": backend}
             job |= {"skill": skills[commit]} if level == "full" else {}
             job |= {"catalog": catalogs[commit]} if level == "catalog" else {}
             if hosted:
@@ -712,6 +722,7 @@ def audit_environment(round_dir: Path) -> dict[str, str]:
 
 # Seconds between SIGTERM and SIGKILL when a process group is stopped.
 GRACE = 30
+EXIT_GRACE = 5
 
 
 def signal_group(process: subprocess.Popen, number: int) -> None:
@@ -721,17 +732,26 @@ def signal_group(process: subprocess.Popen, number: int) -> None:
         pass
 
 
-def stop_groups(processes: list[subprocess.Popen]) -> None:
-    """Send SIGTERM to every process group, then SIGKILL to those whose leader outlives GRACE."""
+def stop_groups(processes: list[subprocess.Popen], grace: float | None = None) -> None:
+    """End every group, escalating even when its leader has already exited."""
     for process in processes:
         signal_group(process, signal.SIGTERM)
-    deadline = time.monotonic() + GRACE
+    deadline = time.monotonic() + (GRACE if grace is None else grace)
+    while time.monotonic() < deadline:
+        alive = False
+        for process in processes:
+            process.poll()
+            try:
+                os.killpg(process.pid, 0)
+                alive = True
+            except ProcessLookupError:
+                pass
+        if not alive:
+            break
+        time.sleep(min(0.05, max(0, deadline - time.monotonic())))
     for process in processes:
-        try:
-            process.wait(timeout=max(0.0, deadline - time.monotonic()))
-        except subprocess.TimeoutExpired:
-            signal_group(process, signal.SIGKILL)
-            process.wait()
+        signal_group(process, signal.SIGKILL)
+        process.wait()
 
 
 class Running:
@@ -748,12 +768,12 @@ class Running:
         """Refuse new commands, end the running ones, and return how many were running."""
         self.stopped.set()
         with self.lock:
-            live = [process for process in self.processes if process.poll() is None]
+            live = list(self.processes)
         stop_groups(live)
         return len(live)
 
 
-class Interrupted(Exception):
+class Interrupted(BaseException):
     """Raised in the main thread by the handler of a stop signal; the argument is the signal."""
 
 
@@ -765,6 +785,8 @@ def run_command(
     timeout: float,
     environment: dict[str, str] | None = None,
     running: Running | None = None,
+    stdin=None,
+    capture_stdout: list[str] | None = None,
 ) -> int:
     """Run in a new session and stop the whole process group on timeout, grandchildren included.
 
@@ -776,16 +798,27 @@ def run_command(
             if running.stopped.is_set():
                 return -signal.SIGTERM
             process = subprocess.Popen(
-                command, cwd=cwd, env=environment, stdout=out, stderr=err, start_new_session=True
+                command, cwd=cwd, env=environment, stdout=subprocess.PIPE if capture_stdout is not None else out,
+                stderr=err, stdin=stdin, start_new_session=True
             )
             running.processes.add(process)
+        cleaned = False
         try:
+            if capture_stdout is not None:
+                output, _ = process.communicate(timeout=timeout)
+                capture_stdout.append(output.decode("utf-8", errors="replace"))
+                return process.returncode
             return process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             stop_groups([process])
+            cleaned = True
             err.write(f"\nstopped after {timeout:.0f} seconds\n")
             return -1
         finally:
+            if not cleaned:
+                stop_groups([process], EXIT_GRACE)
+            if process.stdout is not None:
+                process.stdout.close()
             with running.lock:
                 running.processes.discard(process)
 
@@ -917,7 +950,7 @@ class Spending:
             self.spent += cost
 
 
-def warm_up(round_dir: Path, models: list[str], providers: dict[str, dict]) -> None:
+def warm_up(round_dir: Path, models: list[str], providers: dict[str, dict], running: Running | None = None) -> None:
     """Make one short call per model, one at a time, before any parallel run.
 
     Parallel runs that find an expired login race to refresh it, and most fail before their first
@@ -933,20 +966,13 @@ def warm_up(round_dir: Path, models: list[str], providers: dict[str, dict]) -> N
         if provider:
             environment, settings = provider_launch(provider, model, round_dir / "providers" / f"warmup-{model}")
             command += ["--settings", str(settings)]
-        with output.open("w", encoding="utf-8") as out:
-            subprocess.run(
-                [*command, "--output-format", "json"],
-                cwd=tempfile.gettempdir(),
-                env=environment,
-                stdout=out,
-                stderr=subprocess.DEVNULL,
-                timeout=300,
-            )
+        code = run_command([*command, "--output-format", "json"], Path(tempfile.gettempdir()),
+            output, output.with_suffix(".stderr.txt"), 300, environment, running)
         try:
             event = json.loads(output.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             event = {"is_error": True}
-        if event.get("is_error") or not ran_model([event], model):
+        if code or event.get("is_error") or not ran_model([event], model):
             raise SystemExit(f"warm-up failed for {model}; see {output}")
         print(f"warm-up ok: {model}", flush=True)
 
@@ -954,54 +980,219 @@ def warm_up(round_dir: Path, models: list[str], providers: dict[str, dict]) -> N
 def repository_clean(repo: Path) -> bool:
     try:
         status = git_at(repo / ".git", "status", "--porcelain", "--ignored", work_tree=repo)
-    except subprocess.CalledProcessError:
+    except (OSError, subprocess.CalledProcessError):
         return False
     return not status
 
 
-def audit(round_dir: Path, data: dict, job: dict, launch: dict) -> str:
-    """Run one audit, retrying a launch whose login refresh failed, and save its report."""
-    paths = round_paths(round_dir)
-    label = f"run{job['run']}-{job['name']}"
+def job_label(job: dict) -> str:
+    return f"run{job['run']}-{job['name']}"
+
+
+def record_identity(data: dict, job: dict) -> dict:
+    return {"backend": job.get("backend", "claude"), "model": job["model"],
+            "revision": job_revision(data, job), "case": job["case"],
+            "prompt_sha256": hashlib.sha256(job_prompt(data, job).encode()).hexdigest()}
+
+
+def record_path(round_dir: Path, job: dict) -> Path:
+    return round_dir / "streams" / f"{job_label(job)}.run.json"
+
+
+def read_record(round_dir: Path, job: dict) -> dict:
+    try:
+        value = json.loads(record_path(round_dir, job).read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def write_record(round_dir: Path, data: dict, job: dict, reasons: list[str], status: str | None = None, **details) -> dict:
+    record = record_identity(data, job) | {"started": None, "ended": now(), "seconds": None,
+        "queue_seconds": None, "manifest_sha256": None} | details
+    record |= {"status": status or ("invalid" if reasons else "valid"), "reasons": reasons}
+    path = record_path(round_dir, job)
+    serialized = json.dumps(record, indent=2) + "\n"
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                         prefix=f".{path.name}.", suffix=".tmp", delete=False) as output:
+            temporary = Path(output.name)
+            output.write(serialized)
+        if path.exists():
+            number = 1
+            while path.with_name(f"{path.stem}.{number}.json").exists():
+                number += 1
+            shutil.copyfile(path, path.with_name(f"{path.stem}.{number}.json"))
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+    return record
+
+
+def skipped_job(round_dir: Path, data: dict, job: dict, reason: str, queue_seconds: float | None = None) -> str:
+    if not record_path(round_dir, job).exists():
+        write_record(round_dir, data, job, [reason], status="skipped", queue_seconds=queue_seconds)
+    return f"{job_label(job)}: skipped, {reason}"
+
+
+def legacy_job(round_dir: Path, job: dict) -> bool:
+    record = read_record(round_dir, job)
+    return "backend" not in job and (not record_path(round_dir, job).exists() or record.get("status") == "legacy") and (
+        round_dir / "reports" / f"{job_label(job)}.md"
+    ).is_file() and repository_clean(Path(job["dir"]) / job["name"])
+
+
+def artifacts_match(round_dir: Path, job: dict, record: dict) -> bool:
+    stream = round_dir / "streams" / f"{job_label(job)}.jsonl"
+    report = round_dir / "reports" / f"{job_label(job)}.md"
+    if job.get("backend", "claude") == "codex":
+        return codex_backend.artifacts_match(stream, record, report)
+    return report.is_file() and record.get("report_sha256") == sha256(report)
+
+
+def changed_artifacts(round_dir: Path, data: dict, job: dict) -> bool:
+    record = read_record(round_dir, job)
+    reason = "artifacts changed after the run"
+    if record.get("status") == "valid" and not artifacts_match(round_dir, job, record):
+        details = {key: value for key, value in record.items() if key not in ("status", "reasons")}
+        write_record(round_dir, data, job, [reason], **details)
+        return True
+    return reason in record.get("reasons", [])
+
+
+def resumable(round_dir: Path, data: dict, job: dict) -> bool:
+    record = read_record(round_dir, job)
+    return (record.get("status") == "valid"
+            and all(record.get(k) == v for k, v in record_identity(data, job).items())
+            and repository_clean(Path(job["dir"]) / job["name"])
+            and artifacts_match(round_dir, job, record))
+
+
+def audit(round_dir: Path, data: dict, job: dict, launch: dict, queued: float | None = None) -> str:
+    """Run one audit and persist its validity independently of the scorer's result."""
+    if not (Path(job["dir"]) / job["name"]).is_dir():
+        return f"{job_label(job)}: not launched, prepared repository removed; record unchanged"
+    if changed_artifacts(round_dir, data, job):
+        return f"{job_label(job)}: artifacts changed after the run; delete {record_path(round_dir, job)} to run it again"
+    if resumable(round_dir, data, job):
+        return f"{job_label(job)}: skipped, valid record exists"
+    if legacy_job(round_dir, job):
+        if not read_record(round_dir, job):
+            write_record(round_dir, data, job, [], status="legacy")
+        return f"{job_label(job)}: legacy, unverified"
+    queued = queued if queued is not None else time.monotonic()
+    if job.get("backend", "claude") == "codex":
+        with launch["codex_turn"]:
+            return audit_ready(round_dir, data, job, launch, time.monotonic() - queued)
+    return audit_ready(round_dir, data, job, launch, 0.0)
+
+
+def audit_ready(round_dir: Path, data: dict, job: dict, launch: dict, queue_seconds: float) -> str:
+    paths, label = round_paths(round_dir), job_label(job)
     repo = Path(job["dir"]) / job["name"]
     report = paths["reports"] / f"{label}.md"
-    if report.exists():
-        return f"{label}: skipped, report exists"
-    if not repository_clean(repo):
-        return f"{label}: skipped, the prepared repository is missing or changed"
+    codex = job.get("backend", "claude") == "codex"
+    # These checks are deliberately inside the Codex semaphore: queued jobs must recheck them.
     if launch["running"].stopped.is_set():
-        return f"{label}: skipped, stopped"
+        return skipped_job(round_dir, data, job, "stopped", queue_seconds)
+    if codex and launch["codex_stop"].is_set():
+        return skipped_job(round_dir, data, job, launch["codex_stop_reason"], queue_seconds)
     if not launch["spending"].allows():
-        return f"{label}: skipped, budget reached"
+        return skipped_job(round_dir, data, job, "budget reached", queue_seconds)
+    if not repository_clean(repo):
+        return skipped_job(round_dir, data, job, "the prepared repository is missing or changed", queue_seconds)
     provider = launch["providers"].get(job["model"])
     stream, stderr = paths["streams"] / f"{label}.jsonl", paths["streams"] / f"{label}.stderr.txt"
-    material = job_material(data, job)
-    prompt = job_prompt(data, job)
-    directories = [material] if material else []
-    environment, settings = audit_environment(round_dir), None
-    if provider:
-        environment, settings = provider_launch(provider, job["model"], round_dir / "providers" / label)
-        environment |= {"GH_CONFIG_DIR": audit_environment(round_dir)["GH_CONFIG_DIR"]}
-    command = claude_command(prompt, job["model"], directories, str(settings) if settings else None)
     launch["starts"].wait()
-    for attempt in range(1, ATTEMPTS + 1):
-        code = run_command(command, repo, stream, stderr, launch["timeout"], environment, launch["running"])
+    if not launch["spending"].allows():
+        return skipped_job(round_dir, data, job, "budget reached", queue_seconds)
+    if launch["running"].stopped.is_set():
+        return skipped_job(round_dir, data, job, "stopped", queue_seconds)
+    if codex and launch["codex_stop"].is_set():
+        return skipped_job(round_dir, data, job, launch["codex_stop_reason"], queue_seconds)
+    if report.exists():
+        record = read_record(round_dir, job)
+        details = {key: value for key, value in record.items() if key not in ("status", "reasons")}
+        write_record(round_dir, data, job, ["relaunch started"], **details)
+        report.unlink()
+    started, tick = now(), time.monotonic()
+    result, text, reasons, code = {}, "", [], None
+    report_sha256 = None
+    try:
+        if codex:
+            result = codex_backend.run_audit(repo, stream, stderr, job["model"], job_prompt(data, job),
+                launch["timeout"], codex_backend.environment(round_dir, HOST_VARIABLES), launch["running"], run_command)
+            if result["stop"]:
+                launch["codex_stop_reason"] = result["stop"]
+                launch["codex_stop"].set()
+            text = result.pop("report")
+            result.pop("stop")
+            reasons = result.pop("reasons")
+            code = result["exit_code"]
+            message = f"{label}: exit {code}" + (f", {', '.join(reasons)}" if reasons else "")
+        else:
+            material = job_material(data, job)
+            environment, settings = audit_environment(round_dir), None
+            if provider:
+                environment, settings = provider_launch(provider, job["model"], round_dir / "providers" / label)
+                environment |= {"GH_CONFIG_DIR": audit_environment(round_dir)["GH_CONFIG_DIR"]}
+            command = claude_command(job_prompt(data, job), job["model"], [material] if material else [], str(settings) if settings else None)
+            started, tick = now(), time.monotonic()
+            results = []
+            for attempt in range(1, ATTEMPTS + 1):
+                code = run_command(command, repo, stream, stderr, launch["timeout"], environment, launch["running"])
+                results = stream_results(stream)
+                if launch["running"].stopped.is_set() or not login_failed(results) or attempt == ATTEMPTS:
+                    break
+                stream.rename(paths["streams"] / f"{label}.login-failure-{attempt}.jsonl")
+                launch["running"].stopped.wait(random.uniform(*launch["pause"]))
+            launch["spending"].add(max((r.get("total_cost_usd") or 0 for r in results), default=0))
+            text, reasons = report_text(results), []
+            if code:
+                reasons.append("timeout" if code == -1 else f"nonzero exit {code}")
+            if not results:
+                reasons.append("no turn end")
+            if any(r.get("is_error") for r in results) or login_failed(results):
+                reasons.append("error")
+            if not text.strip():
+                reasons.append("no report")
+            if not ran_model(results, job["model"]):
+                reasons.append("MODEL MISMATCH")
+            source = init_key_source(stream) if provider else None
+            if provider and source != "apiKeyHelper":
+                reasons.append(f"KEY SOURCE {source}")
+            used = sorted({name for r in results for name in r.get("modelUsage") or {}})
+            message = f"{label}: exit {code}, models {','.join(used) or 'none'} {' '.join(reasons)}".rstrip()
+            result = {"started": started, "ended": now(), "seconds": time.monotonic() - tick,
+                      "exit_code": code, "usage": stream_usage(stream, results)}
         if launch["running"].stopped.is_set():
-            return f"{label}: stopped"
-        results = stream_results(stream)
-        if not login_failed(results) or attempt == ATTEMPTS:
-            break
-        stream.rename(paths["streams"] / f"{label}.login-failure-{attempt}.jsonl")
-        launch["running"].stopped.wait(random.uniform(*launch["pause"]))
-    launch["spending"].add(max((r.get("total_cost_usd") or 0 for r in results), default=0))
-    if results:
-        report.write_text(report_text(results), encoding="utf-8")
-    used = sorted({name for r in results for name in r.get("modelUsage") or {}})
-    flag = "" if ran_model(results, job["model"]) else " MODEL MISMATCH"
-    source = init_key_source(stream) if provider else None
-    if provider and source != "apiKeyHelper":
-        flag += f" KEY SOURCE {source}"
-    return f"{label}: exit {code}, models {','.join(used) or 'none'}{flag}"
+            reasons.append("stopped")
+        elif text.strip():
+            report.write_text(text, encoding="utf-8")
+        if not repository_clean(repo) or repository_problems(case_path(job["case"]), repo):
+            reasons.append("changed repository")
+        report_sha256 = sha256(report) if report.exists() else None
+    except Exception as error:
+        reason = f"runner error: {type(error).__name__}"
+        reasons.append(reason)
+        result = {"started": started, "ended": now(), "seconds": time.monotonic() - tick, "exit_code": code} | result
+        if "usage" not in result:
+            if codex:
+                threads = {str(path): codex_backend.session_info(path) for path in codex_backend.copied_sessions(stream)}
+                result["usage"] = codex_backend.session_usage(threads, False)
+                result["usage_lower_bound"] = codex_backend.session_usage(threads, False, lower_bound=True)
+            elif stream.is_file():
+                results = [event for event in codex_backend.records(stream) if event.get("type") == "result"]
+                result["usage"] = stream_usage(stream, results) if results else {}
+        result.pop("report", None)
+        result.pop("stop", None)
+        result.pop("reasons", None)
+        message = f"{label}: invalid, {reason}"
+    write_record(round_dir, data, job, reasons, queue_seconds=queue_seconds,
+                 report_sha256=report_sha256, **result)
+    return message
 
 
 def run(
@@ -1014,7 +1205,7 @@ def run(
     stagger: float = 0.0,
     lock_wait: float = 0.0,
 ) -> int:
-    """Run every planned audit; return 1 when a model differs or an audit was skipped.
+    """Run every planned audit; return 1 when any job is neither valid nor legacy.
 
     `providers` maps a model served by another provider to its base URL and key file. SIGTERM or
     SIGINT stops the process group of every running audit, starts no other, and returns 128 plus
@@ -1029,7 +1220,7 @@ def run(
     """
     data = json.loads(round_paths(round_dir)["plan.json"].read_text(encoding="utf-8"))
     providers = providers or {}
-    resources = round_resources([job["model"] for job in data["jobs"]], providers)
+    resources = round_resources(data["jobs"], providers)
     with round_lock(f"claude_rounds run {round_dir.resolve()}", lock_wait, resources):
         start = log_overlaps(round_dir, resources)
         try:
@@ -1052,57 +1243,118 @@ def run_audits(
     """The body of `run`, under the locks of `resources`."""
     paths = round_paths(round_dir)
     data = json.loads(paths["plan.json"].read_text(encoding="utf-8"))
-    updates_off = {**os.environ, **NO_UPDATES}
-    # A round served only by other providers needs no Claude login; checking it would refuse the
-    # round when the login has expired, and touch the login outside the lock of the rounds using it.
-    if ANTHROPIC in resources:
-        command = ["claude", "auth", "status"]
-        status = subprocess.run(command, env=updates_off, capture_output=True, text=True, timeout=60)
-        if '"loggedIn": true' not in status.stdout:
-            raise SystemExit("claude is not logged in here: run 'claude auth login' first")
-    command = ["claude", "--version"]
-    version = subprocess.run(command, env=updates_off, capture_output=True, text=True, timeout=60)
-    (round_dir / "cli-version.txt").write_text(version.stdout, encoding="utf-8")
     providers = providers or {}
-    warm_up(round_dir, sorted({job["model"] for job in data["jobs"]}), providers)
     running = Running()
     launch = {"timeout": timeout, "pause": pause, "providers": providers, "spending": Spending(budget)}
-    launch |= {"starts": StartSpacer(stagger), "running": running}
+    launch |= {"starts": StartSpacer(stagger, sleep=running.stopped.wait), "running": running, "codex_turn": threading.Semaphore(1),
+               "codex_stop": threading.Event(), "codex_stop_reason": "stopped"}
+    pending = []
+    for job in data["jobs"]:
+        line = None
+        if not (Path(job["dir"]) / job["name"]).is_dir():
+            line = f"{job_label(job)}: not launched, prepared repository removed; record unchanged"
+        elif changed_artifacts(round_dir, data, job):
+            line = f"{job_label(job)}: artifacts changed after the run; delete {record_path(round_dir, job)} to run it again"
+        elif legacy_job(round_dir, job):
+            if not read_record(round_dir, job):
+                write_record(round_dir, data, job, [], status="legacy")
+        elif not resumable(round_dir, data, job):
+            record = read_record(round_dir, job)
+            if (record.get("status") == "valid"
+                    and any(record.get(k) != v for k, v in record_identity(data, job).items())):
+                details = {key: value for key, value in record.items() if key not in ("status", "reasons")}
+                write_record(round_dir, data, job, ["plan changed after the run"], **details)
+            pending.append(job)
+        if line:
+            with paths["log.txt"].open("a", encoding="utf-8") as log:
+                log.write(line + "\n")
+            print(line, flush=True)
+    if not pending:
+        return int(any(read_record(round_dir, job).get("status") not in ("valid", "legacy") for job in data["jobs"]))
 
     def interrupt(number: int, frame) -> None:
         if not running.stopped.is_set():
             running.stopped.set()
             raise Interrupted(number)
 
-    lines, interrupted = [], 0
+    interrupted = 0
     previous = {number: signal.signal(number, interrupt) for number in (signal.SIGTERM, signal.SIGINT)}
     try:
+        updates_off = {**os.environ, **NO_UPDATES}
+        claude_models = sorted({j["model"] for j in pending if j.get("backend", "claude") == "claude"})
+        codex_models = sorted({j["model"] for j in pending if j.get("backend") == "codex"})
+        versions = []
+        if any(j.get("backend", "claude") == "claude" and j["model"] not in providers for j in pending):
+            auth_output = []
+            status = run_command(["claude", "auth", "status"], round_dir, Path(os.devnull),
+                Path(os.devnull), 60, updates_off, running, capture_stdout=auth_output)
+            (round_dir / "auth-status.json").write_text(json.dumps({"exit_code": status}) + "\n", encoding="utf-8")
+            logged_in = any('"loggedIn": true' in output for output in auth_output)
+            auth_output.clear()
+            if status or not logged_in:
+                raise SystemExit("claude is not logged in here: run 'claude auth login' first")
+        for backend, models in (("claude", claude_models), ("codex", codex_models)):
+            if not models:
+                continue
+            environment = codex_backend.environment(round_dir, HOST_VARIABLES) if backend == "codex" else updates_off
+            if backend == "codex":
+                status = run_command(["codex", "login", "status"], round_dir, Path(os.devnull),
+                    Path(os.devnull), 60, environment, running, stdin=subprocess.DEVNULL)
+                (round_dir / "codex-login.json").write_text(json.dumps({"exit_code": status}) + "\n", encoding="utf-8")
+                if status:
+                    raise SystemExit("codex is not logged in here: run 'codex login' first")
+            output = round_dir / ("codex-cli-version.txt" if backend == "codex" else "cli-version.txt")
+            code = run_command([backend, "--version"], round_dir, output, output.with_suffix(".stderr.txt"),
+                60, environment, running, stdin=subprocess.DEVNULL)
+            if code:
+                raise SystemExit(f"{backend} version check failed")
+            versions.append(output.read_text(encoding="utf-8").strip())
+        if claude_models:
+            warm_up(round_dir, claude_models, providers, running)
+        if codex_models:
+            codex_backend.warm_up(round_dir, codex_models, HOST_VARIABLES, run_command, running)
         with paths["log.txt"].open("a", encoding="utf-8") as log:
-            log.write(f"start {now()} {version.stdout.strip()}, budget USD {budget:g}\n")
-            with ThreadPoolExecutor(max_workers=jobs) as pool:
+            log.write(f"start {now()} {', '.join(versions)}, budget USD {budget:g}\n")
+            with ThreadPoolExecutor(max_workers=jobs) as pool, ThreadPoolExecutor(max_workers=1) as codex_pool:
                 try:
-                    futures = [
-                        pool.submit(audit, round_dir, data, job, launch) for job in data["jobs"]
-                    ]
+                    futures = {(codex_pool if job.get("backend") == "codex" else pool).submit(
+                        audit, round_dir, data, job, launch, time.monotonic()): job for job in pending}
                     for future in as_completed(futures):
-                        lines.append(future.result())
-                        log.write(lines[-1] + "\n")
+                        job = futures[future]
+                        try:
+                            line = future.result()
+                        except Exception as error:
+                            # Persist a status for this job and continue collecting the others.
+                            reason = f"runner error: {type(error).__name__}"
+                            write_record(round_dir, data, job, [reason])
+                            line = f"{job_label(job)}: invalid, {reason}"
+                        log.write(line + "\n")
                         log.flush()
-                        print(lines[-1], flush=True)
+                        print(line, flush=True)
                 except Interrupted as stop:
                     interrupted = stop.args[0]
                     pool.shutdown(wait=False, cancel_futures=True)
+                    codex_pool.shutdown(wait=False, cancel_futures=True)
                     name, ended = signal.Signals(interrupted).name, running.stop()
                     log.write(f"stopped {now()} by {name}: {ended} running audits ended\n")
                     print(f"stopped by {name}: {ended} running audits ended", flush=True)
             log.write(f"end {now()}\n")
+    except Interrupted as stop:
+        interrupted = stop.args[0]
+        running.stop()
+    except BaseException:
+        running.stop()
+        for job in pending:
+            skipped_job(round_dir, data, job, "preflight failed")
+        raise
     finally:
+        for job in pending:
+            skipped_job(round_dir, data, job, "stopped" if interrupted else "not launched")
         for number, handler in previous.items():
             signal.signal(number, handler)
     if interrupted:
         return 128 + interrupted
-    marks = ("MODEL MISMATCH", "KEY SOURCE", "skipped, the", "skipped, budget")
-    return int(any(mark in line for line in lines for mark in marks))
+    return int(any(read_record(round_dir, job).get("status") not in ("valid", "legacy") for job in data["jobs"]))
 
 
 def outside_paths(stream: Path, allowed: list[Path]) -> list[str]:
@@ -1112,24 +1364,25 @@ def outside_paths(stream: Path, allowed: list[Path]) -> list[str]:
     that only look like paths and the files where the CLI keeps a long tool output for the run.
     """
     found = set()
-    for line in stream.read_text(encoding="utf-8").splitlines():
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
+    texts = codex_backend.diagnostic_texts(stream)
+    for event in codex_backend.records(stream):
         message = event.get("message")
         content = message.get("content") if isinstance(message, dict) else None
-        for item in content if isinstance(content, list) else []:
-            if not isinstance(item, dict) or item.get("type") != "tool_use":
+        texts += [json.dumps(item.get("input")) for item in content if isinstance(item, dict)
+                  and item.get("type") == "tool_use"] if isinstance(content, list) else []
+    for text in texts:
+        for match in HOME_PATH.findall(text):
+            path = Path(match)
+            if any(match == str(a) or match.startswith(f"{a}/") for a in allowed):
                 continue
-            for match in HOME_PATH.findall(json.dumps(item.get("input"))):
-                path = Path(match)
-                if any(match == str(a) or match.startswith(f"{a}/") for a in allowed):
-                    continue
-                if any(mark in match for mark in "|\\*") or "/.claude/projects/-tmp-audit" in match:
-                    continue
-                if not (path.is_file() and os.access(path, os.X_OK)):
-                    found.add(match)
+            if any(mark in match for mark in "|\\*") or "/.claude/projects/-tmp-audit" in match:
+                continue
+            try:
+                executable = path.is_file() and os.access(path, os.X_OK)
+            except OSError:
+                executable = False
+            if not executable:
+                found.add(match)
     return sorted(found)
 
 
@@ -1146,6 +1399,69 @@ def round_date(paths: dict[str, Path], data: dict) -> date:
     log = paths["log.txt"].read_text(encoding="utf-8") if paths["log.txt"].exists() else ""
     started = re.search(r"^start (\d{4}-\d{2}-\d{2})T", log, re.M)
     return date.fromisoformat(started[1] if started else data["created"][:10])
+
+
+def repository_problems(case: Path, repo: Path) -> list[str]:
+    try:
+        return verify(case, repo)
+    except (OSError, subprocess.CalledProcessError):
+        return ["prepared repository missing or unreadable"]
+
+
+def add_metrics(job: dict, paths: dict[str, Path], totals: Counter) -> None:
+    stream = paths["streams"] / f"{job_label(job)}.jsonl"
+    record = read_record(paths["plan.json"].parent, job)
+    totals["valid"] += int(record.get("status") == "valid")
+    if job.get("backend") == "codex":
+        metrics = record.get("usage", {}) | {"seconds": record.get("seconds")}
+        totals["codex"] = 1
+    else:
+        results = stream_results(stream) if stream.exists() else []
+        metrics = stream_usage(stream, results) if stream.exists() else {}
+        if not results:
+            metrics = {key: value if key == "tools" else None for key, value in metrics.items()}
+        durations = [r["duration_ms"] for r in results if r.get("duration_ms") is not None]
+        costs = [r["total_cost_usd"] for r in results if r.get("total_cost_usd") is not None]
+        metrics |= {"seconds": sum(durations) / 1000 if durations else record.get("seconds"),
+                    "cents": 100 * max(costs) if costs else None}
+    for key, value in metrics.items():
+        if value is not None:
+            totals[key] += value
+            totals[key + "_n"] += 1
+
+
+def job_status(job: dict, data: dict, paths: dict[str, Path], changed: list[str]) -> str:
+    record = read_record(paths["plan.json"].parent, job)
+    if record:
+        if record.get("status") == "legacy":
+            return "legacy, unverified"
+        if record.get("status") == "valid" and not artifacts_match(paths["plan.json"].parent, job, record):
+            return "invalid: artifacts changed after the run"
+        return record.get("status", "invalid") + (": " + ", ".join(record.get("reasons", [])) if record.get("reasons") else "")
+    if legacy_job(paths["plan.json"].parent, job):
+        return "legacy, unverified"
+    return "unverified: no run record"
+
+
+def repository_note(job: dict, changed: list[str]) -> list[str]:
+    if not (Path(job["dir"]) / job["name"]).exists():
+        return [f"{job_label(job)}: repository removed"]
+    if changed:
+        return [f"{job_label(job)}: the prepared repository changed: {'; '.join(changed[:5])}"]
+    return []
+
+
+def available_usage(job: dict, paths: dict[str, Path]) -> str:
+    record = read_record(paths["plan.json"].parent, job)
+    if record.get("status") in ("valid", "legacy"):
+        return "—"
+    partial = record.get("usage_lower_bound")
+    usage = partial or record.get("usage") or {}
+    labels = {"tokens_in": "input", "tokens_read": "cached input", "tokens_out": "output",
+              "tokens_reasoning": "reasoning", "tokens_written": "cache writes",
+              "tokens_uncached": "uncached input", "tools": "tool calls"}
+    values = [f"{value:,} {labels[key]}" for key, value in usage.items() if key in labels and value is not None]
+    return (("lower bound: " if partial else "") + ", ".join(values)) if values else "—"
 
 
 def score_job(
@@ -1190,22 +1506,19 @@ def score_job(
         bad=len(result["bad_citations"]),
         misplaced=len(misplaced_citations(text, repo)),
         high=sum(row["priority"] == "high" for row in finding_rows(text).values()),
-        seconds=sum(r.get("duration_ms") or 0 for r in results) / 1000,
-        cents=100 * max((r.get("total_cost_usd") or 0 for r in results), default=0),
-        **(stream_usage(stream, results) if stream.exists() else {}),
     )
+    add_metrics(job, paths, totals)
     notes = []
-    if not ran_model(results, job["model"]):
+    if job.get("backend", "claude") == "claude" and not ran_model(results, job["model"]):
         notes.append(f"{label}: the stream does not show {job['model']}")
-    changed = verify(case, Path(job["dir"]) / job["name"])
-    if changed:
-        notes.append(f"{label}: the prepared repository changed: {'; '.join(changed[:5])}")
+    changed = repository_problems(case, Path(job["dir"]) / job["name"])
+    notes += repository_note(job, changed)
     if result["leaked"]:
         notes.append(f"{label}: copied {', '.join(result['leaked'])}")
     material = job_material(data, job)
     allowed = [Path(job["dir"]), paths["plan.json"].parent / "providers"]
     allowed += [material.parent if job_level(data, job) == "full" else material] if material else []
-    outside = outside_paths(stream, allowed) if results else []
+    outside = outside_paths(stream, allowed) if stream.exists() else []
     if outside:
         notes.append(f"{label}: tool calls name paths outside the run: {', '.join(outside[:8])}")
     cells = [
@@ -1216,6 +1529,7 @@ def score_job(
         "by hand" if by_hand else "yes" if passed else "no",
         f"{top[1]} of {top[2]}" if top else "—",
         ", ".join(problems) or "—",
+        job_status(job, data, paths, changed),
     ]
     # A figure only for a case that counts a defect; a run by hand has none to give.
     figure = None if not defects[1] else "by hand" if by_hand else f"{defects[0]} of {defects[1]}"
@@ -1232,7 +1546,9 @@ def leftovers(paths: dict[str, Path], data: dict) -> list[str]:
     """Name new entries of the temporary directory that a run's stream mentions."""
     before = set(paths["tmp-before.txt"].read_text(encoding="utf-8").split())
     planned = {Path(job["dir"]).name for job in data["jobs"]} | {p.name for p in skill_exports(data)}
-    streams = {p.stem: p.read_text(encoding="utf-8") for p in sorted(paths["streams"].glob("*.jsonl"))}
+    streams = {p.stem: p.read_text(encoding="utf-8") + "\n" + "\n".join(
+        path.read_text(encoding="utf-8") for path in codex_backend.copied_sessions(p) if path.is_file()
+    ) for p in sorted(paths["streams"].glob("*.jsonl"))}
     notes = []
     for entry in sorted(set(os.listdir(tempfile.gettempdir())) - before - planned):
         location = str(Path(tempfile.gettempdir()) / entry)
@@ -1244,7 +1560,7 @@ def leftovers(paths: dict[str, Path], data: dict) -> list[str]:
 
 def arm_label(data: dict, job: dict) -> str:
     """Name a job's model, and its revision and level when the round compares several."""
-    label = model_label(job["model"])
+    label = ("Codex " + job["model"]) if job.get("backend") == "codex" else model_label(job["model"])
     if len({j.get("revision") for j in data["jobs"]}) > 1:
         label += f" @ {job_revision(data, job)}"
     if len({job_level(data, j) for j in data["jobs"]}) > 1:
@@ -1252,8 +1568,36 @@ def arm_label(data: dict, job: dict) -> str:
     return label
 
 
+def missing_report(job: dict, data: dict, paths: dict[str, Path], totals: Counter, as_of: date) -> dict:
+    expected = json.loads((case_path(job["case"]) / "expected.json").read_text(encoding="utf-8"))
+    by_hand = job_level(data, job) in WITHOUT_CATALOG
+    defects = counted_defects(expected, as_of)
+    totals.update(reports=1, seeded=0 if by_hand else len(expected["must_find"]),
+                  defects_counted=0 if by_hand else len(defects),
+                  top_of=0 if by_hand else len(expected.get("top_priorities", [])))
+    add_metrics(job, paths, totals)
+    changed = repository_problems(case_path(job["case"]), Path(job["dir"]) / job["name"])
+    status = job_status(job, data, paths, changed)
+    cells = [job["name"], str(job["run"]), arm_label(data, job),
+             "by hand" if by_hand else f"0 of {len(expected['must_find'])}", "no", "—", "no report", status]
+    report = paths["reports"] / f"{job_label(job)}.md"
+    problem = "uncredited report" if report.is_file() else "no report"
+    cells[-2] = problem
+    notes = [f"{job_label(job)}: {problem}"] + repository_note(job, changed)
+    return {"cells": cells, "defects": ("by hand" if by_hand else f"0 of {len(defects)}") if defects else None,
+            "hash": f"- `{sha256(report)}` {job['name']} run {job['run']}" if report.is_file() else None, "notes": notes}
+
+
+def mean_metric(totals: Counter, key: str, n: int, places: int = 0, scale: float = 1) -> str:
+    count = totals[key + "_n"]
+    if not count:
+        return "—"
+    value = f"{totals[key] / count / scale:,.{places}f}"
+    return value + (f" ({count} of {n})" if totals["codex"] or count != n else "")
+
+
 def summarize(round_dir: Path) -> str:
-    """Score every report, check the prepared repositories, and write summary.md."""
+    """Score valid and legacy reports, list every job, and write summary.md."""
     paths = round_paths(round_dir)
     data = json.loads(paths["plan.json"].read_text(encoding="utf-8"))
     scored_jobs, hashes, notes = [], [], []
@@ -1263,27 +1607,33 @@ def summarize(round_dir: Path) -> str:
         repos: dict[str, Path] = {}
         for job in data["jobs"]:
             label = f"run{job['run']}-{job['name']}"
-            if not (paths["reports"] / f"{label}.md").exists():
-                notes.append(f"{label}: no report")
-                continue
             if job["case"] not in repos:
                 repos[job["case"]] = stack.enter_context(case_files(case_path(job["case"])))
-            scored = score_job(
-                job, data, paths, repos[job["case"]], totals[arm_label(data, job)], as_of
-            )
+            status = job_status(job, data, paths, [])
+            if (paths["reports"] / f"{label}.md").exists() and status in ("valid", "legacy, unverified"):
+                scored = score_job(job, data, paths, repos[job["case"]], totals[arm_label(data, job)], as_of)
+            else:
+                scored = missing_report(job, data, paths, totals[arm_label(data, job)], as_of)
+            scored["usage"] = available_usage(job, paths)
+            notes += [f"{label}: {note}" for note in read_record(round_dir, job).get("notes", [])]
             scored_jobs.append(scored)
-            hashes.append(scored["hash"])
+            if scored["hash"]:
+                hashes.append(scored["hash"])
             notes += scored["notes"]
     notes += leftovers(paths, data)
     overlap = overlap_note(paths["log.txt"].read_text(encoding="utf-8") if paths["log.txt"].exists() else "")
     # Rounds of cases without dated defects keep the shape of older summaries.
     located = any(scored["defects"] for scored in scored_jobs)
     run_header = ["Case", "Run", "Model", "Seeded gaps found", "Passes the scorer"]
-    run_header += ["Top priorities in first five", "Problems"]
+    run_header += ["Top priorities in first five", "Problems", "Status", "Available usage"]
     model_header = ["Model", "Seeded gaps found", "Reports that pass the scorer"]
     model_header += ["Top priorities in first five", "Bad citations", "Misplaced citations"]
     model_header += ["High findings", "Mean minutes", "Mean USD", "Mean tool calls"]
     model_header += ["Mean cache writes", "Mean cache reads", "Mean output tokens"]
+    has_codex = any(job.get("backend") == "codex" for job in data["jobs"])
+    if has_codex:
+        model_header += ["Mean uncached input", "Mean reasoning tokens"]
+    model_header += ["Valid runs"]
     if located:
         run_header.insert(4, "Defects at location")
         model_header.insert(2, "Defects at location")
@@ -1292,6 +1642,7 @@ def summarize(round_dir: Path) -> str:
         cells = list(scored["cells"])
         if located:
             cells.insert(4, scored["defects"] or "—")
+        cells.append(scored["usage"])
         rows.append("| " + " | ".join(cells) + " |")
     lines = [
         f"# Round summary ({now()})",
@@ -1308,13 +1659,16 @@ def summarize(round_dir: Path) -> str:
     ]
     for model, t in totals.items():
         n = t["reports"] or 1
+        metrics = [mean_metric(t, "seconds", n, 1, 60), "—" if t["codex"] else mean_metric(t, "cents", n, 2, 100)]
+        metrics += [mean_metric(t, key, n) for key in ("tools", "tokens_written", "tokens_read", "tokens_out")]
+        if has_codex:
+            metrics += [mean_metric(t, key, n) for key in ("tokens_uncached", "tokens_reasoning")]
         lines.append(
             f"| {model} | {t['found']} of {t['seeded']} "
             + (f"| {t['defects_found']} of {t['defects_counted']} " if located else "")
             + f"| {t['passed']} of {t['reports']} "
-            f"| {t['top']} of {t['top_of']} | {t['bad']} | {t['misplaced']} | {t['high']} "
-            f"| {t['seconds'] / 60 / n:.1f} | {t['cents'] / 100 / n:.2f} | {t['tools'] / n:.0f} "
-            f"| {t['tokens_written'] / n:,.0f} | {t['tokens_read'] / n:,.0f} | {t['tokens_out'] / n:,.0f} |"
+            f"| {t['top']} of {t['top_of']} | {t['bad']} | {t['misplaced']} | {t['high']} | "
+            + " | ".join(metrics) + f" | {t['valid']} of {t['reports']} |"
         )
     lines += ["", "Report SHA-256 hashes:", "", *hashes, "", "Notes:", ""]
     lines += [f"- {note}" for note in notes] or ["- none"]
@@ -1344,16 +1698,34 @@ def clean(round_dir: Path) -> list[str]:
     return removed
 
 
-def parse_runs(values: list[str]) -> list[tuple[str, str, str | None, str | None]]:
-    """Read NUMBER=MODEL[@REVISION][+LEVEL] specifications."""
+def parse_backend(model: str, backend: str | None = None) -> tuple[str, str]:
+    if ":" in model:
+        prefix, model = model.split(":", 1)
+        if backend and backend != prefix:
+            raise SystemExit("conflicting backends")
+        backend = prefix
+    backend = backend or "claude"
+    if backend not in ("claude", "codex"):
+        raise SystemExit(f"unknown backend: {backend}")
+    if ":" in model:
+        raise SystemExit("model IDs cannot contain ':'")
+    if backend == "codex" and not re.fullmatch(r"(?:gpt-\d+(?:\.\d+)+-[a-z0-9][a-z0-9.-]*|o\d+-[a-z0-9][a-z0-9.-]*)", model):
+        raise SystemExit(f"Codex needs a full model ID, not {model!r}")
+    return backend, model
+
+
+def parse_runs(values: list[str]) -> list[tuple]:
+    """Read NUMBER=[BACKEND:]MODEL[@REVISION][+LEVEL] specifications."""
     runs = []
     for value in values:
         number, _, rest = value.partition("=")
         rest, _, level = rest.partition("+")
         model, _, revision = rest.partition("@")
         if not number.isdigit() or not model:
-            raise SystemExit(f"--run takes NUMBER=MODEL[@REVISION][+LEVEL], not {value!r}")
-        runs.append((number, model, revision or None, level or None))
+            raise SystemExit(f"--run takes NUMBER=[BACKEND:]MODEL[@REVISION][+LEVEL], not {value!r}")
+        backend, model = parse_backend(model)
+        spec = (number, model, revision or None, level or None)
+        runs.append((*spec, backend) if backend == "codex" else spec)
     return runs
 
 
@@ -1369,8 +1741,8 @@ def main() -> int:
         action="append",
         required=True,
         metavar="NUMBER=MODEL",
-        help="a run number, a full model ID, and optionally a skill revision, such as"
-        " 51=claude-opus-5-5 or 52=claude-opus-5-5@8b2a2c6; repeat for each run",
+        help="a run number, [BACKEND:]MODEL, and optionally @REVISION and +LEVEL, such as"
+        " 51=claude-opus-5-5 or 300=codex:gpt-6.1-sol; repeat for each run",
     )
     plan_parser.add_argument(
         "--case",

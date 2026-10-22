@@ -14,7 +14,7 @@ update the entry in place. An entry with no mechanism yet names its follow-up: a
 agent remembers is not a mechanism.
 
 The evaluation runner's mechanisms, each with its incident, are listed under
-[Headless rounds](../evals/README.md#headless-rounds-with-claude-code) and are not repeated here.
+[Headless rounds](../evals/README.md#headless-rounds) and are not repeated here.
 
 ## Delegation
 
@@ -49,7 +49,7 @@ The evaluation runner's mechanisms, each with its incident, are listed under
   it, and all failed. *Mechanism:* the runner warms each model up once and holds a round lock per
   provider; a second round on the same provider queues with `--lock-wait-minutes` instead of being
   started by hand, and a round that overlapped one on another provider is marked in its summary
-  ([Headless rounds](../evals/README.md#headless-rounds-with-claude-code)).
+  ([Headless rounds](../evals/README.md#headless-rounds)).
 - **Git on a repository an agent touched runs that repository's configuration.** Verified on
   2026-10-18: `git status` runs `core.fsmonitor` and clean filters, `.git/commondir` redirects the
   configuration, refs, and objects, and a promisor remote makes plumbing commands fetch through
@@ -59,7 +59,7 @@ The evaluation runner's mechanisms, each with its incident, are listed under
 - **Records go somewhere durable before anything is removed.** A WSL restart wiped `/tmp` with every
   round's scripts and streams (2026-10-17). *Mechanism:* round directories outside the repository and
   `/tmp`, with a warning from `plan`
-  ([Headless rounds](../evals/README.md#headless-rounds-with-claude-code)).
+  ([Headless rounds](../evals/README.md#headless-rounds)).
 
 ## Review and verification
 
@@ -70,7 +70,7 @@ The evaluation runner's mechanisms, each with its incident, are listed under
 - **Verify decisive claims; a repeated claim is not evidence.** In the maintainer's projects, a
   documentation fix added three false claims. Here, a 43% cost rise was first blamed on a rule
   (runs 59 to 63). *Mechanism:* a control arm in every round, with jobs interleaved case by case
-  ([Headless rounds](../evals/README.md#headless-rounds-with-claude-code)).
+  ([Headless rounds](../evals/README.md#headless-rounds)).
 - **Write results from the source, not from memory.** Numbers, times, and states come from logs,
   run records, or code. A generated report's fixed text goes stale too: in the maintainer's
   projects, a ledger script rerun on a new window kept sentences that had become false and counted
@@ -118,7 +118,7 @@ The evaluation runner's mechanisms, each with its incident, are listed under
 - **Five runs per arm, and a control in every round.** Two runs per arm made a variant look better
   that five runs showed equal, and the control's own results move between rounds.
   *Mechanism:* the control arm in the same plan
-  ([Headless rounds](../evals/README.md#headless-rounds-with-claude-code)).
+  ([Headless rounds](../evals/README.md#headless-rounds)).
 
 ## Cost and context
 
@@ -129,7 +129,7 @@ The evaluation runner's mechanisms, each with its incident, are listed under
   automatic compaction at 400k tokens later cut one coordinator's mean context from 503k to 312k,
   yet over the next four days the coordinator still cost about 84 USD in each, among the largest
   drivers (2026-10-21). *Mechanism:* `python3 -m tools.claude_ledger` measures it
-  ([Headless rounds](../evals/README.md#headless-rounds-with-claude-code)). *Follow-up:* a
+  ([Headless rounds](../evals/README.md#headless-rounds)). *Follow-up:* a
   checkpoint that a tool generates, so a fresh session can resume from a file.
 - **Bound each agent's context, and start a fresh agent instead of resuming a large one.** In the
   same two projects, ledgers rerun on 2026-10-21 with the scripts of 2026-10-17 found cost per

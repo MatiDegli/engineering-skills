@@ -87,10 +87,11 @@ these lines compare reports and do not change the exit code.
 Cases contain intentional defects. Do not fix them, deploy them, or run their code outside a
 disposable environment; some tests call external hosts.
 
-## Headless rounds with Claude Code
+## Headless rounds
 
-`tools/claude_rounds.py` runs a round of full-skill audits with Claude Code's headless mode; another
-agent needs its own runner. Keep the round directory outside this repository and outside `/tmp`:
+`tools/claude_rounds.py` runs a round of full-skill audits headless, with Claude Code or with
+OpenAI's Codex CLI, through one plan and one scorer. Keep the round directory outside this
+repository and outside `/tmp`:
 
 ```bash
 python3 -m tools.claude_rounds plan ~/eval-runs/round10 --run 51=claude-opus-5-5 --run 52=claude-sonnet-5-5
@@ -106,25 +107,102 @@ run may name its own revision and level, as in `--run 66=claude-sonnet-5-5@8b2a2
 none and expert levels no files, and their reports are marked for scoring by hand. A round that
 tests a change includes the current version as a control, with the same models and runs, in the
 same plan: `plan` lists the jobs case by case, so both arms run side by side.
-`run` starts agents and spends usage, so the maintainer runs it or allows it; `--budget-usd` stops
-launching audits once the finished ones reach that API-equivalent cost, which on a subscription
-measures quota rather than money. `--provider-url glm-5.3=URL --provider-key glm-5.3=KEY_FILE` runs
-a model from another provider with only host variables, its own Claude Code configuration directory
-so the CLI does not use the user's Claude login, every model alias set to that model, and the key
-read by an `apiKeyHelper` from a file of mode 600; a run whose key source is not that helper is
-marked. That keeps the key out of the environment and the settings file. It does not hide the key
-from the audit, which runs as the same user with the Bash tool and no sandbox, so a shell command
-can read the file. The settings also deny `Read` on the key's directory with paths anchored at the
-filesystem root, which stops Claude Code's Read tool and the file commands it recognizes, such as
-`cat`, but not a script or a command that reads without naming the file. `summarize` scores every
-report,
-verifies every prepared repository, and writes `summary.md` with the tables that RESULTS.md records.
-The tables get a "Defects at location" column only when a case in the round counts a defect, so
-older summaries keep their shape.
-`clean` removes only the directories that `plan` created. `run --stagger-seconds` (5 by default)
-spaces launches, so later audits read the prompt cache the first one wrote.
 
-Most of a round's cost is cached context written and reread, not generated text.
+A Codex run names its model with a `codex:` prefix, as in
+`--run 300=codex:gpt-6.1-sol@HEAD+full`, and Claude and Codex arms can share a plan. `plan` writes
+the backend on every job; a job without one comes from an older plan and is Claude. Unknown
+backends, model IDs that are not full IDs, and duplicate run labels are refused.
+
+`run` starts agents and spends usage, so the maintainer runs it or allows it. `--budget-usd` stops
+launching audits once the finished ones reach that API-equivalent cost, which on a subscription
+measures quota rather than money. It does not bound Codex, whose usage on a ChatGPT login is
+counted in tokens: a Codex arm's only cap is the number of its jobs in the plan.
+`run --stagger-seconds` (5 by default) spaces launches, so later audits read the prompt cache the
+first one wrote.
+
+`--provider-url glm-5.3=URL --provider-key glm-5.3=KEY_FILE` runs a model from another provider with
+only host variables, its own Claude Code configuration directory so the CLI does not use the user's
+Claude login, every model alias set to that model, and the key read by an `apiKeyHelper` from a file
+of mode 600; a run whose key source is not that helper is marked. That keeps the key out of the
+environment and the settings file. It does not hide the key from the audit, which runs as the same
+user with the Bash tool and no sandbox, so a shell command can read the file. The settings also deny
+`Read` on the key's directory with paths anchored at the filesystem root, which stops Claude Code's
+Read tool and the file commands it recognizes, such as `cat`, but not a script or a command that
+reads without naming the file.
+
+### Run status and resume
+
+Every planned job gets a record, `streams/<label>.run.json`, with its backend, model, revision,
+case, prompt hash, times, artifact hashes, usage, and a status: valid, invalid with its reasons,
+skipped with its reason, or legacy. A run is invalid on a non-zero exit, a timeout, an error it did
+not recover from, no final event or report, another model than the planned one, incomplete
+accounting, a web or MCP call, a change to its prepared repository, or an error in the runner
+itself. `run` exits non-zero when a job is neither valid nor legacy, and with 128 plus the signal
+number when it was stopped.
+
+Run again on a round, `run` skips each job whose record is valid and matches the plan, and launches
+the others; a valid record that no longer matches the plan is first marked invalid. A job's old
+report is deleted only just before the new launch, after the last stop and budget checks and after
+a record saying the relaunch started, and the old record is kept as `<label>.run.<n>.json`. A
+valid job whose report or session copies changed after the run becomes invalid instead of being
+launched again; delete its record to rerun it. A job whose prepared repository is gone, as after `clean`, stays as recorded.
+A job from an older plan with a report and a clean repository but no record is legacy: it is not
+rerun, it credits its findings, and it is shown as unverified. An older round summarized after
+`clean` has no record to go on and credits nothing.
+
+`summarize` lists every planned job with its status, scores the reports of valid and legacy runs,
+shows a valid run whose report or session copies changed as invalid, notes a later change to a
+prepared repository without changing a recorded status, and writes
+`summary.md` with the tables that RESULTS.md records. Jobs that are not valid stay in the
+denominators and credit nothing, and each model's row says how many of its runs were valid. The
+tables get a "Defects at location" column only when a case in the round counts a defect. `clean`
+removes only the directories that `plan` created.
+
+### Codex
+
+Codex audits run one at a time on their own worker, whatever `--jobs` says, so queued Codex jobs
+leave the Claude workers free. A Codex job checks the stop, the budget, and the login state again
+once its turn comes. The round holds `rounds-codex.lock` beside the other locks, and a Codex-only
+round runs no Claude command. Each audit runs:
+
+```text
+codex exec --json -C <repo> -m <model> -c model_reasoning_effort="high" --sandbox workspace-write
+  -c project_doc_max_bytes=0 -c check_for_update_on_startup=false
+  --disable plugins --disable goals --disable personality --disable apps --disable browser_use
+  --disable browser_use_external --disable computer_use --disable image_generation
+  --disable in_app_browser --disable memories -o <streams>/<label>.last-message.md "<prompt>"
+```
+
+It gets stdin from `/dev/null`, keeps `HOME` so that the user's Codex login is used, and gets an
+empty `GH_CONFIG_DIR` and no hosting tokens, API keys, `CODEX_HOME`, or `ANTHROPIC_*` or `CLAUDE_*`
+variables. `project_doc_max_bytes=0` keeps a case's `AGENTS.md` out, and the disables leave the
+agent its shell, waits, requests for user input, a clock, and helper agents.
+
+Before the audits, `codex login status` must pass, and only its exit status is kept. Then one short
+run per model with pending jobs checks the setup in a temporary Git repository whose `AGENTS.md`
+holds a code word. It stops the round when the reply contains the code word; when the agent's tools
+differ from the expected set, read from the session file if it records them, else from a
+`{"tools": [...]}` object the model is asked for; when a command in the agent's own shell prints a
+forbidden variable name or finds another GitHub configuration; or when the run errs, does not
+finish, or records another model. The probe prints names, never values.
+
+The JSON stream carries neither the model nor the helpers' work, so the runner reads Codex's
+session files. It finds the run's helpers, and theirs, by their parent thread ID, waits up to 60
+seconds for each to end, checks that each successful spawn has a session file and that every
+thread ran the planned model, and copies the files to `streams/<label>.sessions/` with a manifest
+of hashes. Tokens are each thread's last cumulative count, summed. A field Codex does not report is
+unavailable, not zero; reasoning tokens are part of output; and when a session is missing, the
+totals are unavailable and the record keeps a lower bound. Tool calls count once per call ID across
+threads. The report is the main thread's last message, and the `-o` file only cross-checks it.
+
+A login or usage-limit error stops further Codex launches, with no retry. Other errors invalidate
+only their run, or become notes when the run recovers. Rows for Codex show no USD, and rounds with
+Codex add the mean uncached input and the mean reasoning tokens. A run's duration starts when it
+gets its turn; its time in the queue is recorded apart.
+
+### Cost, incidents, and limits
+
+Most of a Claude round's cost is cached context written and reread, not generated text.
 `python3 -m tools.claude_ledger rounds <runs-dir>` shows each model's share of weighted tokens by
 kind (cache writes, cache reads, output), and `transcripts ~/.claude/projects/<project>` does the
 same for the sessions and subagents that coordinate the work. Measure with it before and after a
@@ -138,19 +216,45 @@ Each mechanism answers an incident in this repository's evaluations:
 | Parallel runs that found an expired login raced to refresh it, and all failed before their first tool call | One short call per model, one at a time, before the parallel runs; a run whose login refresh fails is retried after a random pause |
 | Two lines of work could start rounds at once on one machine, sharing the login and the host | `run` holds one lock per provider for the whole round, all or none: `~/.cache/engineering-skills/rounds.lock` for the Claude login and `rounds-<host>.lock` beside it for another provider. A second round on a provider in use exits naming the holder, or waits `--lock-wait-minutes`. Rounds on different providers run at once; `log.txt` records the other rounds' locks at the start and the end, and `summarize` marks a round that overlapped another, since its minutes are not comparable |
 | The `haiku` alias resolved to an older model than intended, and an older CLI did not know the newer model's ID | Full model IDs; the short call stops the round when the CLI does not serve a model, and a run whose stream names another model is marked |
-| An agent started inside a repository loads that repository's agent settings, hooks, skills, and agents | Runs load only user settings, with hooks off, and fix the effort level instead of inheriting it |
+| A Claude agent started inside a repository loads that repository's agent settings, hooks, skills, and agents | Runs load only user settings, with hooks off, and fix the effort level instead of inheriting it |
 | Rounds kept under `/tmp` lost their scripts and streams when WSL restarted | The round directory keeps the plan, streams, reports, and summary; `plan` warns when it is under the temporary directory |
 | The same skill cost 43% more in the afternoon than in the morning, and the rise was first blamed on a rule (runs 59 to 63) | A control arm in the same round, with jobs interleaved case by case |
 | Audits of a rewritten private clone queried the hosted repository with the maintainer's GitHub login, found that its history did not match, and one run reported three of ten gaps (run 56) | Runs see no GitHub CLI login or token, so remote settings are unverified the same way in every round |
 | Audits of real repositories could not read CI runs, branch protection, or other branches, because a prepared case has one branch, no remote, and no GitHub login (runs 188 and 189) | A case's `source.json` may keep the source's branches no newer than the pin and ask for a snapshot of the hosted state, read once when the round is planned (see [Cases from a pinned repository](#cases-from-a-pinned-repository)) |
 | An audit that started subagents listed the maintainer's other Claude sessions and could have messaged them, and tried workflow and monitor tools to wait for its helpers (run 260) | Runs get only Bash, Read, Grep, Glob, and Agent (`--tools`), and their subagents inherit that list |
+| Codex waited for more input on stdin (run 299) | stdin from `/dev/null` for login checks, warm-ups, and audits |
+| Codex 0.149.1 refused the requested model on a ChatGPT login (2026-10-21) | One short run per model stops the round on an error or a missing final event |
+| A case's `AGENTS.md` loads into a Codex run by default (probe, 2026-10-21) | `project_doc_max_bytes=0`, checked by the warm-up's code word |
+| The Codex stream named neither the model nor the helpers, which used 63% of the input tokens (runs 299 and 300) | Session files found by parent thread, each thread's model checked, and accounting marked incomplete when one is missing |
+| Helpers made two scratch directories that the main stream never named (run 299) | Path and leftover listings also read every helper's session |
+| In review (2026-10-21): a child could outlive its process group's leader, missing reports dropped out of the scores, and a failed run could pass for a good one | A status for every job, invalid runs in the denominators, a non-zero exit, and SIGKILL by group |
 
-Each run also has a time limit and its own process group, which is stopped as a whole when the limit
-passes or when the runner receives SIGTERM or SIGINT; the runner then starts no other audit, logs the
-stop, and exits with 128 plus the signal number. `summarize` lists home paths that tool calls name
-outside the run and new temporary entries that a stream mentions. Nothing confines a run to its
-paths: it uses the Bash tool as the user, with no sandbox, so the prompt's instruction not to read
-other paths is not enforced, and the listing misses a path that a command builds instead of naming.
+Each run has a time limit and its own process group. When the limit passes or the runner receives
+SIGTERM or SIGINT, the group is stopped as a whole, with SIGKILL after a grace period even if its
+leader has already exited; the runner then starts no other audit and logs the stop. After a normal
+exit the group gets SIGTERM, then SIGKILL after five seconds, so no child outlives its run. Login
+checks, version checks, and warm-ups run under the same deadlines and stop. `summarize` lists home
+paths that tool calls name outside the run, and new temporary entries that a stream or a helper's
+session mentions.
+
+Limits, reviewed on 2026-10-21:
+
+- Nothing confines a run's reads. Claude Code runs the Bash tool as the user with no sandbox.
+  Codex's `workspace-write` sandbox blocks the network and writes outside the copy and `/tmp`, but
+  not reads, so an audit can read the user's files, Codex's login included. The prompt's
+  instruction not to read other paths is not enforced. Codex's system skills and the user's own
+  skills stay visible, and audit sessions stay in the user's Codex history.
+- The path listings are partial: they miss a path that a command builds or names relatively, and a
+  clean repository at the end does not prove that nothing was written in it.
+- The catalog and the expectations used for scoring are read when `summarize` runs; they are not
+  snapshotted.
+- Checked against the real CLI (runs 299 and 300, Codex 0.163.0): stdin, `AGENTS.md`, the tool
+  set, and reading run 300's session files for helpers, completeness, and tokens. Tested only with
+  a stand-in: helpers of helpers, the error texts, the login output, the memories and update-check
+  settings, and process cleanup inside Codex's sandbox. Not known: whether the server can serve
+  another model than the one it records, whether cached input is always part of input, and what a
+  request for user input does with stdin closed. The warm-up's fallback tool list is the model's
+  own claim.
 
 ## Cases from a pinned repository
 
@@ -225,9 +329,16 @@ case name, as in `python3 -m tools.evals prepare ~/cases/large /tmp/audit-large`
 ## Recording results
 
 Add each run to [RESULTS.md](RESULTS.md): date, revision of this repository, agent and model, case,
-score output, and notes. For a case outside this repository, record its scores and report hashes
-but not its reports or files. Run every case after changing the skill, the criteria, or a case, and
-compare with the previous results. Results from one agent or model do not transfer to another.
+score output, the CLI version, each run's status with its reasons, and notes. Jobs that are not
+valid stay in the counts and credit nothing; give each model's valid runs, and mark legacy runs as
+unverified. For a case outside this repository, record its scores and report hashes but not its
+reports or files. Run every case after changing the skill, the criteria, or a case, and compare
+with the previous results. Results from one agent or model do not transfer to another.
+
+For Codex on a ChatGPT login, record tokens instead of USD: input, cached input, output, and
+reasoning tokens over the main thread and its helpers, with reasoning already part of output.
+Write "unavailable" for a field Codex did not report, say how many runs a mean covers, and keep
+the usage and time of failed attempts.
 
 Cost is part of the result: a gain in precision that costs too much is a regression. Compare each
 model's mean cost and time, which `tools/claude_rounds.py summarize` reports with tokens and tool
