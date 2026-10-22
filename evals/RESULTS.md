@@ -3720,3 +3720,27 @@ Report hashes (SHA-256):
 
 - `62015a66bb3afc79010357fe68c0e672553e493e41f0087acc9af2f28ffc68e6` review-classifier run 299
 - `b2fa42fe10f440734db9d783e6be4319af408422d4a3fda570fcb45fcc12c821` review-classifier run 300
+
+## 2026-10-22 — Run 301 (the runner's Codex backend on the real CLI)
+
+- Question: does the runner's Codex backend work against the real CLI?
+- Skill v0.2.3 (`1a4d09c`), case `review-classifier`, Codex CLI 0.163.0, `gpt-6.1-sol`, reasoning
+  effort high, through `python3 -m tools.claude_rounds`.
+- The first attempt stopped at the warm-up, before any audit. The model listed the hosted web search
+  (`web.run`), on by default, and tools nested in `exec` that the expected set left out. With
+  `web_search="disabled"` and the nested tools known, the second attempt passed the warm-up.
+
+| Run | Status | Seeded gaps found | Defects at location | Minutes | Input tokens (cached) | Output tokens | Tool calls |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 301 | valid | 6 of 6 | 4 of 6 | 5.2 | 1,851,524 (1,638,784) | 24,109 | 49 |
+
+- The session files gave complete accounting for the main thread and its three helpers, all on the
+  planned model. The prepared repository stayed clean.
+- The path listing named `/root`: helpers address the main agent as `/root` in their messages. Path
+  listings now skip the calls between agents.
+- Defects were not counted by hand. Run 300 found the same 6 of 6 gaps and 4 of 6 defects at their
+  location.
+
+Report hash (SHA-256):
+
+- `889e499b1a905958752d6837d0a1a8049ddf6cb924d216453f934958ccfbc641` review-classifier run 301
