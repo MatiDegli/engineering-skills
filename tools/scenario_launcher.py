@@ -74,7 +74,7 @@ class Fixture:
     """A real command started in the workspace, ended by the launcher when its bound runs out."""
 
     def __init__(self, spec: dict, workspace: Path, environment: dict[str, str]) -> None:
-        self.name, self.expired, self.error = spec["name"], False, None
+        self.name, self.expired, self.bounded, self.error = spec["name"], False, False, None
         self.deadline = time.monotonic() + spec["seconds"]
         try:
             self.process = subprocess.Popen(
@@ -94,11 +94,16 @@ class Fixture:
         return self.process.pid if self.process else None
 
     def enforce_bound(self) -> None:
-        """End the command and what it started once its bound has run out."""
-        if self.process and self.process.poll() is None and time.monotonic() >= self.deadline:
-            signal_group(self.process, signal.SIGKILL)
-            self.process.wait()
-            self.expired = True
+        """End the command and its family once its bound has run out, and only once.
+
+        The fixture is `expired` when the command itself still ran then. One that had ended on its
+        own keeps its status, and what it left running is ended all the same.
+        """
+        if self.process is None or self.bounded or time.monotonic() < self.deadline:
+            return
+        self.bounded = True
+        self.expired = self.process.poll() is None
+        self.stop()
 
     def status(self) -> dict:
         if self.process is None:
@@ -106,8 +111,9 @@ class Fixture:
         return {"state": "expired"} if self.expired else status_of(self.process)
 
     def stop(self) -> None:
-        if self.process and self.process.poll() is None:
-            signal_group(self.process, signal.SIGKILL)
+        """End the command and its family, and collect the command's status."""
+        if self.process:
+            kill_family(self.process)
             self.process.wait()
 
 
@@ -160,24 +166,44 @@ def run_agent(payload: dict, fixtures: list[Fixture]) -> tuple[dict, float]:
     return {"timed_out": timed_out, **outcome}, time.monotonic() - begun
 
 
-def processes_other_than_this(keep: set[int]) -> list[tuple[int, str]]:
-    """List the (pid, state) of every process of the namespace but this one and the kept sessions.
-
-    A fixture leads a session of its own, and what it starts stays in it, so keeping a fixture's PID
-    as a session keeps the fixture and its children.
-    """
-    found = []
+def process_table() -> dict[int, tuple[int, str, int]]:
+    """Read every process of the namespace but this one: PID to (parent, state, session)."""
+    found = {}
     for name in os.listdir("/proc"):
         if not name.isdigit() or int(name) == os.getpid():
             continue
         try:
             fields = Path(f"/proc/{name}/stat").read_text().rpartition(")")[2].split()
-            state, session = fields[0], int(fields[3])
+            found[int(name)] = (int(fields[1]), fields[0], int(fields[3]))
         except (OSError, IndexError, ValueError):
             continue
-        if int(name) not in keep and session not in keep:
-            found.append((int(name), state))
     return found
+
+
+def family(table: dict[int, tuple[int, str, int]], leaders: set[int], sessions: set[int]) -> set[int]:
+    """List the processes that belong to a command: the leaders, their sessions, and their descendants.
+
+    A command that the launcher starts leads a session of its own. What it starts stays in it, even
+    after the command ends, unless it calls `setsid`; and what it regroups with `setpgid` leaves its
+    process group but not its session. A child that detached with `setsid` keeps its parent, so it is
+    found as long as that parent runs. One that detached and lost its parent is out of reach.
+    """
+    found = {pid for pid, (_, _, session) in table.items() if pid in leaders or session in sessions}
+    while True:
+        more = {pid for pid, (parent, _, _) in table.items() if parent in found and pid not in found}
+        if not more:
+            return found
+        found |= more
+
+
+def processes_other_than_this(keep: set[int]) -> list[tuple[int, str]]:
+    """List the (pid, state) of every process of the namespace but this one and the kept families.
+
+    Keeping a fixture's PID keeps the fixture, its session, and what descends from it.
+    """
+    table = process_table()
+    kept = family(table, keep, keep)
+    return [(pid, state) for pid, (_, state, _) in table.items() if pid not in kept]
 
 
 def live_processes(keep: set[int]) -> list[int]:
@@ -223,6 +249,27 @@ def stop_others(keep: set[int]) -> int:
             break
         time.sleep(0.05)
     return count
+
+
+def kill_family(command: subprocess.Popen) -> None:
+    """Kill a fixture's command and everything of its family, until none is left.
+
+    The command's PID counts only while the command runs: once it is reaped, the number may belong
+    to another process. A process that forks while being killed is caught by the next pass.
+    """
+    deadline = time.monotonic() + SWEEP_SECONDS
+    while time.monotonic() < deadline:
+        table = process_table()
+        leaders = {command.pid} if command.poll() is None else set()
+        pids = [pid for pid in family(table, leaders, {command.pid}) if table[pid][1] != "Z"]
+        for pid in pids:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        if not pids:
+            return
+        time.sleep(0.05)
 
 
 def forbid_inspection() -> None:

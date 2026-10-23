@@ -69,8 +69,11 @@ with a borrowed name:
   this machine and no login. The runner refuses a `cwd` that is not a directory after the
   fixtures apply, and a program it does not find.
 - The command does what its name claims at a low cost: little CPU, no network, and an end of its
-  own or at `seconds`, which the launcher enforces by ending the command and what it started. A
-  bound longer than the time limit by 120 seconds keeps it alive for the whole run.
+  own or at `seconds`, which the launcher enforces by ending the command and its family: the
+  processes of its session, whatever process group they left with `setpgid` and whether or not the
+  command still runs, and what descends from it, which includes a child that detached with `setsid`.
+  A child that detached and whose parent has gone is out of reach. A bound longer than the time
+  limit by 120 seconds keeps it alive for the whole run.
 - `waits-and-processes` runs `sh tools/wait-ready.sh 'gate front-a'` from the repository, the
   script the scenario commits. Its `pgrep` pattern is its own command line, so it waits for ever,
   with a `sleep` child in each turn of its loop. `live` runs `unittest discover` over
@@ -321,9 +324,10 @@ The runner therefore works as follows:
   2. It starts the `process` fixtures, whose `seconds` must exceed the time limit, each in its
      directory with the environment of an ordinary shell and no login.
   3. It starts the agent and enforces the time limit itself, and each fixture's own bound.
-  4. When the agent ends, it stops every other process except the fixtures and what they started,
+  4. When the agent ends, it stops every other process except the fixtures and their families,
      then records each fixture's wait status: a signal, an exit, or `expired` when its bound ran
-     out.
+     out while the command still ran. Meanwhile it collects the processes that lost their parent,
+     as an init does, so that no `<defunct>` entry piles up.
 
   The runner's own timeout is only a backstop. If the runner dies, its sandboxes die with it.
 - **Scoring every run:** stream and state violations count in every run, including runs that timed

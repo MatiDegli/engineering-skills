@@ -1838,6 +1838,34 @@ def processes_named(marker):
     return found
 
 
+# Commands that start a second sleeper out of the reach of their process group, by the three ways in
+# which a child leaves it, and the one that stays with its group; each is told apart by its duration.
+DETACH = "setsid sleep 7101 & exec sleep 7102"
+REGROUP = "import os, subprocess; subprocess.Popen(['sleep', '7103'], preexec_fn=lambda: os.setpgid(0, 0)); os.execvp('sleep', ['sleep', '7104'])"
+ORPHAN = "sleep 7105 & exit 0"
+GROUPED = "sleep 7106; true"
+FAMILY = {
+    "detached": ["sh", "-c", DETACH], "regrouped": [sys.executable, "-c", REGROUP], "orphaned": ["sh", "-c", ORPHAN],
+    "grouped": ["sh", "-c", GROUPED],
+}
+SLEEPERS = ("7101", "7102", "7103", "7104", "7105", "7106")
+
+
+def sleepers(*durations):
+    """List the host processes that run `sleep` for exactly one of these durations and have not ended."""
+    wanted, found = {d.encode() for d in durations}, []
+    for entry in Path("/proc").iterdir():
+        if entry.name.isdigit():
+            try:
+                argv = (entry / "cmdline").read_bytes().split(b"\0")
+                state = (entry / "stat").read_text().rpartition(")")[2].split()[0]
+            except (OSError, IndexError):
+                continue
+            if argv[0] == b"sleep" and argv[1:2] and argv[1] in wanted and state != "Z":
+                found.append(int(entry.name))
+    return found
+
+
 class SandboxArgumentTests(unittest.TestCase):
     def test_the_allow_list_masks_first_and_binds_back_only_what_is_named(self):
         home, workspace, skill = Path("/home/someone"), Path("/tmp/tmp.AbCdEfGh"), Path("/tmp/skill.x/coordinating-agents")
@@ -2006,9 +2034,27 @@ class SandboxTests(unittest.TestCase):
         self.assertEqual((self.workspace / "after.txt").read_text().strip(), "0")
         self.assertEqual(processes_named("long-marker") + processes_named("bound-marker"), [])
 
+    def test_a_fixture_is_ended_with_its_whole_family_when_its_bound_runs_out(self):
+        fixtures = [{"name": name, "command": command, "cwd": ".", "seconds": 2} for name, command in FAMILY.items()]
+        script = "sleep 1; ps -eo args= | grep -c '^sleep 71' > before.txt; sleep 4; ps -eo args= | grep -c '^sleep 71' > after.txt; true"
+        result = self.launch(script, fixtures)
+        self.assertEqual((self.workspace / "before.txt").read_text().strip(), "6", "the control: every sleeper runs at first")
+        self.assertEqual((self.workspace / "after.txt").read_text().strip(), "0", "and none runs after the bound")
+        self.assertEqual(result["launcher"]["fixtures"], {
+            "detached": {"state": "expired"}, "regrouped": {"state": "expired"}, "orphaned": {"state": "exited", "code": 0},
+            "grouped": {"state": "expired"},
+        })
+
     def test_the_children_of_a_fixture_are_not_swept_with_what_the_agent_left(self):
         fixture = {"name": "live", "command": ["sh", "-c", "while :; do sleep 1; done"], "cwd": ".", "seconds": 600}
         result = self.launch("sleep 2", [fixture])
+        self.assertEqual(result["launcher"]["fixtures"], {"live": {"state": "alive"}})
+        self.assertEqual(result["launcher"]["left_running"], 0)
+
+    def test_what_a_fixture_detached_is_still_its_own_and_not_counted_with_what_the_agent_left(self):
+        fixture = {"name": "live", "command": ["sh", "-c", DETACH], "cwd": ".", "seconds": 600}
+        result = self.launch("sleep 2; ps -eo args= | grep -c '^sleep 7101' > detached.txt; true", [fixture])
+        self.assertEqual((self.workspace / "detached.txt").read_text().strip(), "1")
         self.assertEqual(result["launcher"]["fixtures"], {"live": {"state": "alive"}})
         self.assertEqual(result["launcher"]["left_running"], 0)
 
@@ -2101,6 +2147,55 @@ class LauncherStatusTests(unittest.TestCase):
         self.assertEqual(self.ended_by(signal.SIGTERM), {"state": "killed", "signal": "SIGTERM"})
         for number in (35, 50, 63):
             self.assertEqual(self.ended_by(number), {"state": "killed", "signal": f"SIG{number}"})
+
+
+class FixtureBoundTests(TemporaryTestCase):
+    """Run the launcher's fixtures on the host, where a sleeper can be told by its duration."""
+
+    def setUp(self):
+        super().setUp()
+        self.addCleanup(self.kill_sleepers)
+
+    def kill_sleepers(self):
+        for pid in sleepers(*SLEEPERS):
+            os.kill(pid, signal.SIGKILL)
+
+    def start(self, command, seconds=2):
+        fixture = scenario_launcher.Fixture({"name": "live", "command": command, "seconds": seconds}, self.root, os.environ.copy())
+        self.addCleanup(fixture.stop)
+        return fixture
+
+    def until(self, condition):
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline and not condition():
+            time.sleep(0.1)
+        self.assertTrue(condition())
+
+    def until_bound(self, fixtures):
+        """Tick as the launcher's wait does, until every fixture has had its bound enforced."""
+        def tick():
+            for fixture in fixtures:
+                fixture.enforce_bound()
+            return all(fixture.bounded for fixture in fixtures)
+        self.until(tick)
+
+    def test_everything_a_fixture_started_ends_at_its_bound_whatever_group_it_left(self):
+        fixtures = {name: self.start(command) for name, command in FAMILY.items()}
+        self.until(lambda: len(sleepers(*SLEEPERS)) == 6)
+        self.until_bound(list(fixtures.values()))
+        self.assertEqual(sleepers(*SLEEPERS), [], "no sleeper outlives the bound of its fixture")
+        self.assertEqual({name: f.status() for name, f in fixtures.items()}, {
+            "detached": {"state": "expired"}, "regrouped": {"state": "expired"}, "grouped": {"state": "expired"},
+            "orphaned": {"state": "exited", "code": 0},
+        })
+
+    def test_stopping_a_fixture_ends_its_whole_family_before_the_bound(self):
+        fixtures = [self.start(command, seconds=600) for command in FAMILY.values()]
+        self.until(lambda: len(sleepers(*SLEEPERS)) == 6)
+        for fixture in fixtures:
+            fixture.stop()
+        self.assertEqual(sleepers(*SLEEPERS), [])
+        self.assertTrue(all(not f.expired and not f.bounded for f in fixtures))
 
 
 class LauncherReapTests(unittest.TestCase):
