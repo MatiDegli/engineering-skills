@@ -31,7 +31,7 @@ adopts or rejects. Look for the profile where those instructions or the owner po
 names one, the repository has none. The profile and the repository's rules override the defaults
 here, but no profile turns off the rules on processes, Git, and independent review. Skip a strategy
 the profile rejects. Without a profile, use each strategy whose condition holds and the defaults in
-`profile.md`, and propose a profile to the owner; do not add one to a
+[profile.md](references/profile.md), and propose a profile to the owner; do not add one to a
 repository without their approval.
 
 ## Procedure
@@ -53,7 +53,7 @@ Copy this checklist into your notes:
    worktrees, running processes, open reviews. A handoff is a claim; after a compaction or a
    restart, trust the state record and the repository, not your memory of the transcript. If the
    profile sets a pacing reference, read current usage now and before every large launch; when
-   ahead of pace, defer as `cost.md` describes.
+   ahead of pace, defer as [cost.md](references/cost.md#pace-the-period) describes.
 2. **Plan.** Split the work into fronts and record each in the state record with its status and
    who acts next. Serialize work on shared contracts, lockfiles, migrations, and reserved identifiers.
    Cap concurrency at the profile's limit and the host's capacity, not at the number of agents
@@ -84,7 +84,7 @@ Copy this checklist into your notes:
    Update the state record so a fresh session can resume from it.
 
 Your own context is a large cost, because you reread it every turn. Keep it small as
-`cost.md` describes.
+[cost.md](references/cost.md#small-coordinator-context) describes.
 
 ## Escalate to the owner
 
@@ -100,6 +100,9 @@ Read a reference only when its condition holds:
 
 | Reference | Read when |
 | --- | --- |
+| [profile.md](references/profile.md) | the repository has no profile, or its profile needs a change |
 | [briefs.md](references/briefs.md) | delegating a task, handing off, or choosing between resuming and starting fresh |
 | [review.md](references/review.md) | reviewing a plan or a change, running fix rounds, building destructive tooling, or integrating |
 | [shared-state.md](references/shared-state.md) | agents, processes, or lines share a repository, a host, or an account, or you resume one that did |
+| [cost.md](references/cost.md) | opening several fronts, running a long session, deciding a spend, or writing the period report |
+| [measuring.md](references/measuring.md) | judging whether a change to a workflow, skill, prompt, or routing worked |

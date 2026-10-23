@@ -76,6 +76,16 @@ class CorrespondenceTests(unittest.TestCase):
                 for relative, heading in sections:
                     self.assertIn(heading, headings(SKILL / relative), relative)
 
+    def test_the_profile_template_lists_every_cost_strategy(self):
+        cost = (SKILL / "references" / "cost.md").read_text(encoding="utf-8")
+        section = cost.split("\n## Strategies\n", 1)[1].split("\n## ", 1)[0]
+        strategies = re.findall(r"^### (.+)$", section, re.MULTILINE)
+        profile = (SKILL / "references" / "profile.md").read_text(encoding="utf-8")
+        table = profile.split("| Strategy | Adopted | Reason |\n| --- | --- | --- |\n", 1)[1]
+        rows = re.findall(r"^\| ([^|]+?) \|", table.split("\n\n", 1)[0], re.MULTILINE)
+        self.assertGreater(len(strategies), 1)
+        self.assertEqual(rows, strategies)
+
 
 if __name__ == "__main__":
     unittest.main()
