@@ -248,7 +248,9 @@ def report(records: list[dict], snapshot: dict, issues: dict, start=None, end=No
                    - max(bucket * 600, start if start is not None else -math.inf)
                    for bucket in buckets) / 3600
 
-    project_active = bucket_hours({int(t // 600) for t in dated}) if complete else None
+    # A round total is dated at its end only, so one bucket would not be its activity.
+    project_active = (bucket_hours({int(t // 600) for t in dated})
+                      if complete and not any(r["aggregate"] for r in selected) else None)
     agent_buckets = {(r["agent"], int(r["timestamp"] // 600)) for r in selected
                      if r.get("agent") is not None and r["timestamp"] is not None}
     agent_hours = (bucket_hours(bucket for _, bucket in agent_buckets)

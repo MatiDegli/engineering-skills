@@ -236,14 +236,16 @@ three agent-hours. A lead that only waits adds only the buckets containing its o
 `usd_per_agent_hour` uses that denominator. `project_active_hours_10min_buckets` unions buckets
 across all agents; `usd_per_project_active_hour` measures cost per hour of project activity.
 Both measures clip buckets to the requested window; neither measures elapsed or human working
-hours. Agent hours require transcript identities and are unavailable for round totals; project
-activity hours are also unavailable for undated totals.
+hours. Round totals give neither measure: they carry no transcript identity, and a dated total
+marks only the run's end. Any undated record also leaves both unavailable.
 
 Invalid JSON lines are counted in `invalid_json_lines` and named as `path:line` in
 `invalid_json_locations`. A line that parses as an object after stripping leading NUL bytes and
-has no usage fields also counts as `recovered_nul_padded_lines`; it does not suppress normalizers.
-Every other invalid line, or missing round totals, suppresses normalized cost figures rather than
-hide incomplete accounting.
+has no usage fields also counts as `recovered_nul_padded_lines`; `invalid_json_lines` includes it,
+and normalizers need every invalid line recovered. Unrecovered invalid lines, missing round totals,
+and undated records excluded from a window set `source_complete` to false, which empties both hour
+fields and every normalized cost rather than hide incomplete accounting. Unpriced records empty
+only the costs.
 
 For cost per accepted outcome, pass `--outcomes FILE` with an explicit denominator:
 

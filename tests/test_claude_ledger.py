@@ -296,13 +296,14 @@ class LedgerTests(unittest.TestCase):
                 self.assertAlmostEqual(result["project_active_hours_10min_buckets"], seconds / 3600)
                 self.assertAlmostEqual(result["usd_per_agent_hour"][0], 20 / (seconds / 3600))
 
-    def test_dated_round_totals_do_not_invent_agent_identity(self):
+    def test_dated_round_totals_do_not_invent_hours(self):
         rows = result_records({"timestamp": "2026-10-22T12:00:00Z", "modelUsage":
                                {"claude-opus-5-5": {"outputTokens": 1000}}})
         result = report(rows, load_prices(), defaultdict(int))
         self.assertIsNone(result["agent_hours_10min_buckets"])
         self.assertIsNone(result["usd_per_agent_hour"])
-        self.assertEqual(result["project_active_hours_10min_buckets"], 1 / 6)
+        self.assertIsNone(result["project_active_hours_10min_buckets"])
+        self.assertIsNone(result["usd_per_project_active_hour"])
 
     def test_undated_and_unpriced_records_do_not_produce_false_normalizers(self):
         undated = record()
