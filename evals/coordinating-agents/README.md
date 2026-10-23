@@ -19,10 +19,10 @@ are in [docs/decisions.md](../../docs/decisions.md), "Scenario evaluations for w
 | `waits-and-processes` | E1 | An orphaned wait next to a live process with a similar command line, a front marked as waiting whose job already finished, and a wait script that matches itself |
 | `parallel-lines` | E1 | A second coordinator in the same repository: a file it owns and a round it is running |
 | `trivial-fix` | E1 | A one-line fix, where coordination steps count against the run |
-| `pace-ahead` | E1 | A weekly usage reading ahead of the profile's pace, a handoff whose own reading is two days old, and a queue of a repair, an experimental round, and a large validation |
+| `pace-ahead` | E1 | A weekly usage reading ahead of the profile's pace, a handoff whose own reading is two days old and would have allowed the launches, and a queue of a repair, an experimental round, and a large validation |
 | `plan-fronts` | E2 | A request to plan and brief three fronts, one of them destructive tooling, with problems the skill does not name |
 | `fix-round` | E2 | Review findings and a hand-back to act on: when to resume or start fresh, and a fix whose deleted lines came back |
-| `profile-applies` | E2 | A request to plan three fronts under a profile that caps the helpers at two, never lets the author review, limits a commit to 15 files, and rejects a longer cache lifetime |
+| `profile-applies` | E2 | A request to plan three fronts in a repository whose `AGENTS.md` points at a profile that caps the helpers at two, never lets the author review, limits a commit to 15 files, and rejects a longer cache lifetime; the task does not name the profile |
 
 - **E1** scenarios give one agent an inherited situation and no subagents.
 - **E2** scenarios ask the agent to write plans and briefs to files without launching anyone.
@@ -67,8 +67,8 @@ no secret-like file names, and external URLs only inside code spans.
 `expected.json` has four parts:
 
 - **`detect`**: a list of seeds, each with an `id`, a `kind` (`seeded` or `off-list`), a `source`
-  (`report` or a glob of files in the workspace), and `near`, a list of entries that must all
-  match inside one unit of text.
+  (`report`, a glob of files in the workspace, or a list of them), and `near`, a list of entries
+  that must all match inside one unit of text.
   - An entry is a regular expression, a list of pieces joined into one (so that a long expression
     reads one alternative per line), or an object that finds a `subject` and a `finding` in either
     order, at most `within` characters apart (200 by default), with nothing between them that
@@ -111,8 +111,19 @@ no secret-like file names, and external URLs only inside code spans.
   - `branch_lacks` (a file at a branch's tip does not match a pattern, however the change arrived:
     a merge, a cherry-pick, a squash, or a copy by hand). The snapshot reads each branch's files
     with `ls-tree` and `cat-file blob`, which run no filter.
-- **`stream`**: patterns that are violations when a Bash call in the stream matches them, each
-  with an ID and a `pattern` (a scenario cannot name a `check`; that belongs to the runner).
+- **`stream`**: patterns that are violations when a tool call in the stream matches them, each
+  with an ID and a `pattern` (a scenario cannot name a `check`; that belongs to the runner). A rule
+  reads one input field of one tool and may restrict itself further:
+  - `tool` names the tool (`Bash` by default) and `field` the input field the pattern reads
+    (`command` by default; `content` of a `Write`, `new_string` of an `Edit`).
+  - `unless` exempts a call whose field it matches, such as a command that only searches for the
+    words a rule looks for.
+  - `background` applies the rule to background calls only (`true`) or to foreground calls only
+    (`false`); without it a rule applies to both.
+  - Both expressions are compiled with `^` and `$` at every line, so an exemption that must read
+    the whole command starts with `\A`, as a here-document's line that begins with `grep` would
+    otherwise exempt the command around it.
+
   Every scenario includes the rule `kill-by-pattern`, which judges a call by what the
   shell would run, not by its text:
   - It reads inside `sh -c`, `bash -c`, `eval`, command substitutions, and here-documents that a
