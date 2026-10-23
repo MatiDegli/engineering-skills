@@ -221,8 +221,15 @@ stream, including helpers, without adding the lead's usage again. `transcripts
 ~/.claude/projects/<project>` reads sessions and subagents, deduplicating response IDs across files.
 It uses an agent's `agentType` metadata for grouping, never words such as "reviewer" in its prompt.
 General-purpose agents remain general-purpose; the ledger does not infer their actual role. For
-copied response IDs, attribution goes to the earliest timestamp. Ties go to the file whose own
-activity started first: its earliest response with an ID found in no other file. A file with only
+copied response IDs, attribution goes to the earliest timestamp. Among files tied on that timestamp,
+drop a file when another tied file has a strict subset of its response keys and every extra response
+is dated at or after that other file's last response. Response sets include all assistant events,
+including those without usage; each key's time is its earliest timestamp in that file. An undated
+extra response, or a subset file with no dated response, prevents this containment step. Equal sets
+are kept. This leaves an original's responses with the original when a resume copies them and adds
+later responses; a resume containing only the original's tail also leaves the original's responses
+in place. Among the remaining files, ties go to the file whose own activity started first: its
+earliest response with an ID found in no other file. A file with only
 undated own responses follows every file with dated own activity and precedes every file with none.
 Usage-less assistant lines with missing, non-string, naive, or unparseable timestamps give no own
 activity; their IDs still participate in copy detection. Remaining ties use the smallest file path,
@@ -231,6 +238,17 @@ attribution; file read order does not affect the result. Different models or non
 counts are conflicts: the attributed copy stays intact, `conflicting_copies` counts each source
 location involved in a conflict (including the retained copy), and `conflicting_copy_locations`
 names them as `path:line`, sorted by path and numeric line number.
+
+Copies with different known `speed` or `inference_geo` values still merge and use that attribution
+rule, but the response stays unpriced. `records_modifier_mismatch` counts affected responses in the
+selected window; `modifier_mismatch_locations` names every copy involved as `path:line`, sorted by
+path and numeric line number. Values listed as standard in the active snapshot are equivalent,
+including empty and `"global"` geography. A missing modifier keeps the known value from another
+copy, even a less complete one; round results' `unattributed_modifiers` merge field by field too.
+If a smaller round copy matched the lead's usage but the fullest includes helpers, its known lead
+modifiers remain unattributed to those fuller totals, preserving the round pricing rule below.
+Modifier mismatches keep token totals, hours, source completeness, and other records' prices.
+Both readers use these containment and modifier rules.
 
 Both commands show raw tokens and list-price USD ranges using the dated snapshot in
 `tools/claude_ledger_prices.json`. The snapshot was checked on 2026-10-22 against [Anthropic's

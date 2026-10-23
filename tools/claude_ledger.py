@@ -114,9 +114,31 @@ def file_own_activity(copies: dict) -> dict:
     return own_activity
 
 
-def deduplicate_records(copies: dict, issues: dict, own_activity=None) -> list[dict]:
-    if own_activity is None:
-        own_activity = file_own_activity(copies)
+def deduplicate_records(copies: dict, issues: dict, activity=None, snapshot=None) -> list[dict]:
+    activity = copies if activity is None else activity
+    own_activity = file_own_activity(activity)
+    snapshot = load_prices() if snapshot is None else snapshot
+    responses = defaultdict(dict)
+    for key, rows in activity.items():
+        for row in rows:
+            times = responses[row["path"]]
+            previous = times.get(key)
+            moment = row["timestamp"]
+            times[key] = min(previous, moment) if previous is not None and moment is not None else (
+                previous if moment is None else moment)
+    last_response = {path: max((t for t in times.values() if t is not None), default=None)
+                     for path, times in responses.items()}
+    extensions = {}
+
+    def copied_extension(original, extended):
+        pair = original, extended
+        if pair not in extensions:
+            first, second = responses[original], responses[extended]
+            last = last_response[original]
+            extensions[pair] = (first.keys() < second.keys() and last is not None
+                                and all(second[key] is not None and second[key] >= last
+                                        for key in second.keys() - first.keys()))
+        return extensions[pair]
 
     def attribution(row):
         return (row["timestamp"] if row["timestamp"] is not None else math.inf,
@@ -137,18 +159,47 @@ def deduplicate_records(copies: dict, issues: dict, own_activity=None) -> list[d
             for new in rows[index + 1:]:
                 if old["model"] != new["model"] or not (cumulative(new, old) or cumulative(old, new)):
                     conflicting.update((old["location"], new["location"]))
-        chosen = dict(rows[0])
+        tied = [row for row in rows if row["timestamp"] == rows[0]["timestamp"]]
+        paths = {row["path"] for row in tied}
+        dropped = {y for y in paths if any(copied_extension(x, y) for x in paths if x != y)}
+        chosen = dict(next(row for row in tied if row["path"] not in dropped))
         if conflicting:
             # Keep the attributed copy intact; conflicting totals are not reconcilable.
             conflicts.update(conflicting)
         else:
             fullest = max(rows, key=lambda r: (sum(r["tokens"].values()), not r["missing_counters"]))
-            for field in ("tokens", "missing_counters", "speed", "inference_geo", "unattributed_modifiers",
-                          "recorded_cli_usd"):
+            for field in ("tokens", "missing_counters", "recorded_cli_usd", "totals_from_lead"):
                 if field in fullest:
                     chosen[field] = fullest[field]
                 else:
                     chosen.pop(field, None)
+            mismatch = set()
+            for field, modifier in snapshot["modifiers"].items():
+                for container in (None, "unattributed_modifiers"):
+                    # A matched smaller lead copy cannot price a fuller total including helpers.
+                    source = ("lead_modifiers" if container is not None
+                              and not fullest.get("totals_from_lead", True) else container)
+                    known = [(row, values[field]) for row in rows
+                             for values in [row if source is None else row.get(source, {})]
+                             if field in values]
+                    for index, (old, old_value) in enumerate(known):
+                        for new, new_value in known[index + 1:]:
+                            if old_value != new_value and not (
+                                    old_value in modifier["standard_values"]
+                                    and new_value in modifier["standard_values"]):
+                                mismatch.update((old["location"], new["location"]))
+                    values = [row if source is None else row.get(source, {})
+                              for row in [fullest, *rows]]
+                    value = next((v for v in values if field in v), None)
+                    target = chosen if container is None else chosen.get(container, {}).copy()
+                    if value is not None:
+                        target[field] = value[field]
+                    else:
+                        target.pop(field, None)
+                    if container is not None and (target or container in chosen):
+                        chosen[container] = target
+            if mismatch:
+                chosen["modifier_mismatch_locations"] = sorted(mismatch, key=location_key)
         records.append(chosen)
     if conflicts:
         issues["conflicting_copies"] += len(conflicts)
@@ -157,7 +208,7 @@ def deduplicate_records(copies: dict, issues: dict, own_activity=None) -> list[d
     return sorted(records, key=attribution)
 
 
-def transcript_records(directory: Path, issues: dict) -> list[dict]:
+def transcript_records(directory: Path, issues: dict, snapshot=None) -> list[dict]:
     copies = defaultdict(list)
     activity = defaultdict(list)
     for path in directory.rglob("*.jsonl"):
@@ -191,7 +242,7 @@ def transcript_records(directory: Path, issues: dict) -> list[dict]:
                       "missing_counters": missing_counters(usage),
                       **{k: usage[k] for k in ("speed", "inference_geo") if k in usage}}
             copies[key].append(record)
-    return deduplicate_records(copies, issues, file_own_activity(activity))
+    return deduplicate_records(copies, issues, activity, snapshot)
 
 
 def result_records(result: dict) -> list[dict]:
@@ -203,6 +254,7 @@ def result_records(result: dict) -> list[dict]:
         # Lead modifiers cannot be assigned to totals that also include helpers.
         unattributed = {k: result["usage"][k] for k in ("speed", "inference_geo")
                         if k in (result.get("usage") or {})}
+        lead_modifiers = unattributed.copy()
         missing = missing_counters(values, ROUND_COUNTERS)
         totals = dict(zip(KINDS, (count(values.get("inputTokens")), 0, 0,
                                   count(values.get("cacheCreationInputTokens")),
@@ -222,11 +274,12 @@ def result_records(result: dict) -> list[dict]:
         rows.append({"model": model, "role": "audit", "timestamp": timestamp(result.get("timestamp")),
                      "aggregate": True, "tokens": totals, "recorded_cli_usd": recorded,
                      "missing_counters": missing, "unattributed_modifiers": unattributed,
+                     "totals_from_lead": totals is own, "lead_modifiers": lead_modifiers,
                      **{k: metadata[k] for k in ("speed", "inference_geo") if k in metadata}})
     return rows
 
 
-def round_records(directory: Path, issues: dict) -> list[dict]:
+def round_records(directory: Path, issues: dict, snapshot=None) -> list[dict]:
     copies = defaultdict(list)
     for path in directory.rglob("*.jsonl"):
         if path.parent.name != "streams" or ".login-failure-" in path.name or path.name.startswith("warmup"):
@@ -243,7 +296,7 @@ def round_records(directory: Path, issues: dict) -> list[dict]:
         for record in result_records(last):
             record.update(path=str(path), line=last_number, location=f"{path}:{last_number}")
             copies[(identity, record["model"])].append(record)
-    return deduplicate_records(copies, issues)
+    return deduplicate_records(copies, issues, snapshot=snapshot)
 
 
 def load_prices(path: Path = PRICES) -> dict:
@@ -296,7 +349,7 @@ def pricing_multiplier(record: dict, snapshot: dict) -> float | None:
 
 def price_interval(record: dict, snapshot: dict) -> tuple[float, float] | None:
     multiplier = pricing_multiplier(record, snapshot)
-    if record.get("missing_counters") or multiplier is None:
+    if record.get("missing_counters") or record.get("modifier_mismatch_locations") or multiplier is None:
         return None
     tokens = record["tokens"]
     if not any(tokens.values()):
@@ -346,6 +399,10 @@ def report(records: list[dict], snapshot: dict, issues: dict, start=None, end=No
         if moment is not None and ((start is not None and moment < start) or (end is not None and moment >= end)):
             continue
         selected.append(record)
+        if record.get("modifier_mismatch_locations"):
+            issues["records_modifier_mismatch"] += 1
+            locations = issues.setdefault("modifier_mismatch_locations", [])
+            locations[:] = sorted(set(locations) | set(record["modifier_mismatch_locations"]), key=location_key)
         if record.get("missing_counters"):
             issues["records_missing_counters"] += 1
         if pricing_multiplier(record, snapshot) is None:
@@ -438,9 +495,10 @@ def main() -> int:
             raise ValueError("the input directory must exist")
         issues = defaultdict(int)
         reader = transcript_records if args.command == "transcripts" else round_records
-        records = reader(args.directory.expanduser(), issues)
+        snapshot = load_prices(args.prices)
+        records = reader(args.directory.expanduser(), issues, snapshot)
         outcomes = accepted_outcomes(args.outcomes, start, end) if args.outcomes else None
-        result = report(records, load_prices(args.prices), issues, start, end, outcomes)
+        result = report(records, snapshot, issues, start, end, outcomes)
     except (OSError, ValueError, KeyError, TypeError) as error:
         parser.error(str(error))
     print(json.dumps(result, indent=2) if args.json else table(result))
