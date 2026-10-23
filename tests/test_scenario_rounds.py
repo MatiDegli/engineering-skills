@@ -1978,6 +1978,13 @@ class SandboxTests(unittest.TestCase):
         self.assertIn("init", [line.split()[-1] for line in lines], "the control: the listing is the sandbox's")
         self.assertEqual([line for line in lines if line.startswith("Z")], [], "an orphan's status is collected")
 
+    def test_a_copy_that_does_not_sit_directly_in_run_is_never_deleted(self):
+        for place in ("/dev/shm/init.py", "//run/init.py"):
+            with self.subTest(place=place), mock.patch.object(scenario_rounds, "LAUNCHER_INSIDE", place):
+                result = self.launch(f"if test -e {place}; then echo present; else echo absent; fi > state.txt")
+                self.assertEqual(result["exit"], 0)
+                self.assertEqual((self.workspace / "state.txt").read_text().strip(), "present", "only a file in /run goes")
+
     def test_the_launcher_leaves_no_file_and_the_process_table_names_a_plain_init(self):
         script = "\n".join([
             "ls -A /run > run.txt; test -e /run/init.py && echo present > file.txt",
@@ -2819,6 +2826,32 @@ class RoundRefusalTests(RoundCase):
         self.assertEqual([p.name for p in (self.round / "runs").glob("*.workspace.json")], ["run2-alpha.workspace.json"])
         self.assertIn("it is a symbolic link now", printed.getvalue())
         self.assertIn(f"kept {elsewhere.parent}: not a directory this round created", printed.getvalue())
+
+    def test_clean_removes_only_the_directories_it_recorded_and_never_one_found_by_its_name(self):
+        private = self.root / "private-tmp"
+        private.mkdir()
+        with mock.patch.object(tempfile, "tempdir", str(private)):
+            ours = scenario_rounds.new_directory(scenario_rounds.WORKSPACE_PREFIX)
+            foreign = {"path": tempfile.mkdtemp()}  # another program's, named as ours are
+            mktemp = {"path": str(private / "tmp.AbCdEfGhIj")}  # `mktemp -d` makes this shape
+            strays = [Path(foreign["path"]), Path(mktemp["path"]), Path(tempfile.mkdtemp()), private / "tmp.KlMnOpQrSt"]
+            for stray in strays:
+                stray.mkdir(exist_ok=True)
+                write(stray / "keep.txt", "keep\n")
+            for recorded in (foreign, mktemp):
+                info = Path(recorded["path"]).stat()
+                recorded |= {"device": info.st_dev, "inode": info.st_ino}
+            foreign["inode"] += 1  # a stale record: this path held another directory when it was made
+            for name, recorded in (("run1-alpha", foreign), ("run2-alpha", mktemp), ("run3-alpha", ours)):
+                write(self.round / "runs" / f"{name}.workspace.json", json.dumps(recorded))
+            self.plan()
+            with contextlib.redirect_stdout(io.StringIO()) as printed:
+                removed = scenario_rounds.clean(self.round)
+        self.assertEqual(removed, [ours["path"]])
+        self.assertEqual([p.exists() for p in strays], [True] * 4, "a name that fits the runner's is not enough")
+        self.assertTrue(all((p / "keep.txt").exists() for p in strays))
+        self.assertIn("it is not the directory that was recorded", printed.getvalue())
+        self.assertIn("its name is not one the runner gives", printed.getvalue())
 
     def test_clean_removes_the_configuration_directory_of_a_provider_run_that_a_crash_left(self):
         left = scenario_rounds.new_directory(scenario_rounds.WORKSPACE_PREFIX)
