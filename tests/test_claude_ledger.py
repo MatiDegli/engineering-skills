@@ -79,17 +79,238 @@ class LedgerTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["tokens"]["output"], 100)
 
-    def test_conflicting_non_cumulative_usage_fails_instead_of_guessing(self):
+    def test_conflicting_non_cumulative_usage_keeps_attributed_copy_and_suppresses_hours(self):
         with tempfile.TemporaryDirectory() as directory:
-            write(Path(directory) / "a.jsonl", [response("m1", input_tokens=10), response("m1", output_tokens=10)])
-            with self.assertRaises(ValueError):
-                transcript_records(Path(directory), defaultdict(int))
+            path = Path(directory) / "a.jsonl"
+            write(path, [response("m1", input_tokens=10), response("m1", input_tokens=20, output_tokens=20),
+                         response("m1", output_tokens=10)])
+            issues = defaultdict(int)
+            rows = transcript_records(Path(directory), issues)
+            result = report(rows, load_prices(), issues,
+                            outcomes={"accepted": 1, "unit": "change", "source": "test"})
+        self.assertEqual(rows[0]["tokens"]["input"], 10)
+        self.assertEqual(rows[0]["tokens"]["output"], 0)
+        self.assertEqual(issues["conflicting_copies"], 2)
+        self.assertEqual(issues["conflicting_copy_locations"], [f"{path}:1", f"{path}:3"])
+        self.assertEqual(result["responses"], 1)
+        self.assertFalse(result["source_complete"])
+        for key in ("agent_hours_10min_buckets", "project_active_hours_10min_buckets", "usd_per_agent_hour",
+                    "usd_per_project_active_hour", "usd_per_accepted_outcome"):
+            self.assertIsNone(result[key], key)
 
-    def test_conflicting_models_for_one_response_are_rejected(self):
+    def test_conflicting_models_keep_earliest_copy_and_list_both_locations(self):
         with tempfile.TemporaryDirectory() as directory:
-            write(Path(directory) / "a.jsonl", [response("m1"), response("m1", "claude-sonnet-5-5")])
-            with self.assertRaisesRegex(ValueError, "conflicting models"):
-                transcript_records(Path(directory), defaultdict(int))
+            path = Path(directory) / "a.jsonl"
+            write(path, [response("m1", moment="2026-10-22T12:10:00Z"),
+                         response("m1", "claude-sonnet-5-5", input_tokens=100)])
+            issues = defaultdict(int)
+            rows = transcript_records(Path(directory), issues)
+        self.assertEqual(rows[0]["model"], "claude-sonnet-5-5")
+        self.assertEqual(rows[0]["tokens"]["input"], 100)
+        self.assertEqual(issues["conflicting_copies"], 2)
+        self.assertEqual(issues["conflicting_copy_locations"], [f"{path}:1", f"{path}:2"])
+
+    def test_earliest_timestamp_owns_cumulative_tokens_from_a_later_copy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write(root / "a.jsonl", [response("own-a", moment="2026-10-22T10:00:00Z"),
+                                      response("shared", moment="2026-10-22T12:10:00Z", output_tokens=100)])
+            write(root / "z.jsonl", [response("shared", output_tokens=10)])
+            issues = defaultdict(int)
+            rows = transcript_records(root, issues)
+        shared = next(r for r in rows if r["tokens"]["output"])
+        self.assertEqual(shared["agent"], str(root / "z.jsonl"))
+        self.assertEqual(shared["timestamp"], timestamp("2026-10-22T12:00:00Z"))
+        self.assertEqual(shared["tokens"]["output"], 100)
+        self.assertEqual(issues["conflicting_copies"], 0)
+
+    def test_decreasing_cumulative_copies_are_compatible(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "a.jsonl"
+            write(path, [response("shared", output_tokens=100), response("shared", output_tokens=10),
+                         response("shared")])
+            issues = defaultdict(int)
+            rows = transcript_records(Path(directory), issues)
+        self.assertEqual(rows[0]["tokens"]["output"], 100)
+        self.assertEqual(issues["conflicting_copies"], 0)
+
+    def test_fullest_cumulative_copy_includes_input_when_output_ties(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "a.jsonl"
+            write(path, [response("shared", input_tokens=10, output_tokens=100),
+                         response("shared", input_tokens=20, output_tokens=100)])
+            issues = defaultdict(int)
+            rows = transcript_records(Path(directory), issues)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["tokens"]["input"], 20)
+        self.assertEqual(rows[0]["tokens"]["output"], 100)
+        self.assertEqual(rows[0]["line"], 1)
+        self.assertEqual(issues["conflicting_copies"], 0)
+
+    def test_dated_copy_precedes_undated_copy_without_inventing_own_activity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write(root / "a.jsonl", [response("shared", moment=None, output_tokens=100),
+                                      response("undated-own", moment=None)])
+            write(root / "z.jsonl", [response("shared", output_tokens=10)])
+            rows = transcript_records(root, defaultdict(int))
+        shared = next(r for r in rows if r["tokens"]["output"])
+        self.assertEqual(shared["agent"], str(root / "z.jsonl"))
+        self.assertEqual(shared["timestamp"], timestamp("2026-10-22T12:00:00Z"))
+        self.assertEqual(shared["tokens"]["output"], 100)
+
+    def test_timestamp_ties_use_own_activity_and_preserve_role_in_reverse_read_order(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            a, z = root / "a.jsonl", root / "subagents/z.jsonl"
+            shared = response("shared", output_tokens=100)
+            write(a, [shared, response("own-a", moment="2026-10-22T12:30:00Z")])
+            write(z, [shared, response("own-z", moment="2026-10-22T11:00:00Z"),
+                      response("later-z", moment="2026-10-22T13:00:00Z")])
+            z.with_suffix(".meta.json").write_text('{"agentType": "implementer"}')
+
+            def measure(paths):
+                issues = defaultdict(int)
+                with patch.object(Path, "rglob", return_value=iter(paths)):
+                    rows = transcript_records(root, issues)
+                return rows, report(rows, load_prices(), issues)
+
+            rows, result = measure([a, z])
+            self.assertEqual(measure([z, a]), (rows, result))
+        owner = next(r for r in rows if r["tokens"]["output"])
+        self.assertEqual(owner["agent"], str(z))
+        self.assertEqual(owner["role"], "implementer")
+        self.assertEqual(result["groups"]["implementer claude-opus-5-5"]["responses"], 3)
+
+    def test_file_without_own_activity_loses_tie_even_with_earlier_copied_activity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            old = response("old", moment="2026-10-22T08:00:00Z")
+            shared = response("shared", output_tokens=10)
+            write(root / "a.jsonl", [old, shared, shared])
+            write(root / "z.jsonl", [old, shared, response("own", moment="2026-10-22T11:00:00Z")])
+            rows = transcript_records(root, defaultdict(int))
+        self.assertTrue(all(r["agent"] == str(root / "z.jsonl") for r in rows))
+
+    def test_own_activity_repeated_inside_one_file_still_breaks_timestamp_tie(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            a, z = root / "a.jsonl", root / "z.jsonl"
+            own = response("own-a", moment="2026-10-22T11:00:00Z")
+            shared = response("shared", output_tokens=10)
+            write(a, [own, own, shared])
+            write(z, [shared, response("own-z", moment="2026-10-22T11:30:00Z")])
+            for paths in ([a, z], [z, a]):
+                with self.subTest(paths=paths), patch.object(Path, "rglob", return_value=iter(paths)):
+                    rows = transcript_records(root, defaultdict(int))
+                owner = next(r for r in rows if r["tokens"]["output"])
+                self.assertEqual(owner["agent"], str(a))
+
+    def test_undated_own_activity_sorts_after_dated_activity_and_before_no_activity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            a, y, z = (root / f"{name}.jsonl" for name in ("a", "y", "z"))
+            shared = response("shared", output_tokens=10)
+            write(a, [shared])
+            write(y, [shared, response("own-y", moment=None)])
+            for dated in (True, False):
+                write(z, [shared] + ([response("own-z", moment="2026-10-22T13:00:00Z")] if dated else []))
+                for paths in ([a, y, z], [z, y, a]):
+                    with self.subTest(dated=dated, paths=paths), patch.object(Path, "rglob", return_value=iter(paths)):
+                        rows = transcript_records(root, defaultdict(int))
+                    owner = next(r for r in rows if r["tokens"]["output"])
+                    self.assertEqual(owner["agent"], str(z if dated else y))
+
+    def test_usageless_assistant_with_bad_or_missing_timestamp_gives_no_own_activity(self):
+        for value in ("missing", None, 12345, False, [], {}, "", "bad", "2026-10-22T12:00:00"):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                shared = response("shared", output_tokens=100)
+                no_usage = {"type": "assistant", "message": {"id": "own-z", "model": "m"}}
+                if value != "missing":
+                    no_usage["timestamp"] = value
+                write(root / "a.jsonl", [shared])
+                write(root / "z.jsonl", [no_usage, shared])
+                issues = defaultdict(int)
+                rows = transcript_records(root, issues)
+                result = report(rows, load_prices(), issues)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["agent"], str(root / "a.jsonl"))
+            self.assertEqual(result["responses"], 1)
+            self.assertTrue(result["source_complete"])
+            self.assertTrue(result["fully_priced"])
+            self.assertEqual(result["agent_hours_10min_buckets"], 1 / 6)
+
+    def test_usage_records_keep_strict_timestamp_handling(self):
+        for value, error in (("bad", ValueError), ("2026-10-22T12:00:00", ValueError), (12345, AttributeError)):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as directory:
+                write(Path(directory) / "a.jsonl", [response("usage", moment=value)])
+                with self.assertRaises(error):
+                    transcript_records(Path(directory), defaultdict(int))
+
+    def test_usageless_bad_timestamp_still_removes_copied_id_from_own_activity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            shared = response("shared", output_tokens=10)
+            write(root / "a.jsonl", [shared, response("own-a", moment="2026-10-22T11:00:00Z")])
+            write(root / "b.jsonl", [shared, response("own-b", moment="2026-10-22T11:30:00Z")])
+            write(root / "z.jsonl", [{"type": "assistant", "timestamp": 12345,
+                                     "message": {"id": "own-a", "model": "m"}}])
+            rows = transcript_records(root, defaultdict(int))
+        owner = next(r for r in rows if r["tokens"]["output"])
+        self.assertEqual(owner["agent"], str(root / "b.jsonl"))
+        self.assertEqual(len(rows), 3)
+
+    def test_own_activity_includes_responses_without_usage_and_excludes_copies_without_usage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            no_usage = response("no-usage", moment="2026-10-22T10:00:00Z")
+            del no_usage["message"]["usage"]
+            write(root / "a.jsonl", [response("shared", output_tokens=10),
+                                      response("own-a", moment="2026-10-22T11:00:00Z")])
+            write(root / "z.jsonl", [no_usage, response("shared", output_tokens=10)])
+            rows = transcript_records(root, defaultdict(int))
+            shared = next(r for r in rows if r["tokens"]["output"])
+            self.assertEqual(shared["agent"], str(root / "z.jsonl"))
+            # Its copy in another file removes this ID from both files' own activity.
+            write(root / "b.jsonl", [no_usage])
+            rows = transcript_records(root, defaultdict(int))
+            shared = next(r for r in rows if r["tokens"]["output"])
+            self.assertEqual(shared["agent"], str(root / "a.jsonl"))
+
+    def test_last_resort_is_smallest_path_then_group(self):
+        for own_activity in (False, True):
+            with self.subTest(own_activity=own_activity), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                for name in ("a", "z"):
+                    rows = [response("shared", output_tokens=10)]
+                    if own_activity:
+                        rows.append(response(name, moment="2026-10-22T11:00:00Z"))
+                    write(root / f"{name}.jsonl", rows)
+                with patch.object(Path, "rglob", return_value=iter([root / "z.jsonl", root / "a.jsonl"])):
+                    rows = transcript_records(root, defaultdict(int))
+                owner = next(r for r in rows if r["tokens"]["output"])
+                self.assertEqual(owner["agent"], str(root / "a.jsonl"))
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "a.jsonl"
+            write(path, [response("shared", "claude-sonnet-5-5"), response("shared")])
+            rows = transcript_records(Path(directory), defaultdict(int))
+        self.assertEqual(rows[0]["model"], "claude-opus-5-5")
+
+    def test_conflict_result_is_independent_of_file_read_order(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = [root / f"{name}.jsonl" for name in ("a", "b", "c")]
+            for path, usage in zip(paths, ({"input_tokens": 10}, {"output_tokens": 10},
+                                          {"input_tokens": 20, "output_tokens": 20})):
+                write(path, [response("shared", **usage)])
+            results = []
+            for order in (paths, paths[::-1]):
+                issues = defaultdict(int)
+                with patch.object(Path, "rglob", return_value=iter(order)):
+                    results.append(report(transcript_records(root, issues), load_prices(), issues))
+        self.assertEqual(results[0], results[1])
+        self.assertEqual(results[0]["issues"]["conflicting_copies"], 2)
 
     def test_read_prices_differ_by_exact_model(self):
         prices = load_prices()
@@ -160,6 +381,33 @@ class LedgerTests(unittest.TestCase):
         for key in ("agent_hours_10min_buckets", "project_active_hours_10min_buckets", "usd_per_agent_hour",
                     "usd_per_project_active_hour", "usd_per_accepted_outcome"):
             self.assertIsNone(result[key], key)
+
+    def test_invalid_json_locations_sort_by_path_then_numeric_line_in_both_readers(self):
+        for reader in (transcript_records, round_records):
+            with self.subTest(reader=reader.__name__), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                a, z = root / "a/streams/a.jsonl", root / "z/streams/z.jsonl"
+                for path in (a, z):
+                    write(path, [{"type": "user"}] * 8 + [None, None])
+                issues = defaultdict(int)
+                with patch.object(Path, "rglob", return_value=iter([z, a])):
+                    reader(root, issues)
+                self.assertEqual(issues["invalid_json_locations"],
+                                 [f"{a}:9", f"{a}:10", f"{z}:9", f"{z}:10"])
+
+    def test_conflicting_copy_locations_sort_by_path_then_numeric_line(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            a, z = root / "a.jsonl", root / "z.jsonl"
+            for path, identifier in ((a, "a"), (z, "z")):
+                write(path, [{"type": "user"}] * 8 + [response(identifier, input_tokens=10),
+                                                        response(identifier, output_tokens=10)])
+            issues = defaultdict(int)
+            with patch.object(Path, "rglob", return_value=iter([z, a])):
+                transcript_records(root, issues)
+        self.assertEqual(issues["conflicting_copy_locations"],
+                         [f"{a}:9", f"{a}:10", f"{z}:9", f"{z}:10"])
+        self.assertEqual(issues["conflicting_copies"], 4)
 
     def test_nul_padded_non_usage_line_is_recovered_without_suppressing_normalizers(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -238,6 +486,26 @@ class LedgerTests(unittest.TestCase):
         self.assertEqual(row["tokens"]["write_unknown"], 40)
         event["modelUsage"]["claude-sonnet-5-5"].update(cacheCreationInputTokens=10, outputTokens=1)
         self.assertEqual(result_records(event)[0]["tokens"]["write_1h"], 10)
+
+    def test_round_conflicts_are_located_and_do_not_abort(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            a, z = root / "a/streams/a.jsonl", root / "z/streams/z.jsonl"
+            for path, usage in ((a, {"inputTokens": 10}), (z, {"outputTokens": 10})):
+                write(path, [{"type": "result", "uuid": "shared", "modelUsage":
+                              {"claude-opus-5-5": usage}}])
+            results = []
+            for paths in ([a, z], [z, a]):
+                issues = defaultdict(int)
+                with patch.object(Path, "rglob", return_value=iter(paths)):
+                    rows = round_records(root, issues)
+                    results.append(report(rows, load_prices(), issues))
+                self.assertEqual(rows[0]["tokens"]["input"], 10)
+                self.assertEqual(rows[0]["tokens"]["output"], 0)
+                self.assertEqual(issues["conflicting_copies"], 2)
+                self.assertEqual(issues["conflicting_copy_locations"], [f"{a}:1", f"{z}:1"])
+                self.assertFalse(results[-1]["source_complete"])
+            self.assertEqual(results[0], results[1])
 
     def test_missing_round_result_is_reported_and_suppresses_per_outcome_cost(self):
         with tempfile.TemporaryDirectory() as directory:

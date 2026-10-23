@@ -46,6 +46,11 @@ def message_usage(message: dict) -> dict[str, int]:
                             count(usage.get("cache_read_input_tokens")), count(usage.get("output_tokens")))))
 
 
+def location_key(location: str) -> tuple[str, int]:
+    path, number = location.rsplit(":", 1)
+    return path, int(number)
+
+
 def events(path: Path, issues: dict):
     with path.open(encoding="utf-8", errors="replace") as stream:
         for number, line in enumerate(stream, 1):
@@ -70,6 +75,8 @@ def events(path: Path, issues: dict):
                         or isinstance(message, dict) and "usage" in message):
                     continue
                 issues["recovered_nul_padded_lines"] += 1
+    if "invalid_json_locations" in issues:
+        issues["invalid_json_locations"].sort(key=location_key)
 
 
 def timestamp(value: str | None) -> float | None:
@@ -81,41 +88,92 @@ def timestamp(value: str | None) -> float | None:
     return parsed.timestamp()
 
 
-def keep_record(records: dict, key, record: dict, issues: dict):
-    previous = records.get(key)
-    if previous is None:
-        records[key] = record
-        return
-    issues["duplicate_records"] += 1
-    old, new = previous["tokens"], record["tokens"]
-    if previous["model"] != record["model"]:
-        raise ValueError("one response ID names conflicting models")
-    if old == new:
-        return
-    if all(new[k] >= old[k] for k in KINDS):
-        records[key] = record
-    elif not all(old[k] >= new[k] for k in KINDS):
-        raise ValueError("one response ID has conflicting non-cumulative usage")
+def file_own_activity(copies: dict) -> dict:
+    # Own activity excludes every ID copied into another file, regardless of read order.
+    own_activity = {}
+    for rows in copies.values():
+        if len({r["path"] for r in rows}) == 1:
+            for row in rows:
+                if not row.get("has_activity", True):
+                    continue
+                path = row["path"]
+                own_activity.setdefault(path, math.inf)
+                if row["timestamp"] is not None:
+                    own_activity[path] = min(own_activity.get(path, math.inf), row["timestamp"])
+    return own_activity
+
+
+def deduplicate_records(copies: dict, issues: dict, own_activity=None) -> list[dict]:
+    if own_activity is None:
+        own_activity = file_own_activity(copies)
+
+    def attribution(row):
+        return (row["timestamp"] if row["timestamp"] is not None else math.inf,
+                row["path"] not in own_activity,
+                own_activity.get(row["path"], math.inf), row["path"],
+                row["role"] + " " + row["model"], row["line"])
+
+    def cumulative(new, old):
+        return all(new["tokens"][k] >= old["tokens"][k] for k in KINDS)
+
+    records, conflicts = [], set()
+    for rows in copies.values():
+        if len(rows) > 1:
+            issues["duplicate_records"] += len(rows) - 1
+        rows = sorted(rows, key=attribution)
+        conflicting = set()
+        for index, old in enumerate(rows):
+            for new in rows[index + 1:]:
+                if old["model"] != new["model"] or not (cumulative(new, old) or cumulative(old, new)):
+                    conflicting.update((old["location"], new["location"]))
+        chosen = dict(rows[0])
+        if conflicting:
+            # Keep the attributed copy intact; conflicting totals are not reconcilable.
+            conflicts.update(conflicting)
+        else:
+            fullest = max(rows, key=lambda r: sum(r["tokens"].values()))
+            for field in ("tokens", "recorded_cli_usd"):
+                chosen[field] = fullest[field]
+        records.append(chosen)
+    if conflicts:
+        issues["conflicting_copies"] += len(conflicts)
+        issues.setdefault("conflicting_copy_locations", []).extend(conflicts)
+        issues["conflicting_copy_locations"].sort(key=location_key)
+    return sorted(records, key=attribution)
 
 
 def transcript_records(directory: Path, issues: dict) -> list[dict]:
-    records = {}
-    for path in sorted(directory.rglob("*.jsonl")):
+    copies = defaultdict(list)
+    activity = defaultdict(list)
+    for path in directory.rglob("*.jsonl"):
         role = "subagent" if "subagents" in path.parts else "session"
         meta = path.with_suffix(".meta.json")
         if role == "subagent" and meta.exists():
             role = json.loads(meta.read_text()).get("agentType") or role
         for number, event in events(path, issues):
             message = event.get("message")
-            if event.get("type") != "assistant" or not isinstance(message, dict) or "usage" not in message:
+            if event.get("type") != "assistant" or not isinstance(message, dict):
                 continue
             key = message.get("id") or event.get("uuid") or (str(path), number)
+            if "usage" in message:
+                moment = timestamp(event.get("timestamp"))
+            else:
+                value = event.get("timestamp")
+                try:
+                    moment = timestamp(value) if isinstance(value, str) else None
+                except (ValueError, OverflowError, OSError):
+                    moment = None
+            activity[key].append({"path": str(path), "timestamp": moment,
+                                  "has_activity": "usage" in message or moment is not None})
+            if "usage" not in message:
+                continue
             record = {"model": message.get("model") or "unknown", "role": role,
                       "agent": str(path.resolve()),
-                      "timestamp": timestamp(event.get("timestamp")), "aggregate": False,
+                      "path": str(path), "line": number, "location": f"{path}:{number}",
+                      "timestamp": moment, "aggregate": False,
                       "tokens": message_usage(message), "recorded_cli_usd": None}
-            keep_record(records, key, record, issues)
-    return list(records.values())
+            copies[key].append(record)
+    return deduplicate_records(copies, issues, file_own_activity(activity))
 
 
 def result_records(result: dict) -> list[dict]:
@@ -140,21 +198,23 @@ def result_records(result: dict) -> list[dict]:
 
 
 def round_records(directory: Path, issues: dict) -> list[dict]:
-    records = {}
-    for path in sorted(directory.rglob("*.jsonl")):
+    copies = defaultdict(list)
+    for path in directory.rglob("*.jsonl"):
         if path.parent.name != "streams" or ".login-failure-" in path.name or path.name.startswith("warmup"):
             continue
         last = None
-        for _, event in events(path, issues):
+        for number, event in events(path, issues):
             if event.get("type") == "result":
                 last = event
+                last_number = number
         if last is None or not last.get("modelUsage"):
             issues["streams_without_model_totals"] += 1
             continue
         identity = last.get("uuid") or str(path)
         for record in result_records(last):
-            keep_record(records, (identity, record["model"]), record, issues)
-    return list(records.values())
+            record.update(path=str(path), line=last_number, location=f"{path}:{last_number}")
+            copies[(identity, record["model"])].append(record)
+    return deduplicate_records(copies, issues)
 
 
 def load_prices(path: Path = PRICES) -> dict:
@@ -241,7 +301,7 @@ def report(records: list[dict], snapshot: dict, issues: dict, start=None, end=No
     dated = [r["timestamp"] for r in selected if r["timestamp"] is not None]
     source_complete = (issues.get("invalid_json_lines", 0) <= issues.get("recovered_nul_padded_lines", 0)
                        and not any(issues.get(k) for k in
-                                   ("streams_without_model_totals", "undated_records_excluded")))
+                                   ("streams_without_model_totals", "undated_records_excluded", "conflicting_copies")))
     complete = bool(selected) and len(dated) == len(selected) and source_complete
 
     def bucket_hours(buckets):

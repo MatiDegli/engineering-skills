@@ -212,7 +212,17 @@ gets its turn; its time in the queue is recorded apart.
 stream, including helpers, without adding the lead's usage again. `transcripts
 ~/.claude/projects/<project>` reads sessions and subagents, deduplicating response IDs across files.
 It uses an agent's `agentType` metadata for grouping, never words such as "reviewer" in its prompt.
-General-purpose agents remain general-purpose; the ledger does not infer their actual role.
+General-purpose agents remain general-purpose; the ledger does not infer their actual role. For
+copied response IDs, attribution goes to the earliest timestamp. Ties go to the file whose own
+activity started first: its earliest response with an ID found in no other file. A file with only
+undated own responses follows every file with dated own activity and precedes every file with none.
+Usage-less assistant lines with missing, non-string, naive, or unparseable timestamps give no own
+activity; their IDs still participate in copy detection. Remaining ties use the smallest file path,
+then the reported group. Tokens come from the most complete cumulative copy without moving that
+attribution; file read order does not affect the result. Different models or non-cumulative token
+counts are conflicts: the attributed copy stays intact, `conflicting_copies` counts each source
+location involved in a conflict (including the retained copy), and `conflicting_copy_locations`
+names them as `path:line`, sorted by path and numeric line number.
 
 Both commands show raw tokens and list-price USD ranges using the dated snapshot in
 `tools/claude_ledger_prices.json`. The snapshot was checked on 2026-10-22 against
@@ -240,12 +250,12 @@ hours. Round totals give neither measure: they carry no transcript identity, and
 marks only the run's end. Any undated record also leaves both unavailable.
 
 Invalid JSON lines, including valid JSON that is not an object, are counted in `invalid_json_lines`
-and named as `path:line` in `invalid_json_locations`. A line that parses as an object after
-stripping leading NUL bytes and has no usage fields also counts as `recovered_nul_padded_lines`;
-`invalid_json_lines` includes it, and normalizers need every invalid line recovered. Unrecovered
-invalid lines, missing round totals, and undated records excluded from a window set
-`source_complete` to false, which empties both hour fields and every normalized cost rather than
-hide incomplete accounting. Unpriced records empty only the costs.
+and named as `path:line` in `invalid_json_locations`, sorted by path and numeric line number. A line
+that parses as an object after stripping leading NUL bytes and has no usage fields also counts as
+`recovered_nul_padded_lines`; `invalid_json_lines` includes it, and normalizers need every invalid
+line recovered. Unrecovered invalid lines, conflicting copies, missing round totals, and undated
+records excluded from a window set `source_complete` to false, which empties both hour fields and
+every normalized cost rather than hide incomplete accounting. Unpriced records empty only the costs.
 
 For cost per accepted outcome, pass `--outcomes FILE` with an explicit denominator:
 
