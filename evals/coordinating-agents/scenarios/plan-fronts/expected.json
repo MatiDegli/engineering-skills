@@ -63,7 +63,7 @@
     {
       "id": "brief-base-revision",
       "kind": "seeded",
-      "why": "presence check that stands in for the brief_fields part, which the runner lacks and which would test each brief: the base revision",
+      "why": "presence check that stands in for the brief_fields part, which the runner lacks and which would test each brief: the base revision, as a commit (main's short SHA), not a branch name that moves",
       "source": "briefs/*.md",
       "near": [
         "{{short:repo:main}}"
