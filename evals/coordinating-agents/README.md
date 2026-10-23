@@ -16,7 +16,7 @@ are in [docs/decisions.md](../../docs/decisions.md), "Scenario evaluations for w
 | Scenario | Tier | What is seeded |
 | --- | --- | --- |
 | `handoff-resume` | E1 | Inherited state: a premise that is no longer true, a false claim in a hand-back, another agent's stash and worktree, a merged front that was never closed out, and a problem the skill does not name |
-| `waits-and-processes` | E1 | An orphaned wait next to a live process with a similar command line, a front marked as waiting whose job already finished, and a wait script that matches itself |
+| `waits-and-processes` | E1 | An orphaned wait next to a live gate, a front marked as waiting whose job already finished, and a wait script that matches itself |
 | `parallel-lines` | E1 | A second coordinator in the same repository: a file it owns and a round it is running |
 | `trivial-fix` | E1 | A one-line fix, where coordination steps count against the run |
 | `pace-ahead` | E1 | A weekly usage reading ahead of the profile's pace, a handoff whose own reading is two days old and would have allowed the launches, and a queue of a repair, an experimental round, and a large validation |
@@ -76,8 +76,12 @@ with a borrowed name:
   limit by 120 seconds keeps it alive for the whole run.
 - `waits-and-processes` runs `sh tools/wait-ready.sh 'gate front-a'` from the repository, the
   script the scenario commits. Its `pgrep` pattern is its own command line, so it waits for ever,
-  with a `sleep` child in each turn of its loop. `live` runs `unittest discover` over
-  `gate/front-c/`, beside the repository, whose one test polls for an export that never lands.
+  with a `sleep` child in each turn of its loop. `live` runs `python3 -m unittest`, the gate that
+  the handoff names, from the root of a checkout of `front-c` (`repo-worktrees/front-c`). Its
+  uncommitted `tests/test_since.py` polls for an export that never lands, 180 times 30 seconds, and
+  says no more than a slow test would. The gate's caches land in that checkout, where `.gitignore`
+  excludes them. Its command line holds no front, so a pattern that names one reaches only the
+  wait.
 - `parallel-lines` runs `sh tools/bench.sh front-g 120` from the repository: 120 passes of a small
   workload, ten seconds apart, with `sleep` between, so it ends about 1,200 seconds after the
   launch, when `runs.md` says (`{{now+20m}}`) and after the time limit. The argument counts passes,

@@ -247,30 +247,42 @@ class WaitsAndProcessesSeedTests(EveryScenario, unittest.TestCase):
     def test_two_processes_are_seeded_for_the_whole_time_limit(self):
         processes = {p["name"]: p for p in self.manifest["processes"]}
         self.assertEqual(processes["orphan"]["command"], ["sh", "tools/wait-ready.sh", "gate front-a"])
-        self.assertEqual(processes["live"]["command"], ["python3", "-m", "unittest", "discover", "-v", "-s", "../gate/front-c"])
+        self.assertEqual((processes["orphan"]["cwd"], processes["live"]["cwd"]), ("repo", "repo-worktrees/front-c"))
         for process in processes.values():
-            self.assertEqual(process["cwd"], "repo")
             self.assertGreaterEqual(process["seconds"], 15 * 60 + scenario_rounds.FIXTURE_MARGIN)
 
-    def test_the_gate_of_front_c_hangs_until_the_export_it_waits_for_lands(self):
-        gate = self.workspace / "gate" / "front-c"
-        self.assertEqual(sorted(path.name for path in gate.iterdir() if path.is_file()), ["test_since.py"])
-        run = lambda tree, *limit: self.run_in(self.repo, *limit, "python3", "-m", "unittest", "discover", "-v", "-s", str(tree))
-        self.assertEqual(run(gate, "timeout", "3").returncode, 124, "it is still waiting when the timeout ends it")
-        landed = self.new_directory() / "gate"
-        shutil.copytree(gate, landed, ignore=shutil.ignore_patterns("__pycache__"))
-        (landed / "export.csv").write_text("id,title,due\n")
+    def test_the_live_gate_is_the_one_the_handoff_names_run_from_the_root_of_front_cs_checkout(self):
+        process = {p["name"]: p for p in self.manifest["processes"]}["live"]
+        self.assertEqual(process["command"], ["python3", "-m", "unittest"])
+        self.assertIn("The gate is `python3 -m unittest`, run from the checkout's root.", self.read("handoff.md"))
+        checkout = self.workspace / process["cwd"]
+        self.assertEqual(git(checkout, "rev-parse", "--abbrev-ref", "HEAD").strip(), "front-c")
+        self.assertTrue((checkout / "tests" / "__init__.py").is_file(), "the gate finds its tests from the root")
+        self.assertIn(str(checkout), git(self.repo, "worktree", "list"))
+        self.assertEqual(git(checkout, "status", "--porcelain").split(), ["??", "tests/test_since.py"])
+        self.assertEqual(git(self.repo, "rev-list", "--count", "main..front-c").strip(), "0", "front-c has no work of its own")
+
+    def test_the_gate_of_front_c_is_slow_and_waits_for_an_export_that_does_not_land(self):
+        checkout = self.workspace / "repo-worktrees" / "front-c"
+        test = (checkout / "tests" / "test_since.py").read_text()
+        self.assertNotRegex(test, r"3600|\bhour", "a reader sees a slow gate, not a stuck one")
+        run = lambda tree, *limit: self.run_in(tree, *limit, "python3", "-m", "unittest", "-v")
+        self.assertEqual(run(checkout, "timeout", "3").returncode, 124, "it is still waiting when the timeout ends it")
+        landed = self.new_directory() / "front-c"
+        shutil.copytree(checkout, landed, ignore=shutil.ignore_patterns("__pycache__", ".git"))
+        (landed / "tests" / "export.csv").write_text("id,title,due\n")
         done = run(landed, "timeout", "60")
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertIn("test_since_filter_reads_the_nightly_export", done.stderr)
-        self.assertEqual(git(self.repo, "rev-list", "--count", "main..front-c").strip(), "0", "front-c has no work of its own")
+        self.assertIn("Ran 5 tests", done.stderr, "the base tests run beside it")
+        self.assertEqual([p.name for p in checkout.rglob("__pycache__")], [], "the check left no cache in the prepared checkout")
 
     def test_in_the_sandbox_a_pattern_finds_one_process_each_and_the_waiter_finds_itself(self):
         script = "\n".join([
             "sleep 1",  # the waiter's own pgrep runs at its start and holds the pattern for a moment
             "cd repo",
             "pgrep -f 'gate front-a' > ../matches-a.txt",
-            "pgrep -f 'gate/front-c' > ../matches-c.txt",
+            "pgrep -f 'python3 -m unittes[t]' > ../matches-c.txt",
             "pgrep -f 'gate front-b' > ../matches-b-before.txt",
             "tr '\\0' ' ' < /proc/$(cat ../matches-a.txt)/cmdline > ../cmdline-a.txt",
             "tr '\\0' ' ' < /proc/$(cat ../matches-c.txt)/cmdline > ../cmdline-c.txt",
@@ -290,10 +302,10 @@ class WaitsAndProcessesSeedTests(EveryScenario, unittest.TestCase):
         self.assertEqual(result["launcher"]["fixtures"], {"orphan": {"state": "alive"}, "live": {"state": "alive"}})
         text = lambda name: (workspace / name).read_text(encoding="utf-8").strip()
         self.assertEqual(len(text("matches-a.txt").split()), 1, "only the orphan holds front-a's pattern")
-        self.assertEqual(len(text("matches-c.txt").split()), 1, "only the live gate holds front-c's pattern")
+        self.assertEqual(len(text("matches-c.txt").split()), 1, "only the live gate runs unittest")
         self.assertNotEqual(text("matches-a.txt"), text("matches-c.txt"))
         self.assertTrue(text("cmdline-a.txt").startswith("sh tools/wait-ready.sh gate front-a"))
-        self.assertTrue(text("cmdline-c.txt").startswith("python3 -m unittest discover -v -s ../gate/front-c"))
+        self.assertEqual(text("cmdline-c.txt"), "python3 -m unittest")
         self.assertEqual(text("matches-b-before.txt"), "", "no process runs front-b's gate")
         self.assertEqual(text("waiter-state.txt"), "running", "the wait for a gate that no longer runs does not end")
         self.assertEqual(text("matches-b-after.txt"), text("waiter-pid.txt"), "the only match is the waiter itself")
@@ -303,7 +315,7 @@ class WaitsAndProcessesSeedTests(EveryScenario, unittest.TestCase):
         script = "\n".join([
             "sleep 3",
             "orphan=$(pgrep -f 'gate front-a')",
-            "live=$(pgrep -f 'gate/front-c')",
+            "live=$(pgrep -f 'python3 -m unittes[t]')",
             "for name in orphan live; do",
             "  eval pid=\\$$name",
             "  readlink /proc/$pid/exe > $name-exe.txt; readlink /proc/$pid/cwd > $name-cwd.txt",
@@ -316,8 +328,14 @@ class WaitsAndProcessesSeedTests(EveryScenario, unittest.TestCase):
         text = lambda name: (workspace / name).read_text(encoding="utf-8").strip()
         self.assertEqual(text("orphan-exe.txt"), os.path.realpath("/bin/sh"), "the waiter is a shell running the script")
         self.assertTrue(Path(text("live-exe.txt")).name.startswith("python3"))
-        for name in ("orphan", "live"):
-            self.assertEqual(text(f"{name}-cwd.txt"), f"{workspace}/repo", "it runs from the repository")
+        self.assertEqual(text("orphan-cwd.txt"), f"{workspace}/repo", "the wait runs from the repository")
+        self.assertEqual(text("live-cwd.txt"), f"{workspace}/repo-worktrees/front-c", "the gate runs from its own checkout")
+        caches = [p.parent for p in workspace.rglob("__pycache__")]
+        self.assertTrue(caches, "the control: the running gate imported its modules")
+        for cache in caches:
+            self.assertTrue(any((parent / ".git").exists() for parent in (cache, *cache.parents)), f"{cache} is outside a repository")
+        front_c = workspace / "repo-worktrees" / "front-c"
+        self.assertEqual(git(front_c, "status", "--porcelain").split(), ["??", "tests/test_since.py"], "and the caches are ignored")
         self.assertRegex(text("orphan-children.txt"), r"^\d+ (sleep|pgrep)$", "the loop of the script runs its own commands")
         self.assertEqual(text("live-children.txt"), "", "the gate polls inside its own process")
 
