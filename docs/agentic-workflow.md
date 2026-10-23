@@ -132,8 +132,8 @@ The evaluation runner's mechanisms, each with its incident, are listed under
   ([Headless rounds](../evals/README.md#headless-rounds)). *Follow-up:* a
   checkpoint that a tool generates, so a fresh session can resume from a file.
 - **Bound each agent's context, and start a fresh agent instead of resuming a large one.** In the
-  same two projects, ledgers rerun on 2026-10-21 with the scripts of 2026-10-17 found cost per
-  active hour down 63% in one and the list-price total down 52% in the other. Most of the fall was
+  same two projects, ledgers rerun on 2026-10-21 and 2026-10-23 found cost per agent-hour down 43%
+  in one and the list-price total down 52% in the other. Most of the fall was
   in what these rules targeted: fix rounds that resumed the same implementer fell from 284 to 12
   USD, and requests above 300k tokens from 763 to 76 USD. *Follow-up:* context caps and a fresh
   agent per fix round in `coordinating-agents`.
@@ -161,11 +161,14 @@ The evaluation runner's mechanisms, each with its incident, are listed under
   to the rebuilds it avoided: 7.26 USD paid against about 7.85 estimated in one project, and 19.2
   against about 29.5 in the other. *Follow-up:* `coordinating-agents` gives the longer cache only to
   agents expected to wait more than five minutes.
-- **Compare cost windows by the work done, in more than one unit.** Cost per active hour fell 63%
+- **Compare cost windows by the work done, in more than one unit.** Cost per agent-hour fell 43%
   and per merged change 59%, but per thousand changed lines only 6%, because changes had become
-  smaller (985 lines against 2,234). A window of 87 hours had about as many active hours as one of
-  45. *Follow-up:* `python3 -m tools.claude_ledger` reports cost per active hour and per merged
-  change beside the total.
+  smaller (985 lines against 2,234). Hours need two units too: a window of 87 hours had about as
+  many hours of project activity as one of 45, counted once however many agents ran, but 30% fewer
+  agent-hours, because about 3.8 agents ran at once instead of 5.6. Cost per hour of project
+  activity fell 62%, and part of that fall is the lower parallelism, not efficiency.
+  *Follow-up:* `python3 -m tools.claude_ledger` reports cost per agent-hour, per hour of project
+  activity, and per accepted outcome beside the total.
 - **Rounds as small as the question.** While a skill changes often, diagnostic rounds use one
   cheaper model sized to the one question; the strongest model and the large case validate release
   candidates. *Follow-up:* record the protocol by kind of change in
