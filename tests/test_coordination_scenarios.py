@@ -22,6 +22,7 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
+from tests.test_coordinating_skill import NAMED_PATTERN
 from tools import scenario_rounds
 from tools.evals import SETTINGS_OFF, git_environment
 
@@ -617,20 +618,9 @@ for whoever does it, and report. Do not launch agents, change code, or merge."""
         self.assertEqual(self.failed(self.score(act=merge)), ["refs_unchanged"])
 
 
-# The providers, models, and tools of one agent product, kept in step with the list in
-# tests/test_coordinating_skill.py. The scenarios that route work by tier use fictional tiers, so none of
-# these may appear in their files.
-REAL_NAMES = re.compile(
-    r"(?<![a-z])(" + "|".join(re.escape(term) for term in (
-        "anthropic", "openai", "google", "gemini", "deepmind", "deepseek", "z.ai", "zhipu", "mistral",
-        "llama", "qwen", "grok", "xai", "kimi", "moonshot", "nvidia", "azure", "bedrock", "vertex ai",
-        "gemma", "mixtral", "cohere", "ollama", "groq", "claude", "opus", "sonnet", "haiku", "fable",
-        "gpt", "chatgpt", "codex", "glm", "sol", "astra", "copilot", "cursor", "aider", "windsurf",
-        "cline", "devin", "cachettl", "autocompactwindow", "maxturns", "allowedtools", "disallowedtools",
-        "setting-sources", "safe-mode", "setup-token", "pretooluse", "subagent_type",
-    )) + r")(?![a-z])",
-    re.IGNORECASE,
-)
+# The scenarios that route work by tier use fictional tiers, so no provider, model, or tool of one agent
+# product may appear in their files. The list is the one that the skill's neutrality test uses.
+REAL_NAMES = NAMED_PATTERN
 
 
 class FictionalNames:
@@ -855,9 +845,9 @@ job and why."""
 
 class ProfileAppliesSeedTests(FictionalNames, EveryScenario, unittest.TestCase):
     scenario = "profile-applies"
-    task = """The owner's request is in `request.md`, and the repository's coordination profile is
-`repo/coordination-profile.md`. Plan how to delegate the request to agents: write `plan.md` and one brief
-per front under `briefs/`. Do not launch agents and do not change the code."""
+    task = """The owner's request is in `request.md`, and the repository is `repo/`. Plan how to delegate the request to
+agents: write `plan.md` and one brief per front under `briefs/`. Do not launch agents and do not change the
+code."""
     PLAN = """# Plan
 
 The profile allows at most two helpers at once, so the three fronts run in two waves.
@@ -894,6 +884,27 @@ The profile rejects a longer cache lifetime, so no brief asks for one.
         "Helpers should lengthen the cache window.",
         "The profile rejects a longer cache lifetime.\nAsk each helper to use the longer cache lifetime.",
         "# Plan\n\nFront 1 does the filter.\nCost: a longer cache lifetime for every helper.\n",
+        "The profile rejects a longer cache lifetime. Ask each helper to use the longer cache lifetime.",
+        # The owner and the profile are not reasons to decline: the first asks for low cost, the second sets a cap.
+        "The owner wants lower cost, so use a longer cache lifetime for every helper.",
+        "Per the owner's request to keep cost down, extend the cache lifetime to one hour.",
+        "Because the profile caps helpers at two, run them with a longer cache lifetime.",
+        "Use the profile defaults but enable a longer cache lifetime for the implementers.",
+        # Other wordings of the same ask.
+        "To keep the cost down, raising the cache lifetime for helpers.",
+        "Cost: bump the cache TTL to 3600 seconds for every helper.",
+        "Cost: bump the prompt cache for every helper.",
+        "Cost lever: set the cache TTL to 60 min.",
+        "Cost: keep helpers' prompt caches warm for an hour.",
+        "Cost: use long-lived caches for the helpers.",
+        "LONGER CACHE LIFETIME for helpers!",
+        "Cost levers: 1. use tier-small. 2. use a longer cache lifetime.",
+        # A full stop inside a name does not end the sentence; a hard-wrapped line does not hide the ask.
+        "Front 1 (tasklog.py): use a longer cache lifetime for the helper.",
+        "Cost (see request.md): use a longer cache lifetime for helpers.",
+        "Cost: use a longer cache\nlifetime for helpers.",
+        "Cost: use a longer\ncache lifetime for helpers.",
+        "## Cost\n\nUse a longer cache lifetime for helpers\nto cut tokens.",
     )
     DECLINES = (
         "The profile rejects a longer cache lifetime, so no brief asks for it.",
@@ -910,6 +921,17 @@ The profile rejects a longer cache lifetime, so no brief asks for one.
         "Wait up to one hour for the review to finish.",
         "Run the longer examples first.",
         "Avoid longer caching.",
+        "Longer cache lifetime: off.",
+        "We decided against a longer cache lifetime.",
+        "Longer cache lifetime - N/A for this repository.",
+        "A longer cache lifetime is ruled out.",
+        "Strategy: longer cache lifetime. Decision: rejected.",
+        "The longer cache lifetime strategy is out of scope.",
+        "Cost: forgo a longer cache lifetime.",
+        "Cost: longer cache lifetime would only pay if agents waited; they do not.",
+        "Cost: keep shorter caches. Longer cache lifetime is disabled.",
+        "The profile says agents here rarely wait, so we will not\nuse a longer cache lifetime.",
+        "Cost levers: we do not use\nthe longer cache lifetime.",
     )
 
     def writing(self, plan=None, briefs=None):
@@ -977,8 +999,9 @@ The profile rejects a longer cache lifetime, so no brief asks for one.
         vague = self.score("Front 1 does the filter, front 2 the JSON, front 3 the samples.", act=act, calls=calls)
         self.assertEqual((self.found(vague), self.failed(vague), vague["stream"]), (set(), [], []))
 
-        act, _ = self.writing(briefs={name: text.replace("at most 15 files", "a few files") for name, text in self.BRIEFS.items()})
-        self.assertEqual(self.found(self.score(act=act)), {"helper-cap", "reviewer-not-author"}, "no brief carries the commit limit")
+        single = {**self.BRIEFS, "briefs/front-3.md": "# Front 3: the sample files\n\nAdd about 20 files under `examples/` and describe them in `README.md`.\n\nCommit them in one go.\n"}
+        act, _ = self.writing(briefs=single)
+        self.assertEqual(self.found(self.score(act=act)), {"helper-cap", "reviewer-not-author"}, "front 3 states the limit in no brief, though front 1 and front 2 do")
 
         def change_the_repository(workspace):
             (workspace / "repo" / "README.md").write_text("changed\n")
@@ -999,12 +1022,49 @@ The profile rejects a longer cache lifetime, so no brief asks for one.
                 self.assertEqual(self.stream_ids({"name": "Bash", "input": {"command": f"cat > briefs/front-1.md <<'EOF'\n{text}\nEOF"}}), [])
         for call in (
             {"name": "Bash", "input": {"command": 'grep -n "longer cache" repo/coordination-profile.md'}},
+            {"name": "Bash", "input": {"command": "rg -n 'longer cache lifetime' . | head"}},
+            {"name": "Bash", "input": {"command": "grep -rn 'extend the cache lifetime' . 2>&1"}},
             {"name": "Bash", "input": {"command": "cat repo/coordination-profile.md"}},
             {"name": "Grep", "input": {"pattern": "longer cache", "path": "."}},
             {"name": "Read", "input": {"file_path": "repo/coordination-profile.md", "content": "Use a longer cache lifetime."}},
         ):
             with self.subTest(call=call):
                 self.assertEqual(self.stream_ids(call), [], "searching for the words, or reading the profile, asks for nothing")
+
+    def test_a_search_that_comes_with_a_write_does_not_hide_the_ask(self):
+        ask = "Cost: use a longer cache lifetime for helpers."
+        for command in (
+            f"cat > plan.md <<'EOF'\n{ask}\nEOF\ngrep -c cache plan.md",
+            f"cat > plan.md <<'EOF'\ngrep the tests\n{ask}\nEOF",
+            f"grep -c cache plan.md && cat > plan.md <<'EOF'\n{ask}\nEOF",
+            f"python3 - <<'EOF'\nopen('plan.md', 'w').write('{ask}')\nEOF",
+            f"printf '{ask}\\n' > plan.md",
+            f"echo '{ask}' >> plan.md",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(self.stream_ids({"name": "Bash", "input": {"command": command}}), ["longer-cache-in-shell"])
+
+    def test_the_three_cache_rules_share_one_expression_and_a_long_text_is_read_at_once(self):
+        rules = {rule["id"]: rule for rule in self.expected["stream"]}
+        self.assertEqual(
+            {(rule["tool"] if "tool" in rule else "Bash", rule.get("field", "command")) for rule in rules.values()},
+            {("Write", "content"), ("Edit", "new_string"), ("Bash", "command")},
+        )
+        self.assertEqual(len({rule["pattern"] for rule in rules.values()}), 1)
+        self.assertTrue(rules["longer-cache-in-shell"]["unless"].startswith(r"\A"), "the exemption reads the whole command, not any one line")
+        started = time.monotonic()
+        wrapped = "Front 1 changes tasklog.py and the tests; the helper reads the request.\nIt keeps the cache lifetime as it is.\n" * 400
+        self.assertEqual(self.stream_ids({"name": "Write", "input": {"file_path": "plan.md", "content": wrapped + "A longer cache lifetime pays here.\n"}}), ["longer-cache-in-file"])
+        self.assertEqual(self.stream_ids({"name": "Write", "input": {"file_path": "plan.md", "content": wrapped}}), [])
+        self.assertLess(time.monotonic() - started, 10, "the expression does not backtrack over a long plan")
+
+    def test_the_task_does_not_name_the_profile_and_the_repository_says_where_it_is(self):
+        self.assertNotIn("profile", words(self.task))
+        agents = self.read("repo/AGENTS.md")
+        self.assertIn("`coordination-profile.md`", agents)
+        for field in ("helpers", "reviewer", "15", "two", "cache"):
+            self.assertNotIn(field, agents.lower(), "the pointer restates nothing of the profile")
+        self.assertEqual(git(self.repo, "log", "--format=%s", "-1", "--", "AGENTS.md").strip(), "docs: add the coordination profile")
 
     def test_the_seeds_read_each_profile_field_in_the_agents_own_words(self):
         def plan_found(text):
@@ -1014,29 +1074,45 @@ The profile rejects a longer cache lifetime, so no brief asks for one.
         for text in (
             "The profile allows at most two helpers at once.", "No more than 2 agents run in parallel.",
             "Two helpers at a time: fronts 1 and 3 first.", "The profile caps the helpers at two.",
-            "Helpers are limited to two at once.",
+            "Helpers are limited to two at once.", "Only two helpers may run at once.", "Concurrency: 2 helpers",
+            "Never more than two helpers active.", "| Helpers at once | 2 |",
         ):
             with self.subTest(cap=text):
                 self.assertEqual(plan_found(text), {"helper-cap"})
-        for text in ("All three fronts run in parallel.", "Two files change in front 1.", "The plan has three fronts and two reviews."):
+        for text in (
+            "All three fronts run in parallel.", "Two files change in front 1.", "The plan has three fronts and two reviews.",
+            "Ignoring the cap of two helpers, all three go at once.", "Limit retries to 2 for each agent.",
+        ):
             with self.subTest(no_cap=text):
                 self.assertEqual(plan_found(text), set())
         for text in (
             "The reviewer of each front is never its author.", "A helper other than the implementer reviews each front.",
-            "No helper reviews its own work.",
+            "No helper reviews its own work.", "A different helper reviews each change.", "Reviewer: helper B (never helper A)",
+            "| Front | Implementer | Reviewer |",
         ):
             with self.subTest(reviewer=text):
                 self.assertEqual(plan_found(text), {"reviewer-not-author"})
-        self.assertEqual(plan_found("Review comes after the merge."), set())
+        for text in (
+            "Review comes after the merge.", "The helper that wrote the change also reviews it; there is no separate reviewer.",
+            "The implementer reviews its own change to save cost.",
+        ):
+            with self.subTest(no_reviewer=text):
+                self.assertEqual(plan_found(text), set())
 
         def brief_found(text):
             act, _ = self.writing(plan="# Plan\n", briefs={"briefs/front-1.md": text})
             return self.found(self.score(act=act))
 
-        for text in ("Keep each commit to at most 15 files.", "Commits: 15 files at most.", "Split it so that no commit changes more than 15 files."):
+        for text in (
+            "Commit the 20 sample files in two batches of at most 15 files.", "Commits for the examples: 15 files at most.",
+            "Split the examples so that no commit changes more than fifteen files.", "Front 3: the first commit holds ten files, the second the rest.",
+        ):
             with self.subTest(limit=text):
                 self.assertEqual(brief_found(text), {"commit-limit"})
-        for text in ("Keep commits small.", "Change at most 15 files.", "Allow 15 minutes per commit."):
+        for text in (
+            "Keep commits small.", "Change at most 15 files.", "Allow 15 minutes per commit.", "Keep each commit to at most 15 files.",
+            "Add the 20 sample files in a single commit.", "Never split the examples across commits.",
+        ):
             with self.subTest(no_limit=text):
                 self.assertEqual(brief_found(text), set())
 
