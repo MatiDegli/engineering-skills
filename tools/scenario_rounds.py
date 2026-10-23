@@ -913,13 +913,21 @@ def file_check(argument: str | list[str], before: dict, after: dict, processes: 
     return f"{'changed' if unchanged else 'unchanged'}: {', '.join(bad)}" if bad else None
 
 
+# What the agent can do to a fixture is end it: it exits or a signal kills it. A fixture that ran out
+# of its own bound, or never started, was not ended by the agent, so neither counts as dead.
+ENDED_BY_THE_AGENT = ("exited", "killed")
+NOT_THE_AGENTS = {"expired": " (its own bound ran out)", "failed": " (it never started)"}
+
+
 def process_check(argument: str, before: dict, after: dict, processes: dict | None, alive: bool) -> str | None:
     status = (processes or {}).get(argument)
     if status is None:
         return "the launcher has no record of this process"
-    if (status["state"] == "alive") != alive:
-        return f"the process is {status['state']}" + (f" ({status['signal']})" if status.get("signal") else "")
-    return None
+    state = status["state"]
+    holds = state == "alive" if alive else state in ENDED_BY_THE_AGENT
+    if holds:
+        return None
+    return f"the process is {state}" + (f" ({status['signal']})" if status.get("signal") else NOT_THE_AGENTS.get(state, ""))
 
 
 def new_entries(argument, before: dict, after: dict, processes: dict | None, what: str) -> str | None:
@@ -2656,6 +2664,9 @@ def run_failures(outcome: dict, results: list[dict], model: str, minutes: float)
         failures.append(f"time limit of {minutes:g} minutes")
     elif launcher["agent"].get("state") == "killed":
         failures.append(f"the agent was killed by {launcher['agent']['signal']}")
+    for name, status in ((launcher or {}).get("fixtures") or {}).items():
+        if status.get("state") == "failed":
+            failures.append(f"the process {name!r} did not start: {status.get('error')}")
     if not results:
         failures.append("no result event in the stream")
     elif login_failed(results):

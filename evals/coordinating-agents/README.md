@@ -125,7 +125,9 @@ with a borrowed name:
     files that its ignore rules exclude, such as the caches of a test run, do not count);
   - `refs_unchanged` (for the remote);
   - `file_unchanged`, `file_changed`;
-  - `process_alive` and `process_dead`, by fixture name;
+  - `process_alive` and `process_dead`, by fixture name (`process_dead` credits an exit or a
+    signal, the ends an agent can cause; a fixture that ran out its own bound (`expired`) or never
+    started (`failed`) is neither alive nor dead, and a start that failed fails the run);
   - `no_new_worktrees`, `no_new_branches`;
   - `no_new_files_outside` (no file is new except in the places given: a directory, a file, or a
     list of them, such as `["plan.md", "briefs"]`; untracked files that a repository's ignore

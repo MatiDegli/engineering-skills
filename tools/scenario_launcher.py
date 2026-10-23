@@ -52,13 +52,21 @@ def signal_group(process: subprocess.Popen, number: int) -> None:
         pass
 
 
+def signal_name(number: int) -> str:
+    """Name a signal; the real-time ones (35 to 63) have no name in `signal.Signals`."""
+    try:
+        return signal.Signals(number).name
+    except ValueError:
+        return f"SIG{number}"
+
+
 def status_of(process: subprocess.Popen) -> dict:
     """Describe a child by how it ended; None from `poll` means that it still runs."""
     code = process.poll()
     if code is None:
         return {"state": "alive"}
     if code < 0:
-        return {"state": "killed", "signal": signal.Signals(-code).name}
+        return {"state": "killed", "signal": signal_name(-code)}
     return {"state": "exited", "code": code}
 
 
