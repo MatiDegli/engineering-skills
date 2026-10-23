@@ -124,6 +124,27 @@ class LedgerTests(unittest.TestCase):
                 self.assertEqual(issues["invalid_json_locations"], [f"{path}:1", f"{path}:2"])
                 self.assertEqual(issues["recovered_nul_padded_lines"], 0)
 
+    def test_non_object_json_is_invalid_located_and_suppresses_in_both_readers(self):
+        for reader in (transcript_records, round_records):
+            for value in ([], None, 1, "text", True):
+                with self.subTest(reader=reader.__name__, value=value), tempfile.TemporaryDirectory() as directory:
+                    path = Path(directory) / "streams/a.jsonl"
+                    totals = {"claude-opus-5-5": {"outputTokens": 100}}
+                    valid = (response("paid", output_tokens=100) if reader == transcript_records else
+                             {"type": "result", "modelUsage": totals})
+                    write(path, [valid, value])
+                    issues = defaultdict(int)
+                    result = report(reader(Path(directory), issues), load_prices(), issues,
+                                    outcomes={"accepted": 1, "unit": "change", "source": "test"})
+                self.assertEqual(issues["invalid_json_lines"], 1)
+                self.assertEqual(issues["invalid_json_locations"], [f"{path}:2"])
+                self.assertEqual(issues["recovered_nul_padded_lines"], 0)
+                self.assertEqual(result["responses"], 1)
+                self.assertFalse(result["source_complete"])
+                for key in ("agent_hours_10min_buckets", "project_active_hours_10min_buckets", "usd_per_agent_hour",
+                            "usd_per_project_active_hour", "usd_per_accepted_outcome"):
+                    self.assertIsNone(result[key], key)
+
     def test_invalid_line_suppresses_all_normalizers(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "a.jsonl"

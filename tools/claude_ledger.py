@@ -51,9 +51,10 @@ def events(path: Path, issues: dict):
         for number, line in enumerate(stream, 1):
             try:
                 event = json.loads(line)
-                if isinstance(event, dict):
-                    yield number, event
-            except json.JSONDecodeError:
+                if not isinstance(event, dict):
+                    raise ValueError("JSON line is not an object")
+                yield number, event
+            except (json.JSONDecodeError, ValueError):
                 issues["invalid_json_lines"] += 1
                 issues.setdefault("invalid_json_locations", []).append(f"{path}:{number}")
                 if not line.startswith("\0"):

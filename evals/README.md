@@ -239,13 +239,13 @@ Both measures clip buckets to the requested window; neither measures elapsed or 
 hours. Round totals give neither measure: they carry no transcript identity, and a dated total
 marks only the run's end. Any undated record also leaves both unavailable.
 
-Invalid JSON lines are counted in `invalid_json_lines` and named as `path:line` in
-`invalid_json_locations`. A line that parses as an object after stripping leading NUL bytes and
-has no usage fields also counts as `recovered_nul_padded_lines`; `invalid_json_lines` includes it,
-and normalizers need every invalid line recovered. Unrecovered invalid lines, missing round totals,
-and undated records excluded from a window set `source_complete` to false, which empties both hour
-fields and every normalized cost rather than hide incomplete accounting. Unpriced records empty
-only the costs.
+Invalid JSON lines, including valid JSON that is not an object, are counted in `invalid_json_lines`
+and named as `path:line` in `invalid_json_locations`. A line that parses as an object after
+stripping leading NUL bytes and has no usage fields also counts as `recovered_nul_padded_lines`;
+`invalid_json_lines` includes it, and normalizers need every invalid line recovered. Unrecovered
+invalid lines, missing round totals, and undated records excluded from a window set
+`source_complete` to false, which empties both hour fields and every normalized cost rather than
+hide incomplete accounting. Unpriced records empty only the costs.
 
 For cost per accepted outcome, pass `--outcomes FILE` with an explicit denominator:
 
