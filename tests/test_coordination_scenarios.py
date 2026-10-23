@@ -1024,5 +1024,44 @@ The profile rejects a longer cache lifetime, so no brief asks for one.
                 self.assertEqual(brief_found(text), set())
 
 
+class PhrasingTests(unittest.TestCase):
+    """Score each scenario's labelled phrasings, `phrasings.json`, as the runner would.
+
+    A phrasing is a sentence an agent could write, labelled with whether it deserves the seed's
+    credit. The oracle must agree with each label, except where `oracle_wrong` pins a known error,
+    so that a change to a `near` list that fixes or breaks a phrasing shows up here. A phrasing may
+    name a revision with the `{{sha:...}}` and `{{short:...}}` templates of the fixtures.
+    """
+
+    @staticmethod
+    def render(text, before):
+        def revision(match):
+            kind, repo, name = scenario_rounds.REVISION_TEMPLATE.fullmatch(match.group(1)).groups()
+            sha = scenario_rounds.revision_sha(before, repo, name)
+            return sha if kind == "sha" else sha[:7]
+
+        return scenario_rounds.TEMPLATE.sub(revision, text)
+
+    def test_the_oracle_scores_each_labelled_phrasing_as_labelled(self):
+        scenarios = sorted(path.parent for path in scenario_rounds.SCENARIOS.glob("*/phrasings.json"))
+        self.assertTrue(scenarios)
+        for path in scenarios:
+            expected = json.loads((path / "expected.json").read_text(encoding="utf-8"))
+            seeds = {seed["id"]: seed for seed in expected["detect"]}
+            spec = json.loads((path / "scenario.json").read_text(encoding="utf-8"))
+            task = (path / spec["task"]).read_text(encoding="utf-8")
+            with tempfile.TemporaryDirectory() as directory:
+                manifest = scenario_rounds.prepare_workspace(path, Path(directory), NOW)
+                before = scenario_rounds.take_snapshot(Path(directory), manifest)
+            for case in json.loads((path / "phrasings.json").read_text(encoding="utf-8")):
+                files = {name: self.render(text, before) for name, text in case.get("files", {}).items()}
+                after = {**before, "files": {**before["files"], **{
+                    name: {"text": text, "size": len(text)} for name, text in files.items()}}}
+                report = self.render(case["text"], before)
+                found = scenario_rounds.detect([seeds[case["seed"]]], report, before, after, task)[0]["found"]
+                with self.subTest(scenario=path.name, seed=case["seed"], text=case["text"]):
+                    self.assertEqual(found, case["credit"] != bool(case.get("oracle_wrong")))
+
+
 if __name__ == "__main__":
     unittest.main()

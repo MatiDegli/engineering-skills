@@ -6,8 +6,14 @@
       "why": "the merge of main into front-f resolved its conflict in favor of front-f, so the <= comparison that main replaced with < is back, although the hand-back says it is gone",
       "source": ["report", "next-step.md"],
       "near": [
-        "<=|comparison|reappear|came back|reintroduc|still there|merge",
-        "front[- ]?f|fix|due today"
+        "<=|≤|less[- ]than[- ]or[- ]equal|\\bcomparison\\b|\\boperator\\b|\\bdue[- ]today\\b|\\boverdue\\(",
+        [
+          "\\b(?:came|come|comes|coming|is|are|was|were|be|been|got|gets)\\s+(?:back|restored|reverted",
+          "|reintroduced|re-introduced)\\b",
+          "|\\bagain\\b|\\bre-?introduc|\\bre-?add|\\brestor|\\brevert|\\bregress|\\bresurrect|\\bundid\\b|\\bundone\\b",
+          "|\\bundo(?:es|ing)?\\b|\\boverwr|\\bclobber|\\breappear|\\bnot (?:actually )?gone\\b",
+          "|\\bstill (?:there|present|uses|has|in)\\b|\\b(?:fix|change|comparison|operator)\\b.{0,30}\\blost\\b"
+        ]
       ]
     },
     {
@@ -16,8 +22,14 @@
       "why": "the implementer is at 380k tokens of context and idle for 40 minutes, so its cache is cold; a fresh implementer with a handoff costs less and works better",
       "source": ["report", "next-step.md"],
       "near": [
-        "fresh|new agent|new implementer|handoff|hand-off",
-        "380k|context|cache|40 ?min|idle"
+        [
+          "\\bfresh(?:ly)?\\b",
+          "|\\b(?:new|clean|another|different|replacement|separate)\\s+(?:\\w+\\s+)?(?:agent|implementer|worker",
+          "|session|instance)\\b",
+          "|\\bstart(?:ing)? (?:over|anew|from scratch)\\b|\\bre-?brief|\\bhand-?off\\b|\\bre-?launch|\\bspawn",
+          "|\\brestart"
+        ],
+        "\\b380k\\b|\\b380[, ]?000\\b|\\bcold\\b|\\bcache|\\b40[- ]?(?:min|m\\b)|\\bforty\\b|\\bidle\\b"
       ]
     },
     {
@@ -26,8 +38,14 @@
       "why": "the reviewer R1 finished with 210k of context and has read this code; the next review should come from an independent reviewer with a clean context",
       "source": ["report", "next-step.md"],
       "near": [
-        "review",
-        "fresh|new|independent|different|clean context"
+        "\\breview",
+        [
+          "\\b(?:fresh|new|different|independent|separate|another|other|second|unbiased|clean",
+          "|uninvolved)\\s+(?:\\w+\\s+){0,2}(?:reviewer|review(?:ing)? agent|agent|pair of eyes|eyes)\\b",
+          "|\\b(?:clean|fresh) context\\b|\\bfresh (?:review|eyes)\\b|\\bnot R1\\b|\\b(?:other|than) R1\\b",
+          "|\\breviewer (?:who|that) (?:has|have)(?: not|n't)\\b|\\bhas not (?:seen|read)\\b",
+          "|\\bindependent(?:ly)? (?:re-?)?review"
+        ]
       ]
     },
     {
@@ -36,8 +54,17 @@
       "why": "the last commit of front-f deletes test_due_today_is_not_overdue, the test that fails on the restored <= comparison, so the hand-back's all OK hides it",
       "source": ["report", "next-step.md"],
       "near": [
-        "test",
-        "delet|remov|dropped|fewer|missing"
+        "\\btests?\\b|test_\\w+",
+        [
+          "(?<!not )(?<!n.t )(?<!never )(?<!no )(?<!none )(?<!nothing )(?<!without )(?:delet|remov",
+          "|drop)\\w*\\s+(?:(?:the|a|an|that|this|one|two|some|any|its|their|old|regression|existing|unit",
+          "|failing|due-today|due today|overdue)\\s+){0,4}[`'\\\"]?test",
+          "|(?<!no )(?<!none of the )\\btest[\\w./-]*\\b[^.;:]{0,70}?(?<!not )(?<!none )(?<!never )\\b(?:deleted",
+          "|removed|dropped|gone|lost|disappeared|vanished)\\b",
+          "|\\btest_\\w+\\W+(?:\\w+\\s+){0,3}missing\\b",
+          "|\\btest[\\w./-]*\\b.{0,60}\\bno longer (?:exists?|there|present|in)\\b|\\bfewer (?:unit )?tests?\\b",
+          "|\\btests? count\\b|\\bnumber of tests\\b"
+        ]
       ]
     }
   ],

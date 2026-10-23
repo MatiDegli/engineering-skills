@@ -94,6 +94,10 @@ no secret-like file names, and external URLs only inside code spans.
     prefix of at least seven characters.
   - `summarize` prints each matching unit and its kind (paragraph, table row, list item, or
     section), so the maintainer can check a sample by hand.
+  - `phrasings.json`, next to `expected.json`, lists sentences an agent could write, each labelled
+    with whether it deserves a seed's credit; a test scores them all. A phrasing that the oracle
+    still scores against its label carries `oracle_wrong: true`, so a change that fixes it or
+    breaks another one shows up. A phrasing may name a revision with the `{{sha:...}}` templates.
 - **`state`**: assertions that compare the state before and after the run:
   - `stash_kept` (an entry with that message keeps its commit);
   - `worktree_unchanged` (its HEAD, the commit that HEAD resolves to, and its files; untracked

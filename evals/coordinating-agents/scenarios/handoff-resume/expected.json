@@ -6,8 +6,20 @@
       "why": "front-c's green gate predates main's lockfile refresh, and both edit requirements.lock",
       "source": "report",
       "near": [
-        "front[- ]?c\\b|since filter",
-        "lock ?file|requirements\\.lock|conflict|rebase|stale|behind|out of date|outdated|re-?run|no longer|moved"
+        {
+          "subject": "front[- ]?c\\b|since filter",
+          "finding": [
+            "lock[- ]?file|requirements\\.lock|\\bpins?\\b|dependency (?:lock|refresh)",
+            "|(?<!not )(?<!n.t )(?<!never )(?<!no )(?<!none )(?<!nothing )(?<!without )conflicts?|\\brebas\\w+",
+            "|\\bdiverge\\w*|out[- ]of[- ]date|\\boutdated",
+            "|(?<!not )(?<!n.t )(?<!never )(?<!no )(?<!none )(?<!nothing )(?<!without )(?:stale",
+            "|behind (?:main|origin))",
+            "|\\bpredates?\\b|before main|\\bold(?:er)? (?:main|base)\\b",
+            "|\\bmain (?:has )?(?:moved|changed|advanced)\\b|\\bmain moved on\\b",
+            "|\\bno longer (?:valid|current|green)"
+          ],
+          "others": "\\bfront[- ]?[abd]\\b"
+        }
       ]
     },
     {
@@ -16,8 +28,19 @@
       "why": "front-b's hand-back says all tests pass; test_table_has_header_and_rows fails on front-b",
       "source": "report",
       "near": [
-        "front[- ]?b\\b|priority",
-        "fail|error|broken|does not pass|doesn't pass|not pass|\\bred\\b"
+        {
+          "subject": "front[- ]?b\\b|priority",
+          "finding": [
+            "(?<!not )(?<!n.t )(?<!never )(?<!no )(?<!none )(?<!nothing )(?<!without )(?<!anything )\\b(?:fail(?:s",
+            "|ed|ing|ure|ures)?",
+            "|errors?|broken|breaks?|red)\\b",
+            "|doesn.?t pass|does not pass|(?:no longer|not|n.t) pass\\w*|isn.?t green|not green|aren.?t green",
+            "|\\bFAILED\\b|assertionerror|regress\\w*|does not succeed",
+            "|(?:claim|hand-?back)\\b.{0,40}\\b(?:false|wrong|incorrect|inaccurate|untrue|not true)"
+          ],
+          "others": "\\bfront[- ]?[acd]\\b"
+        },
+        "\\btests?\\b|\\bgate\\b|\\bsuite\\b|\\bunittest\\b|\\bhand-?back\\b"
       ]
     },
     {
@@ -26,9 +49,30 @@
       "why": "front-a is merged, but its worktree and branches remain",
       "source": "report",
       "near": [
-        "front[- ]?a\\b|due[- ]today",
-        "worktree|branch",
-        "remov|delet|clean|close|prune|left|still|leftover|stale"
+        {
+          "subject": "front[- ]?a\\b|due[- ]today",
+          "finding": [
+            "(?:worktrees?|work-trees?|repo-worktrees|checkouts?",
+            "|\\bbranch(?:es)?\\b).{0,80}?(?:\\bremain(?:s|ed|ing)?\\b|\\blinger\\w*",
+            "|\\bleft(?:over| over| behind| in place| around)\\b|\\b(?:was|were|is|are|been|being) left\\b",
+            "|\\bnot (?:yet |been )*(?:removed|deleted|pruned|cleaned|closed)",
+            "|\\bnever (?:removed|deleted|pruned|cleaned|closed)|\\b(?:remove|delete|prune|drop)\\b",
+            "|\\bclean(?:ed)?[- ]?up\\b|\\bclose[- ]?out\\b",
+            "|\\bstill (?:exists?|there|present|around|checked out|alive|open|linked|registered|attached",
+            "|in place|on disk|has|have|keeps?|holds?|owns?|uses?)\\b",
+            "|\\bchecked[- ]out\\b|\\bpending\\b|\\bhousekeeping\\b|\\bstale\\b|\\borphan\\w*|\\bcan go\\b)",
+            "|(?:\\bremain(?:s|ed|ing)?\\b|\\blinger\\w*|\\bleft(?:over| over| behind| in place| around)\\b",
+            "|\\b(?:was|were|is|are|been|being) left\\b",
+            "|\\bnot (?:yet |been )*(?:removed|deleted|pruned|cleaned|closed)",
+            "|\\bnever (?:removed|deleted|pruned|cleaned|closed)|\\b(?:remove|delete|prune|drop)\\b",
+            "|\\bclean(?:ed)?[- ]?up\\b|\\bclose[- ]?out\\b",
+            "|\\bstill (?:exists?|there|present|around|checked out|alive|open|linked|registered|attached",
+            "|in place|on disk|has|have|keeps?|holds?|owns?|uses?)\\b",
+            "|\\bchecked[- ]out\\b|\\bpending\\b|\\bhousekeeping\\b|\\bstale\\b|\\borphan\\w*",
+            "|\\bcan go\\b).{0,80}?(?:worktrees?|work-trees?|repo-worktrees|checkouts?|\\bbranch(?:es)?\\b)"
+          ],
+          "others": "\\bfront[- ]?[bcd]\\b"
+        }
       ]
     },
     {
@@ -37,9 +81,20 @@
       "why": "front-b adds a column to every table, against the owner's constraint on the output format",
       "source": "report",
       "near": [
-        "front[- ]?b\\b|priority",
-        "output|format|column|header",
-        "owner|approv|constraint|script|pars"
+        {
+          "subject": "front[- ]?b\\b|priority",
+          "finding": [
+            "\\bcolumns?\\b|\\bheader\\b|\\b(?:extra|new|additional) fields?\\b|\\bfourth\\b|\\b4th\\b",
+            "|\\btable (?:now |also )?(?:has|prints|shows|includes|gets|adds)\\b|\\btab-separated\\b",
+            "|(?<!not )(?<!n.t )(?:changes?|alters?) (?:the )?(?:cli )?(?:output|format|table|header)\\b",
+            "|\\boutput (?:format )?(?:changes|changed|differs)\\b"
+          ],
+          "others": "\\bfront[- ]?[acd]\\b"
+        },
+        [
+          "owner|approv|script|pars|constraint|sign-?off|break|compat|hand-?back|existing commands|backward",
+          "|differs?|from before"
+        ]
       ]
     }
   ],
