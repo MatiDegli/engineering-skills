@@ -22,6 +22,7 @@ are in [docs/decisions.md](../../docs/decisions.md), "Scenario evaluations for w
 | `pace-ahead` | E1 | A weekly usage reading ahead of the profile's pace, a handoff whose own reading is two days old, and a queue of a repair, an experimental round, and a large validation |
 | `plan-fronts` | E2 | A request to plan and brief three fronts, one of them destructive tooling, with problems the skill does not name |
 | `fix-round` | E2 | Review findings and a hand-back to act on: when to resume or start fresh, and a fix whose deleted lines came back |
+| `profile-applies` | E2 | A request to plan three fronts under a profile that caps the helpers at two, never lets the author review, limits a commit to 15 files, and rejects a longer cache lifetime |
 
 - **E1** scenarios give one agent an inherited situation and no subagents.
 - **E2** scenarios ask the agent to write plans and briefs to files without launching anyone.

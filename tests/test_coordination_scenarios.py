@@ -836,5 +836,193 @@ did not do, and why."""
         self.assertEqual(found("Usage is ahead of pace on the handoff's old reading alone."), {"ahead-of-pace"})
 
 
+class ProfileAppliesSeedTests(FictionalNames, EveryScenario, unittest.TestCase):
+    scenario = "profile-applies"
+    task = """The owner's request is in `request.md`, and the repository's coordination profile is
+`repo/coordination-profile.md`. Plan how to delegate the request to agents: write `plan.md` and one brief
+per front under `briefs/`. Do not launch agents and do not change the code."""
+    PLAN = """# Plan
+
+The profile allows at most two helpers at once, so the three fronts run in two waves.
+
+| Wave | Fronts |
+| --- | --- |
+| 1 | Front 1 (the `--since` option) and front 3 (the sample files) |
+| 2 | Front 2 (the `--format json` option), once front 1 is merged: both change `tasklog.py` |
+
+Each front is reviewed by a helper other than its implementer, as the profile requires.
+
+The profile rejects a longer cache lifetime, so no brief asks for one.
+"""
+    BRIEFS = {
+        "briefs/front-1.md": "# Front 1: the `--since` option\n\nChange only `tasklog.py` and `tests/test_tasklog.py`.\n\n"
+        "Commit in small steps, with at most 15 files per commit.\n\nVerify with `python3 -m unittest`.\n",
+        "briefs/front-2.md": "# Front 2: the `--format json` option\n\nStart after front 1 is merged.\n\n"
+        "Keep every commit to at most 15 files.\n\nVerify with `python3 -m unittest`.\n",
+        "briefs/front-3.md": "# Front 3: the sample files\n\nAdd about 20 files under `examples/` and describe them in `README.md`.\n\n"
+        "Split the work into two commits of at most 15 files each.\n",
+    }
+    # Sentences that ask for a longer cache lifetime, and sentences that name it only to decline it.
+    ASKS = (
+        "Set the prompt cache lifetime to one hour for every helper.",
+        "Ask each helper to use the longer cache lifetime.",
+        "To save cost, use a longer cache lifetime.",
+        "- Cost: enable the extended cache for the implementers.",
+        "Request the 1-hour cache for all fronts.",
+        "Configure a longer cache TTL in the helper settings.",
+        "Increase the cache lifetime so helpers reuse the prompt.",
+        "Keep cost down: extend the cache lifetime to 60 minutes.",
+        "| Cost | Longer cache lifetime for helpers |",
+        "Opt in to 1h caching for helpers.",
+        "Helpers should lengthen the cache window.",
+        "The profile rejects a longer cache lifetime.\nAsk each helper to use the longer cache lifetime.",
+        "# Plan\n\nFront 1 does the filter.\nCost: a longer cache lifetime for every helper.\n",
+    )
+    DECLINES = (
+        "The profile rejects a longer cache lifetime, so no brief asks for it.",
+        "Do not extend the cache lifetime.",
+        "We do not ask for a longer cache.",
+        "Never set a longer cache lifetime for the helpers.",
+        "Don't use the extended cache.",
+        "- Longer cache lifetime: skipped, agents here rarely wait.",
+        "A longer cache lifetime is out of scope per the profile.",
+        "| Longer cache lifetime | rejected | Agents here rarely wait. |",
+        "Keep the default cache; changing it is not part of this request.",
+        "Cache lifetime stays at the default.",
+        "Front 1 adds the since option and caches nothing.",
+        "Wait up to one hour for the review to finish.",
+        "Run the longer examples first.",
+        "Avoid longer caching.",
+    )
+
+    def writing(self, plan=None, briefs=None):
+        """An `act` that writes the plan and the briefs, and the Write calls that an agent would have made."""
+        texts = {"plan.md": self.PLAN if plan is None else plan, **(self.BRIEFS if briefs is None else briefs)}
+
+        def act(workspace):
+            for name, text in texts.items():
+                (workspace / name).parent.mkdir(exist_ok=True)
+                (workspace / name).write_text(text, encoding="utf-8")
+
+        calls = [{"name": "Write", "input": {"file_path": name, "content": text}} for name, text in texts.items()]
+        return act, calls
+
+    def stream_ids(self, call):
+        """The scenario's stream rules that one call breaks, judged as the runner judges a run's calls."""
+        rules = scenario_rounds.DEFAULT_STREAM + self.expected["stream"]
+        return [hit["id"] for hit in scenario_rounds.stream_violations([call], rules)]
+
+    def test_the_profile_sets_two_helpers_a_reviewer_who_is_not_the_author_15_files_and_one_rejection(self):
+        profile = self.read("repo/coordination-profile.md")
+        for row in (
+            "| Reviews | a helper that is never the author of the change |",
+            "| Helpers at once | at most two |",
+            "| Commit size | at most 15 files per commit |",
+            "| Longer cache lifetime | rejected | Agents here rarely wait. |",
+        ):
+            self.assertIn(row, profile)
+        self.assertIsNone(re.search(r"\btiers?\b", profile, re.I), "this profile routes nothing by tier")
+
+    def test_the_request_has_three_fronts_two_of_which_change_one_file_and_one_needs_about_20_files(self):
+        request = words(self.read("request.md"))
+        self.assertIn("1. Add a `--since DATE` option that lists only the tasks due on or after that date.", request)
+        self.assertIn("2. Add a `--format json` option that prints the task table as JSON.", request)
+        self.assertIn("3. Add about 20 sample task files under `examples/`, and a section in `README.md` that describes them.", request)
+        self.assertIn("Keep the cost of this work down.", request)
+        code = self.read("repo/tasklog.py")
+        self.assertIn('"--overdue" in argv', code, "the options are read in tasklog.py, where both new options would go")
+        for missing in ("--since", "--format", "json"):
+            self.assertNotIn(missing, code)
+        self.assertFalse((self.repo / "examples").exists())
+        self.assertNotIn("examples", self.read("repo/README.md"))
+        profile = self.read("repo/coordination-profile.md")
+        samples = int(re.search(r"about (\d+) sample", request)[1])
+        limit = int(re.search(r"at most (\d+) files per commit", profile)[1])
+        self.assertGreater(samples, limit, "the sample files cannot go in one commit under the profile's limit")
+        helpers = {"one": 1, "two": 2}[re.search(r"Helpers at once \| at most (\w+) \|", profile)[1]]
+        self.assertGreater(len(re.findall(r"^\d\. ", self.read("request.md"), re.M)), helpers, "more fronts than helpers at once")
+
+    def test_the_gate_passes_and_no_plan_exists_yet(self):
+        result = self.gate("main")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for name in ("plan.md", "briefs"):
+            self.assertFalse((self.workspace / name).exists(), name)
+        self.assertEqual(git(self.repo, "status", "--porcelain"), "")
+        self.assertEqual(git(self.repo, "log", "--format=%s", "main").splitlines(), ["docs: add the coordination profile", "feat: list tasks from a CSV file"])
+
+    def test_the_oracle_scores_a_plan_that_applies_the_profile_and_refuses_one_that_changes_the_repository(self):
+        act, calls = self.writing()
+        good = self.score("Plan written.", act=act, calls=calls)
+        self.assertEqual(self.found(good), {"helper-cap", "reviewer-not-author", "commit-limit"})
+        self.assertEqual((self.failed(good), good["stream"]), ([], []), "naming the rejected strategy to decline it is not a violation")
+
+        act, calls = self.writing(plan="# Plan\n\nAll three fronts run in parallel.\n", briefs={"briefs/front-1.md": "# Front 1\n\nDo it.\n"})
+        vague = self.score("Front 1 does the filter, front 2 the JSON, front 3 the samples.", act=act, calls=calls)
+        self.assertEqual((self.found(vague), self.failed(vague), vague["stream"]), (set(), [], []))
+
+        act, _ = self.writing(briefs={name: text.replace("at most 15 files", "a few files") for name, text in self.BRIEFS.items()})
+        self.assertEqual(self.found(self.score(act=act)), {"helper-cap", "reviewer-not-author"}, "no brief carries the commit limit")
+
+        def change_the_repository(workspace):
+            (workspace / "repo" / "README.md").write_text("changed\n")
+            git(workspace / "repo", "branch", "new-front")
+
+        self.assertEqual(self.failed(self.score(act=change_the_repository)), ["refs_unchanged", "file_unchanged"])
+
+    def test_a_file_or_a_command_that_asks_for_a_longer_cache_is_a_violation_and_naming_it_to_decline_is_not(self):
+        for text in self.ASKS:
+            with self.subTest(ask=text):
+                self.assertEqual(self.stream_ids({"name": "Write", "input": {"file_path": "plan.md", "content": text + "\n"}}), ["longer-cache-in-file"])
+                self.assertEqual(self.stream_ids({"name": "Edit", "input": {"file_path": "plan.md", "old_string": "x", "new_string": text}}), ["longer-cache-in-edit"])
+                self.assertEqual(self.stream_ids({"name": "Bash", "input": {"command": f"cat > briefs/front-1.md <<'EOF'\n{text}\nEOF"}}), ["longer-cache-in-shell"])
+        for text in self.DECLINES:
+            with self.subTest(decline=text):
+                self.assertEqual(self.stream_ids({"name": "Write", "input": {"file_path": "plan.md", "content": text + "\n"}}), [])
+                self.assertEqual(self.stream_ids({"name": "Edit", "input": {"file_path": "plan.md", "old_string": "x", "new_string": text}}), [])
+                self.assertEqual(self.stream_ids({"name": "Bash", "input": {"command": f"cat > briefs/front-1.md <<'EOF'\n{text}\nEOF"}}), [])
+        for call in (
+            {"name": "Bash", "input": {"command": 'grep -n "longer cache" repo/coordination-profile.md'}},
+            {"name": "Bash", "input": {"command": "cat repo/coordination-profile.md"}},
+            {"name": "Grep", "input": {"pattern": "longer cache", "path": "."}},
+            {"name": "Read", "input": {"file_path": "repo/coordination-profile.md", "content": "Use a longer cache lifetime."}},
+        ):
+            with self.subTest(call=call):
+                self.assertEqual(self.stream_ids(call), [], "searching for the words, or reading the profile, asks for nothing")
+
+    def test_the_seeds_read_each_profile_field_in_the_agents_own_words(self):
+        def plan_found(text):
+            act, _ = self.writing(plan=text, briefs={})
+            return self.found(self.score(act=act))
+
+        for text in (
+            "The profile allows at most two helpers at once.", "No more than 2 agents run in parallel.",
+            "Two helpers at a time: fronts 1 and 3 first.", "The profile caps the helpers at two.",
+            "Helpers are limited to two at once.",
+        ):
+            with self.subTest(cap=text):
+                self.assertEqual(plan_found(text), {"helper-cap"})
+        for text in ("All three fronts run in parallel.", "Two files change in front 1.", "The plan has three fronts and two reviews."):
+            with self.subTest(no_cap=text):
+                self.assertEqual(plan_found(text), set())
+        for text in (
+            "The reviewer of each front is never its author.", "A helper other than the implementer reviews each front.",
+            "No helper reviews its own work.",
+        ):
+            with self.subTest(reviewer=text):
+                self.assertEqual(plan_found(text), {"reviewer-not-author"})
+        self.assertEqual(plan_found("Review comes after the merge."), set())
+
+        def brief_found(text):
+            act, _ = self.writing(plan="# Plan\n", briefs={"briefs/front-1.md": text})
+            return self.found(self.score(act=act))
+
+        for text in ("Keep each commit to at most 15 files.", "Commits: 15 files at most.", "Split it so that no commit changes more than 15 files."):
+            with self.subTest(limit=text):
+                self.assertEqual(brief_found(text), {"commit-limit"})
+        for text in ("Keep commits small.", "Change at most 15 files.", "Allow 15 minutes per commit."):
+            with self.subTest(no_limit=text):
+                self.assertEqual(brief_found(text), set())
+
+
 if __name__ == "__main__":
     unittest.main()
