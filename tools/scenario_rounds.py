@@ -61,11 +61,13 @@ from tools.validate_repo import ROOT
 
 SCENARIOS = ROOT / "evals" / "coordinating-agents" / "scenarios"
 TIME_FORMAT = "%Y-%m-%dT%H:%MZ"
+# The history of a scenario, and the agent's own commits, carry the name of an ordinary user.
+PERSON = ("Alex Morgan", "alex.morgan@example.com")
 IDENTITY = {
-    "GIT_AUTHOR_NAME": "Evaluation Fixture",
-    "GIT_AUTHOR_EMAIL": "fixture@example.invalid",
-    "GIT_COMMITTER_NAME": "Evaluation Fixture",
-    "GIT_COMMITTER_EMAIL": "fixture@example.invalid",
+    "GIT_AUTHOR_NAME": PERSON[0],
+    "GIT_AUTHOR_EMAIL": PERSON[1],
+    "GIT_COMMITTER_NAME": PERSON[0],
+    "GIT_COMMITTER_EMAIL": PERSON[1],
 }
 # A fixture kind's required and optional fields.
 FIXTURES = {
@@ -79,7 +81,9 @@ FIXTURES = {
     "process": ({"name", "command", "seconds"}, {"cwd"}),
 }
 COMMIT_FIELDS = ({"message"}, {"files", "delete", "minutes_ago"})
-WORKSPACE_PREFIX = "scenario."
+# A workspace is named like the directory that `tempfile.mkdtemp()` makes by default, which any
+# machine with Python has.
+WORKSPACE_PREFIX = "tmp"
 # Seconds that a `process` fixture must outlive the time limit: the launcher's grace before it
 # kills a late agent, and the time to stop what the agent left running.
 FIXTURE_MARGIN = 120
@@ -1988,7 +1992,8 @@ def launch(
     return result
 
 
-WORKSPACE_NAME = re.compile(r"scenario\.[A-Za-z0-9_]{8}")
+# `scenario.` is the prefix that rounds used before; `clean` still removes what they left.
+WORKSPACE_NAME = re.compile(rf"(?:{re.escape(WORKSPACE_PREFIX)}|scenario\.)[A-Za-z0-9_]{{8}}")
 SKILL_EXPORT_NAME = re.compile(r"skill\.[A-Za-z0-9_]{8}")
 
 
@@ -2489,7 +2494,7 @@ ALLOWED_TOOLS = ("Bash", "Read", "Grep", "Glob", "Edit", "Write")
 DISALLOWED_TOOLS = ("Agent", "Task", "Monitor", "WebFetch", "WebSearch", "NotebookEdit")
 DEFAULT_TOKEN_FILE = Path.home() / ".config" / "engineering-skills" / "claude-oauth-token"
 # The agent's global Git configuration: a fixed identity, and nothing from the host.
-GIT_CONFIG = "[user]\n\tname = Scenario Agent\n\temail = agent@example.invalid\n[init]\n\tdefaultBranch = main\n"
+GIT_CONFIG = f"[user]\n\tname = {PERSON[0]}\n\temail = {PERSON[1]}\n[init]\n\tdefaultBranch = main\n"
 # Variables the sandbox keeps from the host: the network may need a proxy.
 NETWORK_VARIABLES = ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "all_proxy", "no_proxy")
 PROVIDER_PREFIXES = ("ANTHROPIC_", "CLAUDE_")

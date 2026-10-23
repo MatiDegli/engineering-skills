@@ -86,8 +86,8 @@ class FixtureTests(TemporaryTestCase):
         with mock.patch.dict(os.environ, {"GIT_AUTHOR_NAME": "Someone", "GIT_CONFIG_GLOBAL": "/nonexistent"}):
             manifest = self.prepare([self.REPO], self.FILES)
         (second, subject2), (first, subject1) = self.commits()
-        self.assertEqual(subject2, "Evaluation Fixture <fixture@example.invalid> feat: second")
-        self.assertEqual(subject1, "Evaluation Fixture <fixture@example.invalid> feat: first")
+        self.assertEqual(subject2, "Alex Morgan <alex.morgan@example.com> feat: second")
+        self.assertEqual(subject1, "Alex Morgan <alex.morgan@example.com> feat: first")
         stamp = int(datetime(2026, 10, 18, 12, 30, tzinfo=timezone.utc).timestamp())
         self.assertEqual((int(second), int(first)), (stamp - 20 * 60, stamp - 30 * 60))
         self.assertEqual(manifest["repos"], ["repo"])
@@ -1625,7 +1625,7 @@ class DeletionTests(TemporaryTestCase):
     def workspace(self, parent=None):
         """Make a directory the way the runner does, with some content, and return its record."""
         with mock.patch.object(scenario_rounds.tempfile, "tempdir", str(parent) if parent else None):
-            recorded = scenario_rounds.new_directory("scenario.")
+            recorded = scenario_rounds.new_directory(scenario_rounds.WORKSPACE_PREFIX)
         write(Path(recorded["path"]) / "repo" / "file.txt", "content\n")
         self.addCleanup(shutil.rmtree, recorded["path"], True)
         return recorded
@@ -1678,6 +1678,15 @@ class DeletionTests(TemporaryTestCase):
         write(path / "other.txt", "other\n")
         self.assertEqual(scenario_rounds.delete_directory(recorded), "it is not the directory that was recorded")
         self.assertTrue((path / "other.txt").exists())
+
+    def test_a_workspace_is_named_like_a_temporary_directory_and_one_of_earlier_rounds_is_still_removed(self):
+        prefix = scenario_rounds.WORKSPACE_PREFIX
+        self.assertEqual(prefix, "tmp")
+        self.assertNotRegex(Path(self.workspace()["path"]).name, r"(?i)scenario|eval|fixture")
+        earlier = scenario_rounds.new_directory("scenario.")
+        self.addCleanup(shutil.rmtree, earlier["path"], True)
+        self.assertIsNone(scenario_rounds.delete_directory(earlier))
+        self.assertFalse(Path(earlier["path"]).exists())
 
     def test_a_name_the_runner_does_not_give_is_not_deleted(self):
         recorded = self.workspace()
@@ -1815,7 +1824,7 @@ def processes_named(marker):
 
 class SandboxArgumentTests(unittest.TestCase):
     def test_the_allow_list_masks_first_and_binds_back_only_what_is_named(self):
-        home, workspace, skill = Path("/home/someone"), Path("/tmp/scenario.AbCdEfGh"), Path("/tmp/skill.x/coordinating-agents")
+        home, workspace, skill = Path("/home/someone"), Path("/tmp/tmp.AbCdEfGh"), Path("/tmp/skill.x/coordinating-agents")
         arguments = scenario_rounds.sandbox_arguments(home, workspace, [skill], [workspace], ["agent", "--flag"])
         self.assertEqual(arguments[:4], ["setpriv", "--pdeathsig", "KILL", "bwrap"])
         for flag in ("--unshare-pid", "--as-pid-1", "--die-with-parent", "--clearenv"):
@@ -1829,7 +1838,7 @@ class SandboxArgumentTests(unittest.TestCase):
         self.assertTrue(all(i > last_mask for i, a in enumerate(arguments) if a in ("--bind", "--ro-bind") and arguments[i + 1] != "/"))
 
     def test_the_launcher_is_a_copy_written_into_the_masked_run_and_never_a_bind_of_the_host_file(self):
-        home, workspace = Path("/home/someone"), Path("/tmp/scenario.AbCdEfGh")
+        home, workspace = Path("/home/someone"), Path("/tmp/tmp.AbCdEfGh")
         arguments = scenario_rounds.sandbox_arguments(home, workspace, [], [workspace], ["agent"], 7)
         place = arguments.index("--file")
         self.assertEqual(arguments[place:place + 3], ["--file", "7", scenario_rounds.LAUNCHER_INSIDE])
