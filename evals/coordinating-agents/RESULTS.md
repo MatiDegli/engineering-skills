@@ -4,6 +4,94 @@ Each round records the date, the revisions of the runner and the skill, the mode
 and the scores from `python3 -m tools.scenario_rounds summarize`. When a later oracle scores a round
 again, both scores stay, with the oracle's revision.
 
+## 2026-10-23 — Round 5: with and without the skill, on glm-5.3
+
+- Purpose: compare the two arms on one model before the Sonnet rounds that measure 1 names. Runs 1
+  and 3 had no skill (`none`); runs 2 and 4 had the whole skill (`full`, skill `ae14ee4`).
+- All eight scenarios, four runs each, model glm-5.3, runner `8960459`, two runs at a time. 18:17
+  to 19:27Z.
+- The coordinator labelled the reports blind to the arm, each under a random ID with the skill's
+  name masked, and froze the labels before reading the oracle's verdicts or the key. The blinding
+  is weak: reports of the `full` arm quote the skill's rules or follow its report format.
+
+| Scenario | Run | Arm | Seeded, by hand | Seeded, oracle | Off-list, by hand | State failures | Minutes | USD | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| fix-round | 1 | none | 1 of 3 | 2 of 3 | 0 of 1 | 0 | 1.2 | 0.18 | ok |
+| fix-round | 3 | none | 1 of 3 | 1 of 3 | 1 of 1 | 0 | 1.6 | 0.24 | ok |
+| fix-round | 2 | full | 3 of 3 | 3 of 3 | 1 of 1 | 0 | 3.6 | 0.64 | ok |
+| fix-round | 4 | full | 3 of 3 | 3 of 3 | 1 of 1 | 0 | 6.4 | 1.00 | ok |
+| handoff-resume | 1 | none | 2 of 3 | 2 of 3 | 1 of 1 | 0 | 3.4 | 0.58 | ok |
+| handoff-resume | 3 | none | 3 of 3 | 3 of 3 | 1 of 1 | 0 | 3.1 | 0.49 | ok |
+| handoff-resume | 2 | full | 3 of 3 | 2 of 3 | 1 of 1 | 1 | 7.5 | 1.64 | ok |
+| handoff-resume | 4 | full | 3 of 3 | 3 of 3 | 1 of 1 | 0 | 5.8 | 0.94 | ok |
+| pace-ahead | 1 | none | 2 of 2 | 2 of 2 | 1 of 1 | 0 | 0.8 | 0.14 | ok |
+| pace-ahead | 3 | none | 2 of 2 | 2 of 2 | 1 of 1 | 0 | 1.1 | 0.17 | ok |
+| pace-ahead | 2 | full | 2 of 2 | 2 of 2 | 1 of 1 | 0 | 1.4 | 0.26 | ok |
+| pace-ahead | 4 | full | 2 of 2 | 2 of 2 | 1 of 1 | 0 | 2.3 | 0.33 | ok |
+| parallel-lines | 1 | none | 2 of 2 | 2 of 2 | 0 of 1 | 0 | 1.7 | 0.26 | ok |
+| parallel-lines | 3 | none | 2 of 2 | 1 of 2 | 1 of 1 | 0 | 3.5 | 0.54 | ok |
+| parallel-lines | 2 | full | 2 of 2 | 2 of 2 | 0 of 1 | 0 | 3.3 | 0.57 | time limit |
+| parallel-lines | 4 | full | 2 of 2 | 2 of 2 | 0 of 1 | 0 | 5.1 | 0.83 | time limit |
+| plan-fronts | 1 | none | 4 of 7 | 4 of 7 | 2 of 2 | 0 | 3.7 | 0.57 | ok |
+| plan-fronts | 3 | none | 6 of 7 | 6 of 7 | 2 of 2 | 0 | 7.1 | 1.03 | ok |
+| plan-fronts | 2 | full | 7 of 7 | 6 of 7 | 2 of 2 | 0 | 4.3 | 0.70 | ok |
+| plan-fronts | 4 | full | 7 of 7 | 4 of 7 | 2 of 2 | 0 | 5.0 | 0.90 | ok |
+| profile-applies | 1 | none | 3 of 3 | 3 of 3 | none | 0 | 1.7 | 0.25 | ok |
+| profile-applies | 3 | none | 3 of 3 | 3 of 3 | none | 0 | 4.9 | 0.67 | ok |
+| profile-applies | 2 | full | 3 of 3 | 3 of 3 | none | 0 | 2.7 | 0.44 | ok |
+| profile-applies | 4 | full | 3 of 3 | 2 of 3 | none | 0 | 3.6 | 0.56 | ok |
+| trivial-fix | 1 | none | none | none | none | 0 | 0.2 | 0.03 | ok |
+| trivial-fix | 3 | none | none | none | none | 0 | 0.2 | 0.03 | ok |
+| trivial-fix | 2 | full | none | none | none | 0 | 0.5 | 0.07 | ok |
+| trivial-fix | 4 | full | none | none | none | 0 | 0.3 | 0.05 | ok |
+| waits-and-processes | 1 | none | 3 of 3 | 3 of 3 | 1 of 1 | 0 | 2.8 | 0.43 | ok |
+| waits-and-processes | 3 | none | 3 of 3 | 2 of 3 | 1 of 1 | 0 | 2.5 | 0.35 | ok |
+| waits-and-processes | 2 | full | 3 of 3 | 3 of 3 | 1 of 1 | 0 | 5.9 | 0.87 | ok |
+| waits-and-processes | 4 | full | 3 of 3 | 3 of 3 | 1 of 1 | 0 | 3.6 | 0.59 | ok |
+| All | 16 | none | 37 of 46 | 36 of 46 | 12 of 14 | 0 | 2.5 mean | 5.96 | ok |
+| All | 16 | full | 46 of 46 | 40 of 46 | 12 of 14 | 1 | 3.8 mean | 10.39 | 2 time limits |
+
+Notes:
+
+- With the skill, every seed was established in both runs; without it, 37 of 46, close to the 35
+  of round 4. The nine misses are workflow seeds again:
+  - an independent reviewer with a clean context (0 of 2);
+  - a wait or deadline rule in each brief (0 of 2);
+  - a fresh implementer instead of one at 380k tokens (1 of 2);
+  - the line that the merge brought back (1 of 2);
+  - the close-out of the merged front (1 of 2);
+  - a base commit in each brief (1 of 2);
+  - an adversarial or dry-run review of the front that deletes files (1 of 2).
+- Five seeds of `plan-fronts` are items of the skill's brief template, so on those the `full` arm
+  is partly scored on following its own template. Without them: 36 of 36 with the skill, 30 of 36
+  without.
+- Raised, not established: three reports, one of them without the skill, sent the changelog's
+  placement to the docs line and asked the owner, instead of saying that 1.3.0 is released. These
+  are the only off-list misses of the `full` arm.
+- This is glm-5.3, two runs per arm and scenario, and not the Sonnet run that measure 1 needs. The
+  skill cost about 1.7 times as much and took 1.5 times as long per run.
+- The oracle agreed with the hand labels on 100 of 120 seeds:
+  - It credited five that the hand labels do not: the three raised changelog placements; a
+    reappeared line in a run that checked main instead of front-f and called the line gone; and
+    the deleting front named with no review asked.
+  - It missed fifteen. Nine matched only a unit over 600 characters, which the oracle flags for a
+    person to read; eight of those are in the `full` arm, whose briefs pack many rules into one
+    paragraph. Four are the stale reading of `pace-ahead`, where the oracle found no unit at all.
+    So the oracle shrinks the gap between the arms (40 against 36, by hand 46 against 37).
+- `parallel-lines` runs 2 and 4, both with the skill, handed an interim report, queued their
+  benchmark behind the other line's, and kept a watcher alive in the session until a 19:45Z
+  deadline. Both hit the time limit. They took the deadline from the stand-in benchmark's argument,
+  `3600`, against the 30 minutes that `runs.md` records. The skill's rule "never end a session
+  while a background run you started is alive" does not separate a watcher from a run whose
+  evidence would be lost, and says nothing of a wait that outlasts the session.
+- `handoff-resume` run 2, with the skill, committed its own fix on front-b, then asked for an
+  independent review of it, and removed front-c's local branch after merging it into a local main.
+  The state check counts both.
+- `fix-round` run 1, without the skill, checked the code on main instead of front-f and reported
+  two findings as not fixed.
+- One report noticed that a gate process was named `sleep`. The fixtures are changed to real
+  processes before the next comparison.
+
 ## 2026-10-23 — Round 4: baseline without the skill
 
 - Purpose: measure what the model finds with no skill loaded (level `none`), before any round
