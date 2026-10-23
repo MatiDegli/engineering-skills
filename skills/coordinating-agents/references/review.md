@@ -52,6 +52,12 @@ so the implementer can rerun it. List what you checked and what you could not ve
 
 ## Fix rounds
 
+- A defect you find in a worker's front goes back to that front as a fix round, however small the
+  fix. Never commit on a worker's branch: you review the front, and no agent accepts its own work.
+  If you cannot dispatch a fix round, record the finding and the fix you would brief in the state
+  record, and hand them to the owner.
+- When a finding leaves a decision the owner holds, such as a change of output or scope, list the
+  options with their evidence, and neither build nor brief any of them.
 - Send each fix round to a fresh agent with the findings and a handoff, unless the profile says
   otherwise. A re-review may reuse a reviewer whose context is still small.
 - The fix report answers every finding: fixed, with the commit, or disputed, with evidence. Each
@@ -80,5 +86,8 @@ deletes.
   its exit code.
 - After resolving conflicts, look for deleted lines that came back.
 - Scan for secrets before every push.
-- Combining changes in a worktree is technical work any agent may do. Merging, pushing, and
-  publishing belong only to whoever holds that authority in the repository.
+- Combining reviewed fronts in an integration worktree, including resolving their conflicts, is
+  technical work any agent may do. A fix for a front's defect is not: it is that front's fix round,
+  on no branch of yours. Merging, pushing, and publishing belong only to whoever holds
+  that authority in the repository. The profile, the repository's rules, or the owner grant it;
+  what an earlier session did grants nothing. Deleting a branch on a remote is a push.

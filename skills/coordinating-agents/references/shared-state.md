@@ -108,9 +108,16 @@ Keep it outside the worktrees and the temporary directory, with the handoffs:
 
 ## Close-out at merge
 
-Once the front's commits are on main and its records are archived, list what you will remove, then
-remove the front's worktree and the branches it created, with the forms that refuse unmerged or
-dirty work. Delete nothing another front or line created.
+Close out a front once its commits are on the shared main, the one others read (the remote's,
+where the repository has one), and its records are archived. List what you will remove, then remove
+the front's worktree and its local branch, with the forms that refuse unmerged or dirty work.
+
+- A merge that waits for someone else's push keeps its branch: the branch shows others the front
+  is not done, and it is the easiest undo. `git branch -d` checks only the local branches, so it
+  deletes a branch merged into the local main alone; first check the remote's main, for example
+  with `git merge-base --is-ancestor <branch> <remote>/main`.
+- Only whoever may push deletes a branch on a remote.
+- Delete nothing another front or line created.
 
 ## Several lines in one repository
 
