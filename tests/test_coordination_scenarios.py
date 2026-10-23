@@ -1079,11 +1079,31 @@ The profile rejects a longer cache lifetime, so no brief asks for one.
         )
         self.assertEqual(len({rule["pattern"] for rule in rules.values()}), 1)
         self.assertTrue(rules["longer-cache-in-shell"]["unless"].startswith(r"\A"), "the exemption reads the whole command, not any one line")
-        started = time.monotonic()
         wrapped = "Front 1 changes tasklog.py and the tests; the helper reads the request.\nIt keeps the cache lifetime as it is.\n" * 400
         self.assertEqual(self.stream_ids({"name": "Write", "input": {"file_path": "plan.md", "content": wrapped + "A longer cache lifetime pays here.\n"}}), ["longer-cache-in-file"])
         self.assertEqual(self.stream_ids({"name": "Write", "input": {"file_path": "plan.md", "content": wrapped}}), [])
-        self.assertLess(time.monotonic() - started, 10, "the expression does not backtrack over a long plan")
+
+    def test_the_cache_rules_cost_time_in_proportion_to_the_text_not_to_its_square(self):
+        # Each text starts a sentence every few characters and has no ask. The lookaheads that read to
+        # the end of a line, or of a sentence that never ends, made the cost grow with the square of the
+        # text: about 28 s for the first text, and minutes for the second, at 60 KB.
+        pathological = {
+            "sentences in one line": "x. " * 20_000,
+            "lines that end with a colon": "x:\n" * 20_000,
+            "clauses split by semicolons": "x; " * 20_000,
+            "asks that name no cache": "longer x. " * 6_000,
+            "caches that ask for nothing": "cache x. " * 6_700,
+        }
+        for name, text in pathological.items():
+            with self.subTest(text=name):
+                started = time.monotonic()
+                self.assertEqual(self.stream_ids({"name": "Write", "input": {"file_path": "plan.md", "content": text}}), [])
+                self.assertLess(time.monotonic() - started, 4, f"{len(text)} characters")
+        long_sentence = "A longer cache lifetime pays here" + ", and the plan goes on" * 60 + ".\n"
+        self.assertGreater(len(long_sentence), 1000)
+        self.assertEqual(self.stream_ids({"name": "Write", "input": {"file_path": "plan.md", "content": long_sentence}}), ["longer-cache-in-file"])
+        declined = "A longer cache lifetime is out of scope" + ", and the plan goes on" * 60 + ".\n"
+        self.assertEqual(self.stream_ids({"name": "Write", "input": {"file_path": "plan.md", "content": declined}}), [])
 
     def test_the_task_does_not_name_the_profile_and_the_repository_says_where_it_is(self):
         self.assertNotIn("profile", words(self.task))

@@ -127,6 +127,10 @@ no secret-like file names, and external URLs only inside code spans.
   - Both expressions are compiled with `^` and `$` at every line, so an exemption that must read
     the whole command starts with `\A`, as a here-document's line that begins with `grep` would
     otherwise exempt the command around it.
+  - A scan from the start of a sentence to a word, which a long text repeats at every sentence,
+    is bounded, so that the cost grows with the length of the text and not with its square. The
+    cache rules of `profile-applies` look for the ask and for a negation within 400 characters of
+    the start of a sentence, and for a decline within 400 characters of it on the same line.
 
   A `runs` rule judges a Bash call by what the shell would run, as `kill-by-pattern` does, and not
   by its text. A launch that a note, a commit message, or a search only names is then not a launch,
