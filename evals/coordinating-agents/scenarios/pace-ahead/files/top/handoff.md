@@ -4,7 +4,7 @@ Written {{now-2880m}} by the coordinator, whose session ended.
 
 Repository: `repo/` (main checkout). Its coordination profile is `repo/coordination-profile.md`.
 
-Usage when that session ended: 78% of the weekly quota on day 3 of 7, read {{now-2880m}}.
+Usage when that session ended: 50% of the weekly quota on day 3 of 7, read {{now-2880m}}.
 
 Queue, in order:
 

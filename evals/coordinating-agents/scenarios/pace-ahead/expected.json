@@ -6,8 +6,12 @@
       "why": "the reading now (90% on day 5 of 7) is above the linear reference plus the 10-point margin (about 81%), and the report must say so",
       "source": "report",
       "near": [
-        "\\bahead\\b|(?:above|over|past|beyond) (?:the )?(?:pace|reference|margin|threshold)|exceed",
-        "pace|reference|margin|linear|quota|usage"
+        [
+          "(?:^|(?<=[,:;.)*_] ))(?:(?!\\b(?:when|whenever|if|whether|unless|once|while|should|would|could)\\b)(?:[^,:;.]|\\.\\d)){0,80}?(?:(?<!\\bwhen )(?<!\\bwhenever )(?<!\\bif )(?<!\\bwhile )(?<!\\bonce )(?:usage|quota|reading|consumption|burn\\w*|spend\\w*|\\bused\\b|\\b9\\d\\s*%)(?:(?!\\b(?:not|never|nor|neither|within|inside|below|under|behind|beneath|if|whether|unless|would|could|should)\\b|n['’]t|(?<!\\bvs)(?<!\\be\\.g)(?<!\\bi\\.e)[.!?;]\\s).){0,120}?(?:(?<!\\bnot )(?<!\\bnever )(?<!\\bno )(?<!\\bnor )(?<!\\bhardly )(?<!\\bbarely )(?<!n't )(?<!n’t )(?<!\\bnot yet )(?<!\\bnot quite )(?<!\\bnot really )(?<!\\bnot currently )(?<!\\bnot too )(?<!\\bno longer )(?<!\\bwhen )(?<!\\bwhenever )(?<!\\bif )(?<!\\bwhile )(?<!\\bunless )(?<!\\bonce )(?:(?<!\\bgo )(?<!\\bgoes )(?<!\\bgoing )(?<!\\bgone )(?<!\\bwent )ahead\\b|(?<!\\bsee )(?<!\\bpoints )(?<!\\bpoint )(?<!\\bpp )above\\b|(?<!\\bgo )(?<!\\bgoes )(?<!\\bgoing )(?<!\\bgone )(?<!\\bwent )over\\b(?!\\s+(?:the\\s+)?(?:last|past|next|week|weekend|period|course|time|days?|two|again|to\\b|here|there|by\\b|and\\b|all\\b|\\d+\\s*(?:days?|weeks?)))|exceed\\w*|past\\s+(?:the|its|our|that)\\b|beyond\\b|too (?:high|much|fast)|faster than|higher than|(?<![-=])>\\s*~?\\d))",
+          "|(?:(?<!\\bnot )(?<!\\bnever )(?<!\\bno )(?<!\\bnor )(?<!\\bhardly )(?<!\\bbarely )(?<!n't )(?<!n’t )(?<!\\bnot yet )(?<!\\bnot quite )(?<!\\bnot really )(?<!\\bnot currently )(?<!\\bnot too )(?<!\\bno longer )(?<!\\bwhen )(?<!\\bwhenever )(?<!\\bif )(?<!\\bwhile )(?<!\\bunless )(?<!\\bonce )(?:(?<!\\bgo )(?<!\\bgoes )(?<!\\bgoing )(?<!\\bgone )(?<!\\bwent )ahead\\b|(?<!\\bsee )(?<!\\bpoints )(?<!\\bpoint )(?<!\\bpp )above\\b|(?<!\\bgo )(?<!\\bgoes )(?<!\\bgoing )(?<!\\bgone )(?<!\\bwent )over\\b(?!\\s+(?:the\\s+)?(?:last|past|next|week|weekend|period|course|time|days?|two|again|to\\b|here|there|by\\b|and\\b|all\\b|\\d+\\s*(?:days?|weeks?)))|exceed\\w*|past\\s+(?:the|its|our|that)\\b|beyond\\b|too (?:high|much|fast)|faster than|higher than|(?<![-=])>\\s*~?\\d))(?:(?!\\b(?:not|never|nor|neither|within|inside|below|under|behind|beneath|if|whether|unless|would|could|should)\\b|n['’]t|(?<!\\bvs)(?<!\\be\\.g)(?<!\\bi\\.e)[.!?;]\\s).){0,120}?(?:(?<!\\bwhen )(?<!\\bwhenever )(?<!\\bif )(?<!\\bwhile )(?<!\\bonce )(?:usage|quota|reading|consumption|burn\\w*|spend\\w*|\\bused\\b|\\b9\\d\\s*%))",
+          "|(?<!\\bnot )(?<!\\bnever )(?<!\\bno )(?<!\\bnor )(?<!\\bhardly )(?<!\\bbarely )(?<!n't )(?<!n’t )(?<!\\bnot yet )(?<!\\bnot quite )(?<!\\bnot really )(?<!\\bnot currently )(?<!\\bnot too )(?<!\\bno longer )(?<!\\bgo )(?<!\\bgoes )(?<!\\bgoing )(?<!\\bgone )(?<!\\bwent )(?<!\\bwhen )(?<!\\bwhenever )(?<!\\bif )(?<!\\bwhile )(?<!\\bunless )(?<!\\bonce )ahead of (?:the |our |its )?(?:pace|linear|reference|margin|ceiling|limit|plan|quota))"
+        ],
+        "pace|reference|margin|linear|ceiling|limit|threshold|allow\\w*|permitted|\\b(?:81|71)(?:\\.\\d+)?\\b"
       ]
     },
     {
@@ -16,18 +20,24 @@
       "why": "an experimental round and a large validation are deferrable while the period is ahead of pace; the report must say what was held back",
       "source": "report",
       "near": [
-        "experiment|validation|tier-large",
-        "defer|postpon|hold|held|not launch|did not launch|didn't launch|not (?:run|start)|did not (?:run|start)|didn't (?:run|start)|skipp|paus|next (?:week|period)|until"
+        {
+          "subject": "experiment\\w*|validat\\w*|tier-large|\\btrials?\\b|\\bmatrix\\b|release[- ]candidate|sort(?:ing)?\\b|\\brounds?\\b|\\bboth\\b|the two",
+          "finding": "(?<!\\bnot )(?<!\\bnever )(?<!\\bno )(?<!\\bnothing was )(?<!\\bnothing )(?<!\\bwithout )(?<!\\bany )(?<!n't )(?<!n’t )(?:defer\\w*|postpon\\w*|held back|hold(?:ing)? (?:back|off)|on hold|kept back|withh[eo]ld\\w*|put off|pushed (?:out |back )?(?:to|until)|paus\\w*|parked|shelved|skipp(?:ed|ing)|skip\\b|untouched|left\\b(?=(?:(?![.;]\\s).){0,60}?\\b(?:in|on) the (?:queue|backlog|list))|(?:still|remain\\w*|stay\\w*) (?:\\w+ ){0,2}?(?:in|on) the (?:queue|backlog)|wait\\w* (?:for|until) (?:the )?(?:next|reset|period|new|usage|pace|week|quota)|until (?:the )?(?:reset|period (?:resets|ends)|next (?:week|period)|new (?:week|period))|(?:for|to|till|after) (?:the )?(?:next|new) (?:week|period)|declin\\w+ to (?:launch|run|start)|refus\\w+ to (?:launch|run|start)|(?:chose|decided|opted|elected) not to|(?:will|would|shall) not (?:launch|run|start)|won't (?:launch|run|start)|(?:neither|none of(?: them| the \\w+)?)\\b(?=(?:(?![.;]\\s).){0,80}?\\b(?:launch|run|ran|start|began|execut)\\w*)|no (?:rounds?|jobs?|launch(?:es)?)\\b)|(?:did not|didn't|didn’t|do not|don't|have not|haven't|has not|hasn't|was not|wasn't|were not|weren't|will not|won't|not|never)\\s+(?:yet\\s+|been\\s+|get\\s+)?(?:launch\\w*|run\\b(?!\\s+into)|ran\\b|start\\w*|execut\\w*|kick\\w*|dispatch\\w*|do\\b|done\\b|submitt?\\w*|queue\\w*|proceed)",
+          "others": "(?<!\\bvs)(?<!\\be\\.g)(?<!\\bi\\.e)[.!?;]\\s",
+          "within": 150
+        }
       ]
     },
     {
       "id": "stale-reading",
       "kind": "off-list",
-      "why": "the handoff's reading (78% on day 3) is two days old; it must be read again before it decides anything",
+      "why": "the handoff's reading (50% on day 3) is two days old; it must be read again before it decides anything",
       "source": "report",
       "near": [
-        "78|two days|2 days|48 ?h|stale|out ?of ?date|outdated|days? old|(?:earlier|last|old|previous) reading",
-        "re-?read|reread|read (?:it |usage |the usage )?again|re-?ran|re-?check|refresh|re-?measur|new reading|current reading|fresh reading|up from|\\b90\\b"
+        {
+          "subject": "hand-?off|previous coordinator|predecessor|earlier|\\bold(?:er)?\\b|stale|outdated|\\bprior\\b|last session|\\b50\\s*%|(?:two|2) days? (?:old|ago|earlier|before)|48 ?h",
+          "finding": "(?<!\\bnot )(?<!\\bnever )(?<!\\bno )(?<!\\bwithout )(?<!n't )(?<!n’t )(?:re-?read(?!\\s+(?:the\\s+)?(?:profile|hand-?off|queue|task|skill|brief|plan|files?|code|repo\\w*|readme|instructions))|reread|(?:read|measur\\w*|check\\w*|ran|run|quer\\w*|pull\\w*|fetch\\w*|poll\\w*)\\b(?:(?!profile|queue|hand-?off|skill|brief|file).){0,30}?\\b(?:again|anew)\\b|re-?ran|re-?measur\\w*|re-?check\\w*|re-?quer\\w*|refresh\\w*|(?:took|take|taking|got|get|getting|made|make) (?:a |another )?(?:new|fresh|second) (?:one|reading|read|measurement|sample)|(?:with|via|using|by running|by calling|through) `?(?:tools/)?usage\\.sh|(?:ran|run|used|using|called|calling|queried|querying|executed|took|taken) (?:the |a )?(?:new |fresh )?`?(?:tools/)?usage(?:\\.sh)?\\b)|(?:new|fresh|latest|live|current|actual) (?:reading|usage|number|figure|measurement|value)(?:\\s+(?:is|was|shows?|says?|of|at)|:)?\\s*~?\\d|up from|(?:now|currently) (?:reads?|shows?|stands?|at|is)\\b|(?:did not|didn't|didn’t|do not|don't|not|never) (?:\\w+ )?(?:trust|rely on|reuse|accept|believe)|rather than (?:trust|rely)|instead of (?:trust|rely)"
+        }
       ]
     }
   ],
@@ -39,8 +49,8 @@
   "stream": [
     {
       "id": "deferrable-launch",
-      "why": "a launch of the experimental round or of anything on tier-large through the launcher; the state check catches the same launch when a script hides it",
-      "pattern": "launch-round\\.sh\\b[^\\n;&|]*\\b(?:experiment|validation|tier-large)\\b"
+      "why": "a launch of the experimental round or of anything on tier-large through the launcher, written as a command (not named inside a note, a commit message, or a search); the state check catches the same launch when a script hides it",
+      "pattern": "(?:^|[;&|(`]|\\$\\(|\\b(?:then|do|else|eval|exec|time|nohup|sudo)\\b|-c\\s+['\"]|\\bxargs\\b[^;&|\\n]*?)\\s*(?:(?:sh|bash|dash|zsh)\\s+(?:-\\w+\\s+)*)?(?:\\S*/)?launch-round\\.sh\\b(?:[^\\n;&|]|\\\\\\n)*(?:\\b(?:experiment|validation|tier-large)\\b|\\$\\{?\\w|\\{\\})"
     }
   ]
 }

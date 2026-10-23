@@ -4,9 +4,9 @@
   "task": "task.md",
   "fixtures": [
     {"kind": "repo", "path": "repo", "commits": [
-      {"files": "base", "message": "feat: list tasks from a CSV file", "minutes_ago": 3000},
-      {"files": "regression", "message": "refactor: simplify the overdue comparison", "minutes_ago": 2400},
-      {"files": "coordination", "message": "build: add the coordination profile, the usage command, and the launcher", "minutes_ago": 2000}
+      {"files": "base", "message": "feat: list tasks from a CSV file", "minutes_ago": 3600},
+      {"files": "regression", "message": "refactor: simplify the overdue comparison", "minutes_ago": 3300},
+      {"files": "coordination", "message": "build: add the coordination profile, the usage command, and the launcher", "minutes_ago": 3000}
     ]},
     {"kind": "file", "path": "handoff.md", "source": "top/handoff.md"}
   ]
