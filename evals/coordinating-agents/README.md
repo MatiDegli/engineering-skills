@@ -73,7 +73,11 @@ no secret-like file names, and external URLs only inside code spans.
     reads one alternative per line), or an object that finds a `subject` and a `finding` in either
     order, at most `within` characters apart (200 by default), with nothing between them that
     matches `others`. The object keeps a finding about front B from crediting front C when one
-    paragraph names both.
+    paragraph names both. A unit's subject binds the object too: the first cell of a table row,
+    the first line of a list item with lines under it, the heading of a section, or a short label
+    that opens a paragraph or an item, such as `**Front C:**`. When that subject names the
+    object's subject and no other, the finding may stand in any sentence or cell of the unit that
+    names no other subject, so a long row about front C can mention front A in passing.
   - A unit is a paragraph, a table row, or a list item together with its nested items. A nested
     item is a unit too. Quote markers (`>`) do not change how text splits.
   - When a seed matches no unit, a heading joined to one unit under it counts as well. A heading

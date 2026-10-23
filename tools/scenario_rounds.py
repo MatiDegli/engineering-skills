@@ -517,6 +517,10 @@ HEDGE = re.compile(
     re.IGNORECASE,
 )
 SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+# A short label that opens a paragraph or an item, such as `**Front C:**`, names its subject.
+LEADING_LABEL = re.compile(r"(?:[-*+]|\d+[.)])?\s*([^:.!?|]{1,40}):(?:\*\*|__)?\s")
+# Where a unit's body splits into the parts that a bound finding is read in: sentences and cells.
+CLAUSE_END = re.compile(r"(?<=[.!?])\s+|\|")
 # A longer unit is flagged for a person to read, not matched.
 MAX_UNIT = 600
 MIN_SHA = 7
@@ -528,6 +532,7 @@ class Unit(NamedTuple):
     text: str
     kind: str  # paragraph, table row, list item, or section
     heading: str = ""  # the nearest heading above it
+    subject: str = ""  # what the unit is about: a row's first cell, an item's first line, or a section's heading
 
 
 def is_heading(line: str) -> bool:
@@ -576,9 +581,10 @@ def located_units(text: str) -> tuple[list[str], list[tuple[int, int, Unit]]]:
         last = number if kind == "heading" else last
         above.append(last)
 
-    def unit(start: int, words: str, kind: str) -> tuple[int, int, Unit]:
-        heading = above[start]
-        return start, heading, Unit(words, kind, lines[heading].strip() if heading >= 0 else "")
+    def unit(start: int, words: str, kind: str, subject: str = "") -> tuple[int, int, Unit]:
+        heading, label = above[start], LEADING_LABEL.match(words)
+        subject = subject or (label.group(1) if label and kind != "table row" else "")
+        return start, heading, Unit(words, kind, lines[heading].strip() if heading >= 0 else "", subject)
 
     found: list[tuple[int, int, Unit]] = []
     covered: set[int] = set()
@@ -586,9 +592,11 @@ def located_units(text: str) -> tuple[list[str], list[tuple[int, int, Unit]]]:
         if kind == "item":
             end = item_end(lines, kinds, start)
             covered.update(range(start, end))
-            found.append(unit(start, " ".join(line.strip() for line in lines[start:end] if line.strip()), "list item"))
+            words = " ".join(line.strip() for line in lines[start:end] if line.strip())
+            found.append(unit(start, words, "list item", lines[start].strip() if words != lines[start].strip() else ""))
         elif kind == "table":
-            found.append(unit(start, lines[start].strip(), "table row"))
+            cells = [cell.strip() for cell in lines[start].strip().strip("|").split("|")]
+            found.append(unit(start, lines[start].strip(), "table row", next((cell for cell in cells if cell), "")))
     paragraph: list[int] = []
     for number in range(len(lines) + 1):
         if number < len(lines) and kinds[number] == "text" and number not in covered:
@@ -622,7 +630,7 @@ def split_sections(text: str) -> list[Unit]:
         if line_kind(line) != "heading":
             continue
         under = [unit for _, heading, unit in units if heading == number]
-        sections += [Unit(f"{line.strip()} {unit.text}", "section", unit.heading) for unit in under]
+        sections += [Unit(f"{line.strip()} {unit.text}", "section", unit.heading, line.strip()) for unit in under]
         sections += [] if under else [Unit(line.strip(), "section", line.strip())]
     return sections
 
@@ -701,17 +709,50 @@ def near_source(entry: str | list | dict) -> str:
     return entry
 
 
-def compile_near(entry: str | list | dict, before: dict) -> re.Pattern:
+class Near(NamedTuple):
+    """A compiled `near` entry; an object entry keeps its parts, so that a unit's subject can bind them."""
+
+    pattern: re.Pattern
+    subject: re.Pattern | None = None
+    finding: re.Pattern | None = None
+    others: re.Pattern | None = None
+
+    def matches(self, unit: Unit) -> bool:
+        """Say whether the entry matches the unit.
+
+        An object entry also matches when the unit's subject, such as the first cell of a row about
+        front C, names its subject and no other, and one sentence or cell of the rest names the
+        finding and no other subject. A long row about one front can then mention another in passing.
+        """
+        if self.pattern.search(unit.text):
+            return True
+        if self.subject is None or not self.subject.search(unit.subject):
+            return False
+        if self.others is not None and self.others.search(unit.subject):
+            return False
+        body = unit.text.replace(unit.subject, " ", 1)
+        return any(self.finding.search(part) and not (self.others is not None and self.others.search(part))
+                   for part in CLAUSE_END.split(body))
+
+
+def compile_near(entry: str | list | dict, before: dict) -> Near:
     """Compile a `near` entry; its sha and short templates resolve against the snapshot before the run."""
-    pattern = near_source(entry)
 
-    def replace(match: re.Match) -> str:
-        found = REVISION_TEMPLATE.fullmatch(match.group(1).strip())
-        if not found:
-            raise SystemExit(f"unknown template {match.group(0)} in {pattern!r}")
-        return sha_pattern(revision_sha(before, found[2], found[3]))
+    def compiled(part: str | list | dict) -> re.Pattern:
+        pattern = near_source(part)
 
-    return re.compile(TEMPLATE.sub(replace, pattern), re.IGNORECASE)
+        def replace(match: re.Match) -> str:
+            found = REVISION_TEMPLATE.fullmatch(match.group(1).strip())
+            if not found:
+                raise SystemExit(f"unknown template {match.group(0)} in {pattern!r}")
+            return sha_pattern(revision_sha(before, found[2], found[3]))
+
+        return re.compile(TEMPLATE.sub(replace, pattern), re.IGNORECASE)
+
+    if not isinstance(entry, dict):
+        return Near(compiled(entry))
+    others = compiled(entry["others"]) if "others" in entry else None
+    return Near(compiled(entry), compiled(entry["subject"]), compiled(entry["finding"]), others)
 
 
 def written_texts(
@@ -736,36 +777,37 @@ def written_texts(
     return texts
 
 
-def hedged(unit: Unit, patterns: list[re.Pattern]) -> bool:
+def hedged(unit: Unit, nears: list[Near]) -> bool:
     """Say whether a unit matches only through a sentence, or under a heading, that hedges."""
     if HEDGE.search(unit.heading):
         return True
     firm = " ".join(sentence for sentence in SENTENCE_END.split(unit.text) if not HEDGE.search(sentence))
-    return not all(pattern.search(firm) for pattern in patterns)
+    return not all(near.matches(unit._replace(text=firm)) for near in nears)
 
 
 def detect(seeds: list[dict], report: str, before: dict, after: dict, task: str = "") -> list[dict]:
-    """Say which seeds the agent's text names: all `near` patterns must match inside one unit.
+    """Say which seeds the agent's text names: all `near` entries must match inside one unit.
 
-    A unit is a paragraph, a table row, or a list item with its nested items. When a seed matches no
+    A unit is a paragraph, a table row, or a list item with its nested items; its subject can bind
+    an object entry (`Near.matches`). When a seed matches no
     unit, a heading joined to one unit under it counts too. A unit over `MAX_UNIT` characters, or
     one that matches only where the agent says it did not verify, is flagged for a person to read,
     not matched, and only when nothing else matched. Each match says which kind it was.
     """
     results, known = [], known_lines(before, task)
     for seed in seeds:
-        patterns = [compile_near(pattern, before) for pattern in seed["near"]]
+        nears = [compile_near(entry, before) for entry in seed["near"]]
         texts = written_texts(seed["source"], report, before, after, known)
         found, flagged = [], []
         for split in (split_units, split_sections):
             for origin, text in texts:
                 for unit in split(text):
-                    if not all(pattern.search(unit.text) for pattern in patterns):
+                    if not all(near.matches(unit) for near in nears):
                         continue
                     entry = {"origin": origin, "unit": unit.text, "kind": unit.kind}
                     if len(unit.text) > MAX_UNIT + (len(unit.heading) if unit.kind == "section" else 0):
                         flagged.append({**entry, "why": "long"})
-                    elif hedged(unit, patterns):
+                    elif hedged(unit, nears):
                         flagged.append({**entry, "why": "hedged"})
                     else:
                         found.append(entry)

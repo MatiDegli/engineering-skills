@@ -40,7 +40,7 @@
           ],
           "others": "\\bfront[- ]?[acd]\\b"
         },
-        "\\btests?\\b|\\bgate\\b|\\bsuite\\b|\\bunittest\\b|\\bhand-?back\\b"
+        "\\btests?\\b|\\bgate\\b|\\bsuite\\b|\\bunittest\\b|test_\\w+"
       ]
     },
     {

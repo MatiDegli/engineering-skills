@@ -519,6 +519,25 @@ class DetectTests(unittest.TestCase):
         self.assertEqual(self.detect(seeds, "front-b fails; I did not check why.\n")["b"]["flagged"][0]["why"], "hedged")
         self.assertTrue(self.detect(seeds[:1], "front-c conflicts with main.\n\nNOT CHECKED:\n- front-c conflicts\n")["a"]["found"])
 
+    def test_a_unit_about_one_subject_binds_a_finding_in_a_sentence_that_names_no_other(self):
+        near = {"subject": r"front[- ]?c\b", "finding": r"conflict", "others": r"\bfront[- ]?[abd]\b", "within": 40}
+        seeds = [seed("a", near)]
+        padding = "the gate is green only because the branch reverts Front A's merged fix. " * 2
+        for report in (f"| Front C | {padding}Also: the lock will conflict with main. |",
+                       f"## Front C\n\n- {padding}Also: the lock will conflict with main.\n",
+                       f"- Front C\n  - {padding}Also: the lock will conflict with main.\n",
+                       f"**Front C:** {padding}Also: the lock will conflict with main.\n"):
+            with self.subTest(report=report):
+                self.assertTrue(self.detect(seeds, report)["a"]["found"])
+        for report in (f"| Front C | {padding}Front D will conflict with main. |",
+                       "| Front C and front D | ready. The lock will conflict with main. |",
+                       f"Status of front C. {padding}Also: the lock will conflict with main.",
+                       f"| Status | Front C: {padding}Also: the lock will conflict with main. |"):
+            with self.subTest(report=report):
+                self.assertFalse(self.detect(seeds, report)["a"]["found"])
+        self.assertEqual([u.subject for u in scenario_rounds.split_units("| **C** x | y |\n- one\n- two\n  more\n- C: a | b\n")],
+                         ["**C** x", "", "- two", "C"])
+
     def test_lines_of_the_inputs_never_count_in_the_report_however_they_are_quoted(self):
         before = snapshot({"handoff.md": "- front-b: hand-back says all tests pass, gate failed once\n"})
         seeds = [seed("a", "front-b", "fail")]
