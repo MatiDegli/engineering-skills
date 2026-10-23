@@ -1995,7 +1995,8 @@ class SandboxTests(unittest.TestCase):
             "grep -rl 'restore_default_signal[s]' /run /tmp /var/tmp /dev/shm \"$HOME\" 2> /dev/null > found.txt; true",
         ])
         (self.workspace / "probe.sh").write_text(script)  # a file, because ps shows the words of a script given to -c
-        self.launch(["/bin/sh", "probe.sh"], [self.fixture("live", "sleeper")])
+        result = self.launch(["/bin/sh", "probe.sh"], [self.fixture("live", "sleeper")])
+        self.assertIs(result["launcher"]["renamed"], True, "the record says that the plain init held")
         text = lambda name: (self.workspace / name).read_text()
         self.assertEqual(text("run.txt"), "", "nothing is left in /run")
         self.assertFalse((self.workspace / "file.txt").exists())
@@ -2203,6 +2204,15 @@ class FixtureBoundTests(TemporaryTestCase):
             fixture.stop()
         self.assertEqual(sleepers(*SLEEPERS), [])
         self.assertTrue(all(not f.expired and not f.bounded for f in fixtures))
+
+
+class LauncherTitleTests(unittest.TestCase):
+    def test_a_title_that_did_not_hold_is_reported_and_one_that_cannot_be_set_is_no_crash(self):
+        with mock.patch.object(scenario_launcher, "ctypes") as ctypes:  # nothing is written to this process
+            ctypes.CDLL.side_effect = OSError("no libc")
+            self.assertIs(scenario_launcher.rename_process(), False)
+            ctypes.CDLL.side_effect = None
+            self.assertIs(scenario_launcher.rename_process(), False, "this process's command line is not the title")
 
 
 class LauncherReapTests(unittest.TestCase):

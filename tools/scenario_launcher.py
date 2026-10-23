@@ -14,7 +14,7 @@ works in this order:
    collect the processes that lose their parent, as an init does;
 4. stop every other process except the fixtures and what they started;
 5. record each fixture as alive, exited, killed by a signal, or past its bound, then stop them;
-6. write the record, one JSON line, to the descriptor.
+6. write the record, one JSON line, to the descriptor; it says whether the plain init held.
 
 As PID 1 the launcher ignores the signals that a process inside the sandbox sends it, so the agent
 cannot kill it. That holds only for a signal with no handler, so it first restores the default
@@ -293,12 +293,13 @@ def remove_own_file() -> None:
             pass
 
 
-def rename_process() -> None:
+def rename_process() -> bool:
     """Show a plain init in the process table: set the name, and overwrite the command line.
 
     The command line that started the launcher names its file, and any process can read it under
     /proc/1. The kernel serves it from the memory where the arguments live, so writing a title
-    there, padded with zeros to the old length, replaces it.
+    there, padded with zeros to the old length, replaces it. Return whether it held, which is read
+    back from /proc, so that the record says when a kernel served the old command line after all.
     """
     try:
         fields = Path("/proc/self/stat").read_text().rpartition(")")[2].split()
@@ -306,8 +307,10 @@ def rename_process() -> None:
         if end - start > len(TITLE) and start > 0:
             ctypes.memmove(start, TITLE.ljust(end - start, b"\0"), end - start)
         ctypes.CDLL(None).prctl(15, b"init", 0, 0, 0)  # PR_SET_NAME
+        command_line = Path("/proc/self/cmdline").read_bytes().rstrip(b"\0")
+        return command_line == TITLE and Path("/proc/self/comm").read_text().strip() == "init"
     except (OSError, AttributeError, IndexError, ValueError):
-        pass
+        return False
 
 
 def restore_default_signals() -> None:
@@ -328,7 +331,7 @@ def main() -> int:
         print("the launcher runs only as PID 1 of a sandbox", file=sys.stderr)
         return 2
     remove_own_file()
-    rename_process()
+    renamed = rename_process()
     payload = json.load(sys.stdin)
     forbid_inspection()
     for name, text in payload.get("files", {}).items():
@@ -341,7 +344,7 @@ def main() -> int:
     running = stop_others({fixture.pid for fixture in fixtures if fixture.pid})
     for fixture in fixtures:
         fixture.enforce_bound()
-    record = {"agent": agent, "seconds": round(seconds, 1), "left_running": running}
+    record = {"agent": agent, "seconds": round(seconds, 1), "left_running": running, "renamed": renamed}
     record["fixtures"] = {fixture.name: fixture.status() for fixture in fixtures}
     for fixture in fixtures:
         fixture.stop()
