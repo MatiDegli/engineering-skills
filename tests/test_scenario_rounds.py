@@ -307,7 +307,10 @@ class SnapshotTests(WorkspaceTestCase):
         write(secret, f"{'0' * 40} {'a' * 40} Name <n@example.invalid> 1 +0000\tsecret text\n")
         log.unlink()
         log.symlink_to(secret)
-        self.assertEqual(self.after()["repos"]["repo"]["stash"], [])
+        after = self.after()
+        self.assertNotIn("repo", after["repos"], "a link inside the Git directory refuses the whole repository")
+        self.assertIn("symbolic link: logs/refs/stash", after["problems"][0])
+        self.assertEqual(scenario_rounds.read_stash(self.workspace / "repo" / ".git"), [], "and read_stash alone still refuses it")
         log.unlink()
         write(log, f"not a log line\n{'0' * 40} {'b' * 40} Name <n@example.invalid> 1 +0000\tOn main: kept\n\n")
         self.assertEqual(self.after()["repos"]["repo"]["stash"], [{"commit": "b" * 40, "subject": "On main: kept"}])
@@ -739,6 +742,50 @@ class StateTests(WorkspaceTestCase):
     def test_an_unknown_assertion_is_an_error(self):
         with self.assertRaises(SystemExit):
             scenario_rounds.check_state({"process_alve": "live"}, self.before, self.before, {})
+
+
+class RedirectionTests(WorkspaceTestCase):
+    """A Git directory that could make the snapshot read refs, objects, or configuration elsewhere."""
+
+    def other_repository(self):
+        other = self.root / "elsewhere"
+        other.mkdir()
+        git(other, "init", "-q", "-b", "main")
+        git(other, "commit", "-q", "--allow-empty", "-m", "outside")
+        git(other, "branch", "outside-only")
+        return other / ".git"
+
+    def assert_refused(self, expected):
+        after = self.after()
+        self.assertNotIn("repo", after["repos"])
+        self.assertEqual(len(after["problems"]), 1, after["problems"])
+        self.assertIn(expected, after["problems"][0])
+
+    def test_the_prepared_workspace_with_a_linked_worktree_is_read(self):
+        self.assertEqual(self.before["problems"], [])
+        self.assertIsNone(scenario_rounds.redirection(self.workspace / "repo" / ".git"))
+
+    def test_a_commondir_file_is_refused_and_would_have_read_another_repository(self):
+        git_directory = self.workspace / "repo" / ".git"
+        (git_directory / "commondir").write_text(f"{self.other_repository()}\n")
+        listed = scenario_rounds.read_git(git_directory, "for-each-ref", "--format=%(refname)")
+        self.assertIn("refs/heads/outside-only", listed, "the control: Git follows commondir out of the workspace")
+        self.assert_refused("holds commondir")
+
+    def test_an_alternates_file_is_refused(self):
+        alternates = self.workspace / "repo" / ".git" / "objects" / "info" / "alternates"
+        write(alternates, f"{self.other_repository() / 'objects'}\n")
+        self.assert_refused("holds objects/info/alternates")
+
+    def test_a_symbolic_link_inside_the_git_directory_is_refused(self):
+        refs = self.workspace / "repo" / ".git" / "refs" / "heads" / "outside"
+        refs.symlink_to(self.other_repository() / "refs" / "heads" / "outside-only")
+        self.assert_refused("symbolic link: refs/heads/outside")
+
+    def test_a_worktree_commondir_that_leaves_the_repository_is_refused(self):
+        entry = self.workspace / "repo" / ".git" / "worktrees" / "wip" / "commondir"
+        entry.write_text(f"{self.other_repository()}\n")
+        self.assert_refused("the commondir of worktree wip leads out of the repository")
 
 
 class RealWorktreeTests(unittest.TestCase):

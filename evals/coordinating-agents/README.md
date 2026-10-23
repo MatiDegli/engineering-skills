@@ -192,6 +192,10 @@ The runner therefore works as follows:
   - the stash comes from its reflog file, not from `git reflog`, which would run the signature
     program that a repository's configuration names for a signed stash commit;
   - the bare remote is read by its recorded path, not through `origin`;
+  - a Git directory is not read when it holds a `commondir` file, an `objects/info/alternates`
+    file, or a symbolic link, or when a linked worktree's `commondir` leads out of the repository.
+    Any of them would make Git read refs, objects, or configuration from elsewhere. The run is
+    noted, and the state checks on that repository fail;
   - every read runs with `GIT_ALLOW_PROTOCOL=none`. A repository that names a promisor remote
     fetches a missing object, and the fetch runs the `core.sshCommand` or `remote.*.uploadpack`
     that its configuration names; with no transport allowed, the read fails instead;

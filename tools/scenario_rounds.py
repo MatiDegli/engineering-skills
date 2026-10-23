@@ -312,6 +312,29 @@ def git_dir(workspace: Path, relative: str) -> Path | None:
     return None
 
 
+def redirection(directory: Path) -> str | None:
+    """Name what in a Git directory would make Git read refs, objects, or configuration elsewhere.
+
+    A `commondir` file turns the directory into a linked worktree's, so Git takes refs, objects, and
+    configuration from the directory it names; an `alternates` file adds object stores; a symbolic
+    link anywhere inside points a part of it away. A snapshot read through any of them could record
+    another repository's state, or files from outside the workspace. A linked worktree's own
+    `commondir` must lead back to this directory.
+    """
+    for name in ("commondir", "objects/info/alternates"):
+        if (directory / name).exists() or (directory / name).is_symlink():
+            return f"its Git directory holds {name}, which can lead Git outside it"
+    for root, folders, files in os.walk(directory):
+        for name in folders + files:
+            if (Path(root) / name).is_symlink():
+                return f"its Git directory holds a symbolic link: {(Path(root) / name).relative_to(directory)}"
+    for entry in sorted((directory / "worktrees").glob("*/commondir")):
+        target = entry.parent / entry.read_text(encoding="utf-8", errors="replace").strip()
+        if target.resolve() != directory.resolve():
+            return f"the commondir of worktree {entry.parent.name} leads out of the repository"
+    return None
+
+
 def read_git(directory: Path, *arguments: str, work_tree: Path | None = None) -> str | None:
     """Run a Git plumbing command on exactly this Git directory; None when it fails.
 
@@ -454,16 +477,17 @@ def commits_added(directory: Path, before: dict, repo: dict) -> dict[str, int]:
 def take_snapshot(workspace: Path, manifest: dict, before: dict | None = None) -> dict:
     """Record the workspace's files and the refs, stash, and worktrees of its recorded repositories.
 
-    A repository whose Git directory is not a real directory inside the workspace is not read and
-    is named in `problems`. Given the snapshot from before the run, the one after it also counts the
-    commits added to each branch.
+    A repository whose Git directory is not a real directory inside the workspace, or could make Git
+    read from elsewhere, is not read and is named in `problems`. Given the snapshot from before the
+    run, the one after it also counts the commits added to each branch.
     """
     skip = {workspace / relative for relative in manifest["remotes"]}
     snapshot = {"files": workspace_files(workspace, skip), "repos": {}, "problems": []}
     for relative in [*manifest["repos"], *manifest["remotes"]]:
         directory = git_dir(workspace, relative)
-        if directory is None:
-            snapshot["problems"].append(f"{relative}: no Git directory inside the workspace")
+        problem = "no Git directory inside the workspace" if directory is None else redirection(directory)
+        if problem:
+            snapshot["problems"].append(f"{relative}: {problem}")
             continue
         repo = read_repository(directory, workspace)
         if before and relative in before["repos"]:
