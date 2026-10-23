@@ -352,7 +352,13 @@ The runner therefore works as follows:
 - **Deletion:** the runner deletes the workspace, and a provider run's configuration directory with
   the key's copy, only after re-checking that the path is the one it recorded, a direct child of the
   temporary directory, not a symbolic link, and named with the runner's prefix. Both are recorded
-  before the run, so that `clean` removes what a crash left by the same re-checks.
+  before the run, so that `clean` removes what a crash left by the same re-checks, and by no
+  pattern of names. The name (`tmp` and eight characters) is also what `mkdtemp()` gives any other
+  program, so the recorded device and inode are the only thing that tells a workspace from another
+  program's directory at the same path. A file system reuses the inode numbers of deleted
+  directories: if a workspace is removed by other means and another program then makes a directory
+  with the same random name and gets the recorded inode, `clean` deletes it. That needs an
+  8-character name to repeat, which is improbable, but the check is not a proof.
 - **Preflight:** before a round, the runner checks inside a sandbox that the repository and the
   oracle are invisible, that a pattern kill misses a canary process on the host, and that Docker
   and interop fail. It tries them rather than only looking for them: it connects to each Docker
@@ -390,6 +396,12 @@ reason:
   `id` lists the group `nogroup`; `/proc/1/uid_map` and `gid_map` show a user namespace; and
   `/proc/1/exe` and `fd` are closed, as the launcher is non-dumpable (a root-owned init is closed
   to a user too). The sandbox needs this to run without privileges.
+- **The process table's shape.** PID 1's command line is `/sbin/init` padded with NULs to the
+  length of the command line that started the launcher (`tr '\0' ' '` hides the padding, `od`
+  shows it). PIDs start at 2 and few processes run, with no kernel threads (`kthreadd` and the
+  like) in the list. A real init has neither.
+- **The clock.** `/proc/uptime` is the host's, far older than PID 1, which `ps -o etime= -p 1`
+  shows as started at the launch, a few seconds ago.
 - **The mount table.** `mount` and `/proc/self/mountinfo` list tmpfs over `/tmp`, `/run`, `/mnt`,
   `/var/tmp`, and the home directory, a read-only root, and the binds of the workspace and the
   CLI with their host paths. That is the allow-list itself; hiding it takes another kind of
@@ -402,7 +414,11 @@ reason:
   `--settings`, the `apiKeyHelper` command, and the mount table name it) is a second `tmp`
   directory beside the workspace, because the CLI needs its configuration at a path of its own; it
   is named like the workspace, so it says nothing of the round or the run.
-- **A bare machine.** `/run` is empty, `/tmp` holds only the workspace (and a provider run's
+- **A bare machine.** `/run` is empty (except on a host whose `/etc/resolv.conf` is a link into
+  `/run`, as with systemd-resolved: `bwrap` follows a link at a mount's destination and fails when
+  the link's directory is missing, so it cannot put the file over the link, and the runner binds it
+  at the path it resolves to, which shows `/run/systemd/resolve/`; the gap is open),
+  `/tmp` holds only the workspace (and a provider run's
   configuration directory), the home directory only
   `.gitconfig`, and a repository has no sample hooks (it is made with `git init --template=`, so
   that no host template runs). A file's date is the preparation, where a commit's is days old, as in

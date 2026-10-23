@@ -1868,7 +1868,7 @@ def sleepers(*durations):
 
 class SandboxArgumentTests(unittest.TestCase):
     def test_the_allow_list_masks_first_and_binds_back_only_what_is_named(self):
-        home, workspace, skill = Path("/home/someone"), Path("/tmp/tmp.AbCdEfGh"), Path("/tmp/skill.x/coordinating-agents")
+        home, workspace, skill = Path("/home/someone"), Path("/tmp/tmpAbCdEfGh"), Path("/tmp/skill.x/coordinating-agents")
         arguments = scenario_rounds.sandbox_arguments(home, workspace, [skill], [workspace], ["agent", "--flag"])
         self.assertEqual(arguments[:4], ["setpriv", "--pdeathsig", "KILL", "bwrap"])
         for flag in ("--unshare-pid", "--as-pid-1", "--die-with-parent", "--clearenv"):
@@ -1882,7 +1882,7 @@ class SandboxArgumentTests(unittest.TestCase):
         self.assertTrue(all(i > last_mask for i, a in enumerate(arguments) if a in ("--bind", "--ro-bind") and arguments[i + 1] != "/"))
 
     def test_the_launcher_is_a_copy_written_into_the_masked_run_and_never_a_bind_of_the_host_file(self):
-        home, workspace = Path("/home/someone"), Path("/tmp/tmp.AbCdEfGh")
+        home, workspace = Path("/home/someone"), Path("/tmp/tmpAbCdEfGh")
         arguments = scenario_rounds.sandbox_arguments(home, workspace, [], [workspace], ["agent"], 7)
         place = arguments.index("--file")
         self.assertEqual(arguments[place:place + 3], ["--file", "7", scenario_rounds.LAUNCHER_INSIDE])
