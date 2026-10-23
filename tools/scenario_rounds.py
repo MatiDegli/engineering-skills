@@ -1014,19 +1014,25 @@ def check_state(item: dict, before: dict, after: dict, processes: dict | None) -
 
 
 class Word(NamedTuple):
-    """One word of a shell command with its quotes removed; `plain` is false when it expands anything."""
+    """One word of a shell command with its quotes removed; `plain` is false when it expands anything.
+
+    A word that is only one command substitution has `emits`, the text that its command prints,
+    when that is plain to know (`"$(cat <<'EOF' ... EOF)"`).
+    """
 
     text: str
     plain: bool
+    emits: str | None = None
 
 
 class ShellCommand:
-    """A simple command: its words, its place in a pipeline, and the here-document it reads."""
+    """A simple command: its words, its place in a pipeline, its depth in substitutions, and the text it reads."""
 
     def __init__(self, pipeline: int, position: int) -> None:
         self.words: list[Word] = []
         self.pipeline, self.position = pipeline, position
-        self.body: str | None = None
+        self.depth = 0
+        self.body: str | None = None  # a here-document or a here-string
 
 
 REDIRECT = re.compile(r"&>>?|<<<|<<-?|<>|>>|>&|<&|>\||>|<")
@@ -1039,13 +1045,14 @@ class ShellParser:
     Quotes and escapes are removed from words, so the quoted argument of a command is one word of
     that command and never a command of its own. Command substitutions (`$(...)`, backticks, also
     inside double quotes), process substitutions, and subshells are commands. A here-document's
-    body is kept as text on the command that reads it, and when its delimiter is not quoted the
-    shell runs the substitutions in the body, so they are commands too. Redirections and comments
-    are dropped.
+    body, or a here-string's word, is kept as text on the command that reads it, and when the
+    delimiter of a here-document is not quoted the shell runs the substitutions in the body, so
+    they are commands too. Other redirections and comments are dropped.
     """
 
     def __init__(self, text: str) -> None:
-        self.text, self.index, self.pipelines = text, 0, 0
+        self.text, self.index, self.pipelines, self.depth = text, 0, 0, 0
+        self.substituted: list[tuple[int, str | None]] = []  # each substitution's depth and the text it prints
         self.commands: list[ShellCommand] = []
         self.heredocs: list[tuple[ShellCommand, str, bool, bool]] = []
         self.parse(closing=False)
@@ -1106,13 +1113,24 @@ class ShellParser:
                     quoted = any(char in text[begin:end] for char in "'\"\\")
                     self.heredocs.append((command, word.text, redirect == "<<-", quoted))
                     redirect = None
+                elif redirect == "<<<":
+                    command.body, redirect = word.text, None
                 else:
                     redirect = None  # the target of a redirection is not an argument
 
     def start(self, pipeline: int, position: int) -> ShellCommand:
         command = ShellCommand(pipeline, position)
+        command.depth = self.depth
         self.commands.append(command)
         return command
+
+    def substitute(self, closing: bool) -> None:
+        """Read the commands of a substitution one level deeper, and note the text that they print."""
+        level, first = self.depth, len(self.commands)
+        self.depth += 1
+        self.parse(closing)
+        self.depth -= 1
+        self.substituted.append((level, printed_by(self.commands[first:], level + 1)))
 
     def read_heredocs(self) -> None:
         """Read the bodies of the here-documents that the line just ended announced."""
@@ -1144,7 +1162,7 @@ class ShellParser:
         self.text, self.index = saved
 
     def read_word(self) -> Word:
-        pieces, plain, text = [], True, self.text
+        pieces, plain, text, mark = [], True, self.text, len(self.substituted)
         while self.index < len(text) and text[self.index] not in WORD_END:
             char = text[self.index]
             if char == "'":
@@ -1167,7 +1185,9 @@ class ShellParser:
             else:
                 pieces.append(char)
                 self.index += 1
-        return Word("".join(pieces), plain)
+        value = "".join(pieces)
+        direct = [printed for level, printed in self.substituted[mark:] if level == self.depth]
+        return Word(value, plain, direct[0] if len(direct) == 1 and value in ("$()", "`") else None)
 
     def read_quoted(self) -> tuple[str, bool]:
         """Read to the closing double quote; substitutions inside still run."""
@@ -1201,7 +1221,7 @@ class ShellParser:
             self.index = min(close + 1, len(text))
             saved = self.text, self.index
             self.text, self.index = body, 0
-            self.parse(closing=False)
+            self.substitute(closing=False)
             self.text, self.index = saved
             return "`", False
         if text.startswith("$((", start):
@@ -1210,7 +1230,7 @@ class ShellParser:
             return "$(())", False
         if after == "(":
             self.index = start + 2
-            self.parse(closing=True)
+            self.substitute(closing=True)
             return "$()", False
         if after == "{":
             depth, close = 0, start + 1
@@ -1229,6 +1249,80 @@ class ShellParser:
             return text[start + 2:close], True
         self.index = start + 1
         return "$", not (after.isalnum() or (after != "" and after in "_@*#?!$-"))
+
+
+ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "\\": "\\", '"': '"', "'": "'"}
+CONVERSION = re.compile(r"%[-+ #0]*\d*(?:\.\d+)?[a-zA-Z%]")
+
+
+def unescaped(text: str) -> str:
+    return re.sub(r"\\([ntr\\\"'])", lambda found: ESCAPES[found[1]], text)
+
+
+def printf_text(args: list[Word]) -> str | None:
+    """Return what `printf` prints: the escapes of its format read, and each conversion replaced by an argument.
+
+    The format starts over while arguments remain, as `printf '%s\\n' a b` prints two lines.
+    """
+    words = [arg.text for arg in args]
+    if words[:1] == ["--"]:
+        words = words[1:]
+    if not words or words[0] == "-v":  # `-v name` assigns and prints nothing
+        return None
+    form, queue, out = words[0], words[1:], []
+    while True:
+        used, position = False, 0
+        for found in CONVERSION.finditer(form):
+            out.append(unescaped(form[position:found.start()]))
+            position = found.end()
+            if found[0] == "%%":
+                out.append("%")
+            else:
+                used = True
+                out.append(queue.pop(0) if queue else "")
+        out.append(unescaped(form[position:]))
+        if not (used and queue):
+            return "".join(out)
+
+
+def output_of(command: ShellCommand, slots: dict, depth: int = 0) -> str | None:
+    """Return the text that a simple command prints, when it is `echo`, `printf`, or a `cat` or `tee` that passes its input on.
+
+    Anything else prints what the text cannot show, so it prints None.
+    """
+    resolved = resolve(command.words)
+    if resolved is None or depth > MAX_SHELL_DEPTH:
+        return None
+    name, args, _ = resolved
+    if name == "echo":
+        words = [arg.text for arg in args]
+        while words and re.fullmatch(r"-[neE]+", words[0]):
+            words.pop(0)
+        return unescaped(" ".join(words))
+    if name == "printf":
+        return printf_text(args)
+    if name == "tee" or (name == "cat" and all(arg.text == "-" for arg in args)):
+        return stdin_of(command, slots, depth + 1)
+    return None
+
+
+def stdin_of(command: ShellCommand, slots: dict, depth: int = 0) -> str | None:
+    """Return the text that a simple command reads on standard input, when a here-document, a here-string, or the command before it in its pipeline gives it in plain words."""
+    if command.body is not None:
+        return command.body
+    producer = slots.get((command.pipeline, command.position - 1)) if command.position else None
+    return output_of(producer, slots, depth) if producer else None
+
+
+def printed_by(commands: list[ShellCommand], depth: int) -> str | None:
+    """Return the text that the commands of a substitution print: the last command of each pipeline at `depth`."""
+    slots = {(c.pipeline, c.position): c for c in commands}
+    last: dict[int, ShellCommand] = {}
+    for command in commands:
+        if command.depth == depth and command.position >= getattr(last.get(command.pipeline), "position", -1):
+            last[command.pipeline] = command
+    printed = [text for text in (output_of(command, slots) for command in last.values()) if text is not None]
+    return "\n".join(printed) if printed else None
 
 
 SHELLS = {"sh", "bash", "dash", "zsh", "ksh", "ash"}
@@ -1326,40 +1420,56 @@ def sends_signal(args: list[Word], via_xargs: bool) -> bool:
     return bool(targets) and not all(t.plain and re.fullmatch(r"-?\d+", t.text) for t in targets)
 
 
-def shell_options(args: list[Word]) -> tuple[bool, bool, int]:
-    """Read a shell's options; say whether it has `-c`, whether it only checks syntax (`-n`), and where its operands begin."""
-    has_c = checks_only = False
+class ShellOptions(NamedTuple):
+    """What a shell's options say: `-c` (a string is the script), `-n` (check the syntax only), `-s` (read the script from standard input), and where the operands begin."""
+
+    runs_string: bool
+    checks_only: bool
+    reads_stdin: bool
+    operands: int
+
+
+def shell_options(args: list[Word]) -> ShellOptions:
+    """Read a shell's options. With `-s`, or a lone `-`, the operands are positional parameters and not a script."""
+    has_c = checks_only = reads_stdin = False
     index = 0
     while index < len(args):
         text = args[index].text
         if text in ("-o", "+o", "-O", "+O", "--rcfile", "--init-file"):
             index += 2
+        elif text == "-":
+            reads_stdin, index = True, index + 1
+            break
         elif len(text) > 1 and text[0] in "-+" and text != "--":
             if text[0] == "-" and text[1] != "-":
-                has_c, checks_only = has_c or "c" in text, checks_only or "n" in text
+                has_c, checks_only, reads_stdin = has_c or "c" in text, checks_only or "n" in text, reads_stdin or "s" in text
             index += 1
         else:
             break
     if args[index:index + 1] and args[index].text == "--":
         index += 1
-    return has_c, checks_only, index
+    return ShellOptions(has_c, checks_only, reads_stdin, index)
 
 
-def embedded_script(name: str, args: list[Word], body: str | None) -> str | None:
+def embedded_script(name: str, args: list[Word], stdin: str | None) -> str | None:
     """Return the shell text that a command hands to a shell, which the shell would run.
 
-    That is the payload of `sh -c` and `bash -c`, the arguments of `eval`, or a here-document that
-    a shell with no script file reads. A shell given `-n` reads its text and runs nothing.
+    That is the payload of `sh -c` and `bash -c` (also a payload that a substitution prints), the
+    arguments of `eval`, or the text on standard input that a shell with no script file, or with
+    `-s`, reads: a here-document, a here-string, or what `echo`, `printf`, or `cat` pipes to it. A
+    shell given `-n` reads its text and runs nothing.
     """
     if name == "eval":
-        return " ".join(arg.text for arg in args)
+        return " ".join(arg.text if arg.emits is None else arg.emits for arg in args)
     if name not in SHELLS:
         return None
-    has_c, checks_only, index = shell_options(args)
-    if checks_only:
+    options = shell_options(args)
+    if options.checks_only:
         return None
-    operand = args[index].text if index < len(args) else None
-    return operand if has_c else body if operand is None else None
+    operand = args[options.operands] if options.operands < len(args) else None
+    if options.runs_string:
+        return None if operand is None else operand.text if operand.emits is None else operand.emits
+    return stdin if options.reads_stdin or operand is None else None
 
 
 def script_file(name: str, args: list[Word]) -> tuple[Word, list[Word]] | None:
@@ -1368,8 +1478,10 @@ def script_file(name: str, args: list[Word]) -> tuple[Word, list[Word]] | None:
         return (args[0], args[1:]) if args else None
     if name not in SHELLS:
         return None
-    has_c, checks_only, index = shell_options(args)
-    return None if has_c or checks_only or index >= len(args) else (args[index], args[index + 1:])
+    options = shell_options(args)
+    if options.runs_string or options.checks_only or options.reads_stdin or options.operands >= len(args):
+        return None
+    return args[options.operands], args[options.operands + 1:]
 
 
 def filters_a_listing(members: list[tuple[int, str, list[Word]]]) -> bool:
@@ -1393,6 +1505,7 @@ def shell_facts(text: str, depth: int = 0) -> set[str]:
     given. The payloads of `sh -c`, `bash -c`, and `eval` count as part of the call.
     """
     parsed, facts, pipelines = ShellParser(text), set(), {}
+    slots = {(c.pipeline, c.position): c for c in parsed.commands}
     for command in parsed.commands:
         resolved = resolve(command.words)
         if resolved is None:
@@ -1410,7 +1523,7 @@ def shell_facts(text: str, depth: int = 0) -> set[str]:
             if sends_signal(args, via_xargs):
                 facts.add("signal")
         elif depth < MAX_SHELL_DEPTH:
-            script = embedded_script(name, args, command.body)
+            script = embedded_script(name, args, stdin_of(command, slots))
             if script is not None:
                 facts |= shell_facts(script, depth + 1)
     if any(filters_a_listing(members) for members in pipelines.values()):
@@ -1444,8 +1557,9 @@ def programs_run(text: str, depth: int = 0) -> list[tuple[str, list[Word]]]:
     after it; `bash -n` runs nothing. The arguments that `xargs` reads from its input add one that
     expands. The quoted words of other commands are their arguments and run nothing.
     """
-    found = []
-    for command in ShellParser(text).commands:
+    found, parsed = [], ShellParser(text)
+    slots = {(c.pipeline, c.position): c for c in parsed.commands}
+    for command in parsed.commands:
         resolved = resolve(command.words)
         if resolved is None:
             continue
@@ -1453,7 +1567,7 @@ def programs_run(text: str, depth: int = 0) -> list[tuple[str, list[Word]]]:
         if via_xargs:
             args = [*args, Word("$", False)]
         found.append((name, args))
-        script = embedded_script(name, args, command.body) if depth < MAX_SHELL_DEPTH else None
+        script = embedded_script(name, args, stdin_of(command, slots)) if depth < MAX_SHELL_DEPTH else None
         if script is not None:
             found += programs_run(script, depth + 1)
         elif depth < MAX_SHELL_DEPTH and (file := script_file(name, args)):

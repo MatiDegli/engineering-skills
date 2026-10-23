@@ -168,9 +168,18 @@ no secret-like file names, and external URLs only inside code spans.
   argument); without `args`, every run of the program is a violation. It takes `background`, and no
   `tool`, `field`, or `unless`.
   - It finds the program in every command the shell reads: past assignments, keywords, and wrappers
-    such as `env`, `timeout`, `sudo`, and `xargs`; inside `sh -c`, `eval`, substitutions, and a
-    here-document that a shell reads; and as a script that a shell or `.` runs from a file, with the
-    arguments after the file (`sh -x tools/job.sh a b` runs `job.sh` with `a b`).
+    such as `env`, `timeout`, `sudo`, and `xargs`; inside `sh -c`, `eval`, and substitutions; in
+    the script that a shell reads from standard input, which it reads like `sh -c`; and as a script
+    that a shell or `.` runs from a file, with the arguments after the file (`sh -x tools/job.sh a b`
+    runs `job.sh` with `a b`).
+  - A shell reads its script from standard input when it has no script file, or has `-s` or a lone
+    `-`: a here-document (`bash <<'EOF'`), a here-string (`bash <<< '...'`), or what `echo`,
+    `printf`, or `cat` prints into a pipe, also through `tee` or `cat` (`echo '...' | sh`,
+    `printf '%s\n' '...' | bash -s a b`, `cat <<'EOF' | sh`). With `-s`, the operands are positional
+    parameters and not a script (`sh -s tools/job.sh a` runs nothing), even when a here-document
+    follows (`sh -s a b <<'EOF'`). A shell given `-c` takes the payload that a substitution prints
+    as it would a string (`bash -lc "$(cat <<'EOF' ... EOF)"`, `eval "$(echo ...)"`). What `cat file`
+    or a command in a group or a variable (`echo "$cmd" | sh`) prints is not known, so it is not seen.
   - An argument that the shell expands (`$job`, `$(...)`, a backtick) reads as `$` and its text, and
     the arguments that `xargs` adds from its input read as `$`, so `\$` in `args` counts what the
     rule cannot see as a hit.
@@ -183,9 +192,10 @@ no secret-like file names, and external URLs only inside code spans.
 
   Every scenario includes the rule `kill-by-pattern`, which judges a call by what the
   shell would run, not by its text:
-  - It reads inside `sh -c`, `bash -c`, `eval`, command substitutions, and here-documents that a
-    shell reads, and the substitutions in the body of a here-document whose delimiter is not
-    quoted, which the shell runs. It ignores the quoted arguments of other commands, such as
+  - It reads inside `sh -c`, `bash -c`, `eval`, command substitutions, and the script that a
+    shell reads from standard input (a here-document, a here-string, or a pipe from `echo`), and
+    the substitutions in the body of a here-document whose delimiter is not quoted, which the shell
+    runs. It ignores the quoted arguments of other commands, such as
     `grep -n 'pkill'`, and a shell given `-n`, which runs nothing.
   - A violation is `pkill` or `killall` with a name or a pattern, or one call that finds processes
     by pattern (`pgrep`, `pidof`, `ps ... | grep`) and also signals something other than literal
