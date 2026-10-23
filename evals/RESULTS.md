@@ -3824,3 +3824,59 @@ Per audit, four audits per skill and two without one:
   prepared repository stayed clean.
 - Decision, as the criteria set: L1 and L2 fail, so the candidate is not merged, and L4 was not
   run.
+
+## 2026-10-23 — Runs 307 and 308 (the same candidate with eight helper slots, on Codex)
+
+- Question: runs 304 and 305 ran under Codex's default of three helpers at once, so the candidate
+  `9d32eb0` merged or dropped helpers on one repository. With the runner now allowing eight
+  ([Codex](README.md#codex)), does it meet the criteria of runs 302 to 306?
+- Round: the same candidate, repositories, pins, and hosted snapshots, Codex CLI 0.163.0,
+  `gpt-6.1-sol`, reasoning effort high, through `python3 -m tools.claude_rounds` from `cd0c498`.
+  Runs 307 and 308 on each repository; runs 302 and 303 serve again as v0.2.3's control, since
+  v0.2.3 uses three helpers. The control comes from the earlier round, not interleaved. The
+  criteria were fixed before the plan, with the numbers of runs 302 to 306: mean useful items per
+  run at least 44.5 (L1); the two runs together find at least 18 of the 54 items found by one or
+  two earlier runs, or new items rated useful (L2); mean false items at most 3.5 and each run's
+  false share at most 3.7% (L3); the fictional cases only if L1 to L3 hold (L4).
+- All four audits are valid, with complete token accounting. Every run started all its helpers:
+  seven on one repository and five on the other.
+- Codex prepared the blind package. Before use, the coordinator checked that its matching
+  brief and problem lists were those of runs 302 to 306 and that its reports had the runs' hashes.
+  Claude subagents matched the reports under random labels, each given only the brief and its two
+  files. The matches were frozen before the label key was opened. The 8 new items became 7; 6 held
+  against clean copies and 1 held in part. The repositories' sessions rated them blind: 2 U, 4
+  W-moot, and 1 W-false, the one that held in part.
+
+Both repositories together:
+
+| Run | Skill | Items | U | K-rec | K-unrec | W-false | W-moot | W-harness | Useful | Of the 54, or new and useful |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 302 | `1a4d09c` (v0.2.3) | 52 | 25 | 6 | 7 | 0 | 13 | 1 | 32 | 6 |
+| 303 | `1a4d09c` (v0.2.3) | 60 | 28 | 8 | 9 | 1 | 13 | 1 | 37 | 9 |
+| 304 | `9d32eb0`, three helpers at once | 72 | 33 | 9 | 11 | 0 | 17 | 2 | 44 | 11 |
+| 305 | `9d32eb0`, three helpers at once | 67 | 32 | 7 | 11 | 0 | 15 | 2 | 43 | 12 |
+| 307 | `9d32eb0`, eight | 60 | 29 | 8 | 8 | 1 | 13 | 1 | 37 | 7 |
+| 308 | `9d32eb0`, eight | 80 | 37 | 8 | 11 | 0 | 22 | 2 | 48 | 15 |
+
+| Criterion | Result | Met |
+| --- | --- | --- |
+| L1 | 42.5 against 44.5 | no |
+| L2 | 17 against 18 | no |
+| L3 | 0.5 false items per run; 1.7% and 0.0% | yes |
+| L4 | not run | — |
+
+Per audit, four audits each:
+
+| Skill | Minutes | Input tokens | Uncached input | Output tokens | Reasoning tokens | Tool calls |
+| --- | --- | --- | --- | --- | --- | --- |
+| `1a4d09c` (v0.2.3) | 8.8 | 4,815,209 | 330,825 | 33,790 | 10,007 | 73.8 |
+| `9d32eb0`, three helpers at once | 11.6 | 6,714,216 | 433,768 | 38,899 | 14,216 | 95.2 |
+| `9d32eb0`, eight | 10.3 | 9,569,479 | 606,599 | 50,022 | 16,388 | 146.8 |
+
+- With every helper running, the candidate's mean fell from 43.5 to 42.5 useful items and its two
+  runs spread further apart (37 and 48), for 42% more input tokens than with three at once and
+  twice v0.2.3's. The cap did not hold the candidate back.
+- Across both rounds, each candidate run found more useful items than v0.2.3's mean of 34.5, by
+  8.5 on average, and the 307 and 308 pair found 53 together against v0.2.3's 39. Neither round
+  met the margin or the criterion on the 54 items.
+- Decision, as the criteria set: L1 and L2 fail, so the candidate is dropped, and L4 was not run.
