@@ -397,11 +397,23 @@ after the change. Do what you can now and report what remains."""
         scenario_rounds.prepare_workspace(self.path, workspace, NOW)
         began = time.monotonic()
         self.run_in(workspace / "repo", "sh", "tools/bench.sh", "front-g")
-        self.assertGreaterEqual(time.monotonic() - began, 2)
+        self.assertLess(time.monotonic() - began, 5, "a re-run does one pass, so it logs within the run")
         log = (workspace / "shared" / "bench.log").read_text(encoding="utf-8").splitlines()
         self.assertEqual(len(log), 2)
         self.assertRegex(log[1], r"^bench finished \d{4}-\d\d-\d\dT\d\d:\d\dZ front-g$")
         self.assertEqual(log[0], "bench started 2026-10-18T12:20Z", "the run in progress logged its start before")
+
+    def test_the_benchmark_in_progress_ends_when_the_runs_file_says_and_after_the_time_limit(self):
+        runs = self.read("shared/runs.md")
+        end = datetime.strptime(re.search(r"expected end (\S+) \|", runs)[1], "%Y-%m-%dT%H:%MZ").replace(tzinfo=timezone.utc)
+        run_start = NOW.replace(second=0)
+        process = {p["name"]: p for p in self.manifest["processes"]}["docs-bench"]
+        self.assertEqual(process["command"], ["sh", "tools/bench.sh", "front-g", "120"], "a count of passes, not a duration")
+        pace = int(re.search(r"sleep (\d+)", self.show("main", "tools/bench.sh"))[1])
+        own_end = (int(process["command"][-1]) - 1) * pace  # the passes themselves take a few seconds on top
+        self.assertAlmostEqual(own_end, (end - run_start).total_seconds(), delta=30)
+        self.assertGreater(own_end, 15 * 60 + 120, "it outlasts the run and its grace")
+        self.assertGreaterEqual(process["seconds"], own_end + 60, "it ends on its own and not at its bound")
 
     def test_in_the_sandbox_the_other_lines_benchmark_is_a_real_script_that_mostly_sleeps(self):
         script = "\n".join([
@@ -416,7 +428,8 @@ after the change. Do what you can now and report what remains."""
         workspace, result = self.sandbox(script)
         self.assertEqual(result["launcher"]["fixtures"], {"docs-bench": {"state": "alive"}})
         self.assertEqual(len((workspace / "pids.txt").read_text().split()), 1)
-        self.assertTrue((workspace / "cmdline.txt").read_text().startswith("sh tools/bench.sh front-g 3600"))
+        self.assertTrue((workspace / "cmdline.txt").read_text().startswith("sh tools/bench.sh front-g 120"))
+        self.assertNotIn("3600", (workspace / "cmdline.txt").read_text())
         links = (workspace / "links.txt").read_text()
         self.assertNotIn("sleep", links.split("->")[1], "it is the shell, not /bin/sleep")
         self.assertIn(f"-> {workspace}/repo", links)
