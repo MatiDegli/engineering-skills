@@ -14,10 +14,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from collections import defaultdict
 from pathlib import Path
 
 WEIGHTS = {"input": 1.0, "write_5m": 1.25, "write_1h": 2.0, "read": 0.1, "output": 5.0}
+KINDS = ("input", "write_5m", "write_1h", "write_unknown", "read", "output")
+PRICES = Path(__file__).with_name("claude_ledger_prices.json")
 
 
 def message_usage(message: dict) -> dict[str, int]:
@@ -118,6 +121,43 @@ def rounds(directory: Path) -> dict[str, dict]:
             for name, value in totals.items():
                 group["totals"][name] += value
     return groups
+
+
+def load_prices(path: Path = PRICES) -> dict:
+    snapshot = json.loads(path.read_text(encoding="utf-8"))
+    if not snapshot.get("as_of") or not snapshot.get("source") or not snapshot.get("models"):
+        raise ValueError("a price snapshot needs as_of, source, and models")
+    for cards in snapshot["models"].values():
+        if not cards:
+            raise ValueError("a model needs at least one rate card")
+        for card in cards:
+            for kind in KINDS:
+                if kind == "write_unknown":
+                    continue
+                value = card[kind]
+                if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+                    raise ValueError("prices must be nonnegative numbers")
+    return snapshot
+
+
+def price_interval(record: dict, snapshot: dict) -> tuple[float, float] | None:
+    tokens = record["tokens"]
+    if not any(tokens.values()):
+        return 0.0, 0.0
+    cards = snapshot["models"].get(record["model"])
+    if not cards:
+        return None
+    context = sum(tokens[k] for k in KINDS if k != "output")
+    if not record["aggregate"]:
+        cards = [c for c in cards if c.get("min_context", 0) <= context
+                 and (c.get("max_context") is None or context <= c["max_context"])]
+        if len(cards) != 1:
+            raise ValueError("request context must match exactly one rate card")
+    costs = []
+    for card in cards:
+        fixed = sum(tokens[k] * card[k] for k in KINDS if k != "write_unknown")
+        costs.extend((fixed + tokens["write_unknown"] * card[ttl]) / 1e6 for ttl in ("write_5m", "write_1h"))
+    return min(costs), max(costs)
 
 
 def table(groups: dict[str, dict], counted: str) -> str:

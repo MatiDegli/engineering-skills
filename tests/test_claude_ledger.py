@@ -5,11 +5,16 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.claude_ledger import rounds, shares, transcripts
+from tools.claude_ledger import KINDS, load_prices, price_interval, rounds, shares, transcripts
 
 
 def response(identifier, model, **usage):
     return {"type": "assistant", "message": {"id": identifier, "model": model, "usage": usage}}
+
+
+def record(model="claude-opus-5-5", aggregate=False, **tokens):
+    return {"model": model, "role": "session", "aggregate": aggregate,
+            "tokens": {k: tokens.get(k, 0) for k in KINDS}, "recorded_cli_usd": None}
 
 
 class LedgerTests(unittest.TestCase):
@@ -46,6 +51,38 @@ class LedgerTests(unittest.TestCase):
         self.assertEqual(groups["audit glm-5.3"]["responses"], 1)
         self.assertEqual(groups["audit glm-5.3"]["totals"]["output"], 30)
         self.assertEqual(groups["audit glm-5.3"]["totals"]["read"], 500)
+
+    def test_read_prices_differ_by_exact_model(self):
+        prices = load_prices()
+        self.assertEqual(price_interval(record(read=1000000), prices), (0.2, 0.2))
+        self.assertEqual(price_interval(record("claude-sonnet-5-5", read=1000000), prices), (0.1, 0.1))
+        self.assertIsNone(price_interval(record("glm-5.3", read=1000000), prices))
+
+    def test_zero_token_unknown_models_cost_zero_and_stay_counted(self):
+        self.assertEqual(price_interval(record("<synthetic>"), load_prices()), (0.0, 0.0))
+        self.assertEqual(price_interval(record("<synthetic>", aggregate=True), load_prices()), (0.0, 0.0))
+
+    def test_haiku_tier_counts_cached_input_and_prices_the_whole_request(self):
+        prices = load_prices()
+        low = price_interval(record("claude-haiku-5-5", read=100000, output=1000000), prices)
+        high = price_interval(record("claude-haiku-5-5", read=100001, output=1000000), prices)
+        self.assertAlmostEqual(low[0], 0.501)
+        self.assertAlmostEqual(high[0], 2.50500005)
+
+    def test_unknown_write_ttl_and_aggregate_haiku_have_price_intervals(self):
+        prices = load_prices()
+        self.assertEqual(price_interval(record(write_unknown=1000000), prices), (5.0, 8.0))
+        self.assertEqual(price_interval(record("claude-haiku-5-5", aggregate=True, output=1000000), prices),
+                         (0.5, 2.5))
+
+    def test_invalid_price_snapshot_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "prices.json"
+            prices = load_prices()
+            prices["models"]["claude-opus-5-5"][0]["read"] = float("nan")
+            path.write_text(json.dumps(prices))
+            with self.assertRaises(ValueError):
+                load_prices(path)
 
 
 if __name__ == "__main__":
