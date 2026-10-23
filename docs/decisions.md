@@ -1,5 +1,43 @@
 # Decisions
 
+## 2026-10-23 — Provider-neutral coordination with a profile per repository
+
+The maintainer wants `coordinating-agents` to hold, in general form, the cost and workflow
+strategies spread across their repositories, and each repository to choose which apply, as the
+audit's areas do. The skill therefore names mechanisms, such as a prompt cache's lifetime, a
+context cap, or a turn cap, and no provider, model, or option of one agent tool. Each strategy
+states what it does, when it applies, what it should cut and what it could raise, and how to
+measure it. A profile per repository records roles, model tiers, limits, pacing, and the strategies
+it adopts or rejects; the skill ships a template and defaults, and a profile lives where its
+repository allows. Routing appears only as a lesson: pick model and effort by the task, and confirm
+a public benchmark on the repository's own task.
+
+This changes the v0.3 plan the maintainer approved on 2026-10-18, which put one tool's options in
+the cost reference as dated examples: they now belong in a profile. A test that ships with neither skill fails when the skill's
+text names a provider, a model, or such an option, from a list kept in the test.
+
+## 2026-10-23 — The coordinating skill written before its baseline
+
+"Scenario evaluations for work skills" put the scenarios and a baseline without the skill before
+the skill's text. The maintainer asked for the text now, so the strategies can be applied across
+their repositories, and for it to follow Anthropic's
+[skill authoring best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices)
+(read on 2026-10-23). That guide also asks for evaluations before extensive text. The scenarios exist;
+the baseline does not. The baseline still runs without the skill, so writing first does not change
+it. What it changes is the order of cuts: the text starts from the recorded lessons, and the
+baseline and the rounds with the skill decide what to remove, instead of deciding what to add. The
+skill is not released until those rounds pass the criteria set before them.
+
+The text draws on [the lessons record](agentic-workflow.md), the agent guide of the audit skill,
+the maintainer's projects (their agent skills, read on 2026-10-18, and their spending decisions of
+2026-10-23), and the reviewer practices that the research of 2026-10-18 left to this skill: C18,
+G10, and G16 are in it, while C2, C4, and F12 stay out until a scenario shows the need. Two
+independent reviews on 2026-10-23 checked the text against those sources and the guide; the first
+removed figures that no record supported.
+Defaults that come only from the maintainer's projects, such as the interim report at half the
+budget, one correction cycle, and the concurrency default, are stated in the skill as starting
+values to calibrate.
+
 ## 2026-10-21 — One round runner with Claude and Codex backends
 
 The maintainer asked for rounds on OpenAI's Codex CLI, to spend less Anthropic quota and to see how
