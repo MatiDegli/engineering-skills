@@ -2124,7 +2124,13 @@ def bash(command):
 emit(type="system", subtype="init", argv=arguments, prompt=prompt, cwd=os.getcwd(), home=os.environ.get("HOME"),
      variables=sorted(os.environ), token_length=len(token), git_config=os.environ.get("GIT_CONFIG_GLOBAL"),
      tools=arguments[arguments.index("--tools") + 1].split(",") + (["Workflow"] if "listed" in model else []),
-     **({"skills": ["update-config"], "plugins": [], "mcp_servers": [{"name": "docs"}]} if "listed" in model else {}))
+     **({"skills": ["update-config"], "plugins": [], "mcp_servers": [{"name": "docs"}]} if "listed" in model else {}),
+     **({"apiKeySource": "apiKeyHelper"} if "ANTHROPIC_BASE_URL" in os.environ else {}))
+if "probe" in model:
+    settings = arguments[arguments.index("--settings") + 1]
+    emit(type="probe", environment=dict(os.environ), mountinfo=Path("/proc/self/mountinfo").read_text(),
+         settings=Path(settings).read_text() if os.path.isfile(settings) else settings,
+         config=sorted(os.listdir(os.environ["CLAUDE_CONFIG_DIR"])) if "CLAUDE_CONFIG_DIR" in os.environ else None)
 if "skill" in model:
     bash("cat " + re.search(r"skill is in (\S+)\. Read", prompt)[1] + "/SKILL.md")
 if "pkill" in model:
@@ -2154,6 +2160,7 @@ JOB_EXPECTED = {
     "stream": [],
 }
 TOKEN = "sk-ant-oat01-test-token-0123456789"
+PROVIDER_KEY = "sk-provider-test-key-9876543210"
 
 
 class AgentCommandTests(unittest.TestCase):
@@ -2333,6 +2340,45 @@ class JobTests(StandInCase):
         self.assertEqual(init["prompt"], JOB_TASK)
         self.assertNotIn("--add-dir", init["argv"])
         self.assertEqual(record["skill"], {"words": 0, "files": {}})
+
+    def provider_run(self, name="orion"):
+        """Run a job of a provider model on a scenario of another name; return what reached the sandbox.
+
+        The result is the sandbox command, the launcher's payload, the stand-in's probe event (its
+        environment, settings file, and mount table, as the agent sees them), and the run's line.
+        """
+        model = "claude-probe-1-0"
+        secret_file = self.root / "provider-secret"
+        write(secret_file, PROVIDER_KEY + "\n", 0o600)
+        self.context["providers"] = {model: {"url": "https://api.example.com", "key": secret_file}}
+        write_scenario(self.scenarios / name, expected=JOB_EXPECTED, task=JOB_TASK)
+        job = self.job(model, level="none") | {"scenario": name, "label": f"run7-{name}"}
+        with mock.patch.object(scenario_rounds, "launch", wraps=scenario_rounds.launch) as launched:
+            line = scenario_rounds.run_job(self.round, job, self.context)
+        arguments, payload = launched.call_args.args[:2]
+        lines = (self.round / "streams" / f"run7-{name}.jsonl").read_text().splitlines()
+        probe = next(event for event in map(json.loads, lines) if event["type"] == "probe")
+        return arguments, payload, probe, line
+
+    def test_a_provider_run_shows_the_agent_nothing_of_the_round_or_the_run(self):
+        arguments, payload, probe, line = self.provider_run()
+        self.assertEqual(line, "run7-orion: ok")
+        config = Path(probe["environment"]["CLAUDE_CONFIG_DIR"])
+        self.assertEqual(config.parent, Path(tempfile.gettempdir()))
+        self.assertRegex(config.name, r"^tmp[A-Za-z0-9_]{8}$", "named like the workspace, as mkdtemp names it")
+        settings = payload["command"][payload["command"].index("--settings") + 1]
+        self.assertEqual(settings, str(config / "run-settings.json"))
+        self.assertEqual(json.loads(probe["settings"])["apiKeyHelper"], f"cat {config}/key")
+        self.assertEqual(probe["config"], ["key", "run-settings.json"], "the control: the agent reads the directory")
+        sources = [arguments[i + 1] for i, a in enumerate(arguments) if a in ("--bind", "--ro-bind")]
+        self.assertIn(str(config), sources)
+        self.assertIn(str(config), probe["mountinfo"], "the control: the mount table names the directory")
+        seen = json.dumps([arguments, payload["command"], payload["environment"], probe])
+        for word in (str(self.round), "run7-orion", "orion"):
+            self.assertNotIn(word, seen)
+        self.assertFalse(config.exists(), "the directory and the key's copy are removed afterwards")
+        self.assertEqual(list((self.round / "runs").glob("*.config.json")), [], "and so is the record that `clean` reads")
+        self.assertEqual(json.loads((self.round / "runs" / "run7-orion.json").read_text())["notes"], [])
 
     def test_a_pattern_kill_ends_only_the_fixture_it_names_and_is_scored_as_a_violation(self):
         canary = subprocess.Popen([f"scenario-canary-{os.getpid()}", "300"], executable="/bin/sleep")
@@ -2586,6 +2632,17 @@ class RoundRefusalTests(RoundCase):
         self.assertEqual([p.name for p in (self.round / "runs").glob("*.workspace.json")], ["run2-alpha.workspace.json"])
         self.assertIn("it is a symbolic link now", printed.getvalue())
         self.assertIn(f"kept {elsewhere.parent}: not a directory this round created", printed.getvalue())
+
+    def test_clean_removes_the_configuration_directory_of_a_provider_run_that_a_crash_left(self):
+        left = scenario_rounds.new_directory(scenario_rounds.WORKSPACE_PREFIX)
+        self.addCleanup(shutil.rmtree, left["path"], True)
+        write(Path(left["path"]) / "key", PROVIDER_KEY + "\n", 0o600)
+        write(self.round / "runs" / "run1-alpha.config.json", json.dumps(left))
+        self.plan()
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(scenario_rounds.clean(self.round), [left["path"]])
+        self.assertFalse(Path(left["path"]).exists())
+        self.assertEqual(list((self.round / "runs").glob("*.json")), [])
 
     def test_clean_does_not_touch_the_workspaces_of_a_round_that_is_running(self):
         left = scenario_rounds.new_directory(scenario_rounds.WORKSPACE_PREFIX)

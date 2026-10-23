@@ -2667,19 +2667,27 @@ def run_failures(outcome: dict, results: list[dict], model: str, minutes: float)
     return failures
 
 
-def provider_setup(round_dir: Path, label: str, model: str, provider: dict) -> tuple[dict, str, Path]:
+def provider_setup(model: str, provider: dict) -> tuple[dict, str, dict]:
     """Prepare a provider run's configuration directory, with its own copy of the key.
 
-    The sandbox cannot see the file the key came from, so the key is copied next to the settings that
-    name it, in the one directory the run may use. `run_job` removes the copy afterwards.
+    The CLI needs its configuration at a path of its own, and the agent can read that path: it is in
+    the agent's command, its environment, its settings, and the mount table. The directory is
+    therefore made like a workspace, with `mkdtemp` and its default-looking name, so the path says
+    nothing of the round or the run. The sandbox cannot see the file the key came from, so the key
+    is copied next to the settings that name it. `execute_job` removes the directory afterwards;
+    the record returned lets `clean` remove it after a crash.
     """
-    config = round_dir / "providers" / label
-    config.mkdir(parents=True, exist_ok=True)
-    key = config / "key"
-    shutil.copyfile(provider["key"], key)
-    key.chmod(0o600)
-    environment, settings = provider_launch({"url": provider["url"], "key": key}, model, config)
-    return environment, str(settings), config
+    recorded = new_directory(WORKSPACE_PREFIX)
+    config = Path(recorded["path"])
+    try:
+        key = config / "key"
+        shutil.copyfile(provider["key"], key)
+        key.chmod(0o600)
+        environment, settings = provider_launch({"url": provider["url"], "key": key}, model, config)
+    except BaseException:
+        remove_tree(config)
+        raise
+    return environment, str(settings), recorded
 
 
 def run_job(round_dir: Path, job: dict, context: dict) -> str:
@@ -2719,25 +2727,27 @@ def execute_job(round_dir: Path, job: dict, context: dict, workspace: Path) -> s
     before = take_snapshot(workspace, manifest)
     provider = context["providers"].get(model)
     home, read_write, secret_values = context["home"], [workspace], [context["token"]]
-    provider_environment, settings, config = None, '{"disableAllHooks": true}', None
-    if provider:
-        provider_environment, settings, config = provider_setup(round_dir, label, model, provider)
-        read_write.append(config)
-        secret_values = [provider["key"].read_text(encoding="utf-8").strip()]
-    prompt = prompt_for(job["level"], (scenario / spec["task"]).read_text(encoding="utf-8"), skill)
-    limit = spec["minutes"] * 60
-    payload = {
-        "files": {str(home / ".gitconfig"): GIT_CONFIG},
-        "fixtures": manifest["processes"],
-        "fixture_environment": base_environment(home),
-        "command": agent_command(context["executable"], model, skill, settings),
-        "cwd": str(workspace),
-        "environment": agent_environment(home, context["token"], provider_environment),
-        "prompt": prompt,
-        "limit": limit,
-    }
     stream, stderr = paths["streams"] / f"{label}.jsonl", paths["streams"] / f"{label}.stderr.txt"
+    config, pending, notes = None, paths["runs"] / f"{label}.config.json", []
     try:
+        provider_environment, settings = None, '{"disableAllHooks": true}'
+        if provider:
+            provider_environment, settings, config = provider_setup(model, provider)
+            pending.write_text(json.dumps(config), encoding="utf-8")
+            read_write.append(Path(config["path"]))
+            secret_values = [provider["key"].read_text(encoding="utf-8").strip()]
+        prompt = prompt_for(job["level"], (scenario / spec["task"]).read_text(encoding="utf-8"), skill)
+        limit = spec["minutes"] * 60
+        payload = {
+            "files": {str(home / ".gitconfig"): GIT_CONFIG},
+            "fixtures": manifest["processes"],
+            "fixture_environment": base_environment(home),
+            "command": agent_command(context["executable"], model, skill, settings),
+            "cwd": str(workspace),
+            "environment": agent_environment(home, context["token"], provider_environment),
+            "prompt": prompt,
+            "limit": limit,
+        }
         with launcher_file() as launcher:
             arguments = sandbox_arguments(
                 home, workspace, [context["executable"], *([skill] if skill else [])], read_write,
@@ -2748,9 +2758,16 @@ def execute_job(round_dir: Path, job: dict, context: dict, workspace: Path) -> s
                 context["sandboxes"], (launcher,),
             )
     finally:
-        # Whatever happened, a stopped run, an exception, or a normal end, the streams never keep a secret.
+        # Whatever happened, a stopped run, an exception, or a normal end, the streams never keep a
+        # secret and the key's copy goes with the configuration directory.
         if config:
-            (config / "key").unlink(missing_ok=True)
+            with contextlib.suppress(OSError):
+                (Path(config["path"]) / "key").unlink(missing_ok=True)
+            reason = delete_directory(config)
+            if reason:
+                notes.append(f"the configuration directory {config['path']} was kept: {reason}")
+            else:
+                pending.unlink(missing_ok=True)
         leaked = scrub([stream, stderr], secret_values)
     if outcome["stopped"]:
         return f"{label}: stopped"
@@ -2763,10 +2780,11 @@ def execute_job(round_dir: Path, job: dict, context: dict, workspace: Path) -> s
     calls = tool_calls(stream)
     init = init_event(stream) if results else {}
     failures += init_failures(init)
-    notes = [f"snapshot: {problem}" for problem in after["problems"]]
+    notes += [f"snapshot: {problem}" for problem in after["problems"]]
     if provider and results and init_key_source(stream) != "apiKeyHelper":
         notes.append(f"the key source is {init_key_source(stream)}, not apiKeyHelper")
-    outside = outside_paths(stream, [workspace, Path(job["skill"]).parent if skill else workspace, round_dir / "providers"]) if results else []
+    allowed = [workspace, Path(job["skill"]).parent if skill else workspace, *([Path(config["path"])] if config else [])]
+    outside = outside_paths(stream, allowed) if results else []
     record = {
         "label": label, "job": job, "finished": now(), "workspace": str(workspace), "manifest": manifest,
         "before": before, "after": after, "launcher": outcome["launcher"], "exit": outcome["exit"],
@@ -3001,8 +3019,9 @@ def summarize(round_dir: Path) -> str:
 def clean(round_dir: Path) -> list[str]:
     """Remove the workspaces that a stopped round left and the skill exports that its plan made.
 
-    A workspace goes only after the same re-checks as at the end of a run, against the directory
-    recorded when it was made. An export goes only when it is a direct child of the temporary
+    A workspace, or a provider run's configuration directory, goes only after the same re-checks as
+    at the end of a run, against the directory recorded when it was made; nothing is found by a
+    name pattern. An export goes only when it is a direct child of the temporary
     directory with the name `plan` gives it. Anything else is reported and kept. It holds the locks
     of the resources `run` recorded, the Claude login's when none were, so it never deletes the
     workspaces and the export of a round that is running.
@@ -3016,7 +3035,7 @@ def clean(round_dir: Path) -> list[str]:
 def remove_leftovers(round_dir: Path) -> list[str]:
     paths = round_paths(round_dir)
     removed = []
-    for pending in sorted(paths["runs"].glob("*.workspace.json")):
+    for pending in sorted(paths["runs"].glob("*.workspace.json")) + sorted(paths["runs"].glob("*.config.json")):
         recorded = json.loads(pending.read_text(encoding="utf-8"))
         reason = delete_directory(recorded)
         if reason:

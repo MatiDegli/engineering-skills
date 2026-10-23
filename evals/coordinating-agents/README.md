@@ -282,7 +282,7 @@ The runner therefore works as follows:
     - the run's workspace, writable;
     - the exported skill, read-only, at the `full` level only;
     - the CLI's installation, read-only;
-    - a provider run's configuration directory.
+    - a provider run's configuration directory, a second `mkdtemp` directory named like the workspace.
   - The repository, the oracle, other sessions' transcripts and sockets, the Docker socket, and the
     Windows drives are therefore absent, not merely read-only. `WSL_INTEROP` is unset.
   - The network stays open, because the agent has to reach the model. It is the host's network, not
@@ -343,9 +343,10 @@ The runner therefore works as follows:
     that its configuration names; with no transport allowed, the read fails instead;
   - file contents are hashed directly, instead of running `git status`, which runs configured
     filters.
-- **Deletion:** the runner deletes the workspace, and only after re-checking that the path is the
-  one it recorded, a direct child of the temporary directory, not a symbolic link, and named with
-  the runner's prefix.
+- **Deletion:** the runner deletes the workspace, and a provider run's configuration directory with
+  the key's copy, only after re-checking that the path is the one it recorded, a direct child of the
+  temporary directory, not a symbolic link, and named with the runner's prefix. Both are recorded
+  before the run, so that `clean` removes what a crash left by the same re-checks.
 - **Preflight:** before a round, the runner checks inside a sandbox that the repository and the
   oracle are invisible, that a pattern kill misses a canary process on the host, and that Docker
   and interop fail. It tries them rather than only looking for them: it connects to each Docker
@@ -391,9 +392,12 @@ reason:
   `--settings` is how a headless run starts, the same at both levels. The environment holds the
   login (a token, or a provider's variables), `DISABLE_AUTOUPDATER`, `GIT_CONFIG_NOSYSTEM`,
   `GIT_TERMINAL_PROMPT`, and `TERM=dumb`; the agent needs the login, and the Git variables keep
-  the host's configuration out. A provider run's settings path names the round directory and the
-  run's label, because the CLI needs its configuration at a path of its own.
-- **A bare machine.** `/run` is empty, `/tmp` holds only the workspace, the home directory only
+  the host's configuration out. A provider run's configuration directory (`CLAUDE_CONFIG_DIR`,
+  `--settings`, the `apiKeyHelper` command, and the mount table name it) is a second `tmp`
+  directory beside the workspace, because the CLI needs its configuration at a path of its own; it
+  is named like the workspace, so it says nothing of the round or the run.
+- **A bare machine.** `/run` is empty, `/tmp` holds only the workspace (and a provider run's
+  configuration directory), the home directory only
   `.gitconfig`, and a repository has no sample hooks (it is made with `git init --template=`, so
   that no host template runs). A file's date is the preparation, where a commit's is days old, as in
   a fresh clone. Filling them in would only add props.
