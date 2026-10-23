@@ -16,6 +16,8 @@ from pathlib import Path
 
 KINDS = ("input", "write_5m", "write_1h", "write_unknown", "read", "output")
 PRICES = Path(__file__).with_name("claude_ledger_prices.json")
+COUNTERS = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens")
+ROUND_COUNTERS = ("inputTokens", "cacheCreationInputTokens", "cacheReadInputTokens", "outputTokens")
 
 
 def count(value) -> int:
@@ -26,24 +28,33 @@ def count(value) -> int:
     return value
 
 
-def message_usage(message: dict) -> dict[str, int]:
-    usage = message.get("usage") or {}
-    flat = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens")
+def usage_sources(usage: dict) -> list[dict]:
+    """Select flat counters or nested iterations, never both."""
     iterations = usage.get("iterations") or []
-    if not any(count(usage.get(k)) for k in flat) and iterations:
-        total = dict.fromkeys(KINDS, 0)
-        for iteration in iterations:
-            for kind, value in message_usage({"usage": iteration}).items():
-                total[kind] += value
-        return total
-    creation = usage.get("cache_creation") or {}
-    w5 = count(creation.get("ephemeral_5m_input_tokens"))
-    w1 = count(creation.get("ephemeral_1h_input_tokens"))
-    written = count(usage.get("cache_creation_input_tokens", w5 + w1))
-    if written < w5 + w1:
-        raise ValueError("cache TTL counts exceed the reported cache writes")
-    return dict(zip(KINDS, (count(usage.get("input_tokens")), w5, w1, written - w5 - w1,
-                            count(usage.get("cache_read_input_tokens")), count(usage.get("output_tokens")))))
+    if not any(count(usage.get(k)) for k in COUNTERS) and iterations:
+        return [source for iteration in iterations for source in usage_sources(iteration)]
+    return [usage]
+
+
+def missing_counters(usage: dict, counters=COUNTERS) -> bool:
+    sources = usage_sources(usage) if counters == COUNTERS else [usage]
+    return any(source.get(k) is None for source in sources for k in counters)
+
+
+def message_usage(message: dict) -> dict[str, int]:
+    total = dict.fromkeys(KINDS, 0)
+    for usage in usage_sources(message.get("usage") or {}):
+        creation = usage.get("cache_creation") or {}
+        w5 = count(creation.get("ephemeral_5m_input_tokens"))
+        w1 = count(creation.get("ephemeral_1h_input_tokens"))
+        written = count(usage.get("cache_creation_input_tokens", w5 + w1))
+        if written < w5 + w1:
+            raise ValueError("cache TTL counts exceed the reported cache writes")
+        values = (count(usage.get("input_tokens")), w5, w1, written - w5 - w1,
+                  count(usage.get("cache_read_input_tokens")), count(usage.get("output_tokens")))
+        for kind, value in zip(KINDS, values):
+            total[kind] += value
+    return total
 
 
 def location_key(location: str) -> tuple[str, int]:
@@ -131,9 +142,13 @@ def deduplicate_records(copies: dict, issues: dict, own_activity=None) -> list[d
             # Keep the attributed copy intact; conflicting totals are not reconcilable.
             conflicts.update(conflicting)
         else:
-            fullest = max(rows, key=lambda r: sum(r["tokens"].values()))
-            for field in ("tokens", "recorded_cli_usd"):
-                chosen[field] = fullest[field]
+            fullest = max(rows, key=lambda r: (sum(r["tokens"].values()), not r["missing_counters"]))
+            for field in ("tokens", "missing_counters", "speed", "inference_geo", "unattributed_modifiers",
+                          "recorded_cli_usd"):
+                if field in fullest:
+                    chosen[field] = fullest[field]
+                else:
+                    chosen.pop(field, None)
         records.append(chosen)
     if conflicts:
         issues["conflicting_copies"] += len(conflicts)
@@ -167,11 +182,14 @@ def transcript_records(directory: Path, issues: dict) -> list[dict]:
                                   "has_activity": "usage" in message or moment is not None})
             if "usage" not in message:
                 continue
+            usage = message.get("usage") or {}
             record = {"model": message.get("model") or "unknown", "role": role,
                       "agent": str(path.resolve()),
                       "path": str(path), "line": number, "location": f"{path}:{number}",
                       "timestamp": moment, "aggregate": False,
-                      "tokens": message_usage(message), "recorded_cli_usd": None}
+                      "tokens": message_usage(message), "recorded_cli_usd": None,
+                      "missing_counters": missing_counters(usage),
+                      **{k: usage[k] for k in ("speed", "inference_geo") if k in usage}}
             copies[key].append(record)
     return deduplicate_records(copies, issues, file_own_activity(activity))
 
@@ -181,6 +199,11 @@ def result_records(result: dict) -> list[dict]:
     own = message_usage(result)
     rows = []
     for model, values in usage.items():
+        metadata = values
+        # Lead modifiers cannot be assigned to totals that also include helpers.
+        unattributed = {k: result["usage"][k] for k in ("speed", "inference_geo")
+                        if k in (result.get("usage") or {})}
+        missing = missing_counters(values, ROUND_COUNTERS)
         totals = dict(zip(KINDS, (count(values.get("inputTokens")), 0, 0,
                                   count(values.get("cacheCreationInputTokens")),
                                   count(values.get("cacheReadInputTokens")), count(values.get("outputTokens")))))
@@ -188,12 +211,18 @@ def result_records(result: dict) -> list[dict]:
         if len(usage) == 1 and all(totals[k] == own[k] for k in ("input", "read", "output")) and (
                 totals["write_unknown"] == sum(own[k] for k in KINDS if k.startswith("write_"))):
             totals = own
+            metadata = result.get("usage") or values
+            unattributed = {}
+            if result.get("usage"):
+                missing = missing or missing_counters(result["usage"])
         recorded = values.get("costUSD")
         if recorded is not None and (not isinstance(recorded, (int, float)) or isinstance(recorded, bool)
                                      or not math.isfinite(recorded) or recorded < 0):
             raise ValueError("recorded CLI costs must be nonnegative numbers")
         rows.append({"model": model, "role": "audit", "timestamp": timestamp(result.get("timestamp")),
-                     "aggregate": True, "tokens": totals, "recorded_cli_usd": recorded})
+                     "aggregate": True, "tokens": totals, "recorded_cli_usd": recorded,
+                     "missing_counters": missing, "unattributed_modifiers": unattributed,
+                     **{k: metadata[k] for k in ("speed", "inference_geo") if k in metadata}})
     return rows
 
 
@@ -221,6 +250,8 @@ def load_prices(path: Path = PRICES) -> dict:
     snapshot = json.loads(path.read_text(encoding="utf-8"))
     if not snapshot.get("as_of") or not snapshot.get("source") or not snapshot.get("models"):
         raise ValueError("a price snapshot needs as_of, source, and models")
+    if "modifiers" not in snapshot:
+        raise ValueError(f"price snapshot {path} is missing required key: modifiers")
     for cards in snapshot["models"].values():
         if not cards:
             raise ValueError("a model needs at least one rate card")
@@ -231,10 +262,42 @@ def load_prices(path: Path = PRICES) -> dict:
                 value = card[kind]
                 if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
                     raise ValueError("prices must be nonnegative numbers")
+    for field in ("speed", "inference_geo"):
+        modifier = snapshot["modifiers"][field]
+        value = modifier["multiplier"]
+        if (isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)
+                or value <= 0 or not isinstance(modifier.get("models"), list) or not modifier["models"]
+                or not all(isinstance(model, str) and model for model in modifier["models"])
+                or not modifier.get("source")
+                or not modifier.get("as_of") or not isinstance(modifier.get("standard_values"), list)
+                or not all(isinstance(item, str) for item in modifier["standard_values"])
+                or not isinstance(modifier.get("value"), str) or not modifier["value"]
+                or modifier["value"] in modifier["standard_values"]):
+            raise ValueError("modifiers need a positive multiplier, models, source, date, and standard values")
     return snapshot
 
 
+def pricing_multiplier(record: dict, snapshot: dict) -> float | None:
+    multiplier = 1.0
+    for field, modifier in snapshot["modifiers"].items():
+        unattributed = record.get("unattributed_modifiers", {})
+        if field in unattributed and unattributed[field] not in modifier["standard_values"]:
+            return None
+        if field not in record:
+            continue
+        value = record[field]
+        if value in modifier["standard_values"]:
+            continue
+        if value != modifier["value"] or record["model"] not in modifier["models"]:
+            return None
+        multiplier *= modifier["multiplier"]
+    return multiplier
+
+
 def price_interval(record: dict, snapshot: dict) -> tuple[float, float] | None:
+    multiplier = pricing_multiplier(record, snapshot)
+    if record.get("missing_counters") or multiplier is None:
+        return None
     tokens = record["tokens"]
     if not any(tokens.values()):
         return 0.0, 0.0
@@ -250,7 +313,8 @@ def price_interval(record: dict, snapshot: dict) -> tuple[float, float] | None:
     costs = []
     for card in cards:
         fixed = sum(tokens[k] * card[k] for k in KINDS if k != "write_unknown")
-        costs.extend((fixed + tokens["write_unknown"] * card[ttl]) / 1e6 for ttl in ("write_5m", "write_1h"))
+        costs.extend(multiplier * (fixed + tokens["write_unknown"] * card[ttl]) / 1e6
+                     for ttl in ("write_5m", "write_1h"))
     return min(costs), max(costs)
 
 
@@ -282,6 +346,10 @@ def report(records: list[dict], snapshot: dict, issues: dict, start=None, end=No
         if moment is not None and ((start is not None and moment < start) or (end is not None and moment >= end)):
             continue
         selected.append(record)
+        if record.get("missing_counters"):
+            issues["records_missing_counters"] += 1
+        if pricing_multiplier(record, snapshot) is None:
+            issues["records_unsupported_modifiers"] += 1
         key = record["role"] + " " + record["model"]
         group = groups.setdefault(key, {"responses": 0, "totals": dict.fromkeys(KINDS, 0),
                                        "usd_min": 0.0, "usd_max": 0.0, "unpriced_records": 0,

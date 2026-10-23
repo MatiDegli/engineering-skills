@@ -1,5 +1,6 @@
 """Regressions for duplicated history, missing cache TTLs, pricing tiers and denominators."""
 
+import io
 import json
 import tempfile
 import unittest
@@ -7,14 +8,17 @@ from collections import defaultdict
 from pathlib import Path
 from unittest.mock import patch
 
-from tools.claude_ledger import (KINDS, accepted_outcomes, load_prices, message_usage,
+from tools.claude_ledger import (KINDS, accepted_outcomes, load_prices, main, message_usage,
                                 price_interval, report, result_records, round_records,
                                 table, timestamp, transcript_records)
+
+COUNTERS = ("input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
+ROUND_COUNTERS = ("inputTokens", "outputTokens", "cacheReadInputTokens", "cacheCreationInputTokens")
 
 
 def response(identifier, model="claude-opus-5-5", moment="2026-10-22T12:00:00Z", **usage):
     return {"type": "assistant", "timestamp": moment,
-            "message": {"id": identifier, "model": model, "usage": usage}}
+            "message": {"id": identifier, "model": model, "usage": dict.fromkeys(COUNTERS, 0) | usage}}
 
 
 def write(path, rows):
@@ -318,6 +322,134 @@ class LedgerTests(unittest.TestCase):
         self.assertEqual(price_interval(record("claude-sonnet-5-5", read=1000000), prices), (0.1, 0.1))
         self.assertIsNone(price_interval(record("glm-5.3", read=1000000), prices))
 
+    def test_missing_counters_are_unpriced_but_keep_hours_even_when_all_known_tokens_are_zero(self):
+        for counter in COUNTERS:
+            for output in (0, 100):
+                with self.subTest(counter=counter, output=output), tempfile.TemporaryDirectory() as directory:
+                    event = response("missing", output_tokens=output)
+                    del event["message"]["usage"][counter]
+                    write(Path(directory) / "a.jsonl", [event])
+                    issues = defaultdict(int)
+                    result = report(transcript_records(Path(directory), issues), load_prices(), issues,
+                                    outcomes={"accepted": 1, "unit": "change", "source": "test"})
+                self.assertEqual(result["responses"], 1)
+                self.assertEqual(result["issues"].get("records_missing_counters", 0), 1)
+                self.assertEqual(result["groups"]["session claude-opus-5-5"]["unpriced_records"], 1)
+                self.assertFalse(result["fully_priced"])
+                self.assertTrue(result["source_complete"])
+                self.assertEqual(result["priced_records_only_usd"], [0, 0])
+                self.assertEqual(result["agent_hours_10min_buckets"], 1 / 6)
+                self.assertEqual(result["project_active_hours_10min_buckets"], 1 / 6)
+                for key in ("usd_per_agent_hour", "usd_per_project_active_hour", "usd_per_accepted_outcome"):
+                    self.assertIsNone(result[key], key)
+
+    def test_nested_missing_counters_and_explicit_null_are_unknown(self):
+        for usage in ({"iterations": [dict.fromkeys(COUNTERS, 0), {"output_tokens": 10}]},
+                      dict.fromkeys(COUNTERS, 0) | {"input_tokens": None}):
+            with self.subTest(usage=usage), tempfile.TemporaryDirectory() as directory:
+                event = response("nested")
+                event["message"]["usage"] = usage
+                write(Path(directory) / "a.jsonl", [event])
+                issues = defaultdict(int)
+                rows = transcript_records(Path(directory), issues)
+                result = report(rows, load_prices(), issues)
+            self.assertEqual(result["issues"].get("records_missing_counters", 0), 1)
+            self.assertFalse(result["fully_priced"])
+
+    def test_complete_cumulative_copy_can_supply_missing_counters_without_moving_attribution(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            incomplete = response("shared")
+            incomplete["message"]["usage"] = {"output_tokens": 100}
+            write(root / "a.jsonl", [incomplete])
+            write(root / "z.jsonl", [response("shared", output_tokens=100)])
+            issues = defaultdict(int)
+            rows = transcript_records(root, issues)
+            result = report(rows, load_prices(), issues)
+        self.assertEqual(rows[0]["agent"], str(root / "a.jsonl"))
+        self.assertEqual(result["issues"].get("records_missing_counters", 0), 0)
+        self.assertTrue(result["fully_priced"])
+
+    def test_fast_and_us_modifiers_stack_on_every_token_category(self):
+        prices = load_prices()
+        for kind in KINDS:
+            for speed, geo, factor in (("fast", None, 2), (None, "us", 1.1), ("fast", "us", 2.2)):
+                with self.subTest(kind=kind, speed=speed, geo=geo):
+                    row = record(**{kind: 1000000})
+                    base = price_interval(row, prices)
+                    row.update({k: v for k, v in (("speed", speed), ("inference_geo", geo)) if v is not None})
+                    actual = price_interval(row, prices)
+                    for value, standard in zip(actual, base):
+                        self.assertAlmostEqual(value, standard * factor)
+
+    def test_modifier_defaults_and_model_eligibility_come_from_snapshot(self):
+        prices = load_prices()
+        self.assertEqual(prices["modifiers"]["speed"]["models"],
+                         ["claude-opus-5-5", "claude-opus-5", "claude-opus-4-8"])
+        self.assertEqual(prices["modifiers"]["inference_geo"]["models"],
+                         ["claude-opus-5-5", "claude-opus-5", "claude-opus-4-8", "claude-opus-4-6",
+                          "claude-opus-4-7", "claude-sonnet-5-5", "claude-sonnet-5", "claude-sonnet-4-6",
+                          "claude-haiku-5-5", "claude-fable-5", "claude-fable-5-1"])
+        for speed in (None, "standard"):
+            for geo in (None, "", "global"):
+                row = record(input=1000000)
+                row.update({k: v for k, v in (("speed", speed), ("inference_geo", geo)) if v is not None})
+                self.assertEqual(price_interval(row, prices), (4, 4))
+        for field, modifier in prices["modifiers"].items():
+            for model in modifier["models"]:
+                with self.subTest(field=field, model=model):
+                    if model not in prices["models"]:
+                        unknown = record(model, output=100)
+                        unknown[field] = modifier["value"]
+                        result = report([unknown], prices, defaultdict(int))
+                        self.assertFalse(result["fully_priced"])
+                        self.assertEqual(result["issues"].get("records_unsupported_modifiers", 0), 0)
+                    # Eligibility can be tested without inventing published base rates for these models.
+                    prices["models"][model] = prices["models"]["claude-opus-5-5"]
+                    row = record(model, input=1000000)
+                    row[field] = modifier["value"]
+                    expected = 4 * modifier["multiplier"]
+                    self.assertEqual(price_interval(row, prices), (expected, expected))
+        row = record(input=1000000)
+        row["speed"] = "fast"
+        prices["modifiers"]["speed"]["multiplier"] = 3
+        self.assertEqual(price_interval(row, prices), (12, 12))
+        prices["modifiers"]["speed"]["models"] = []
+        self.assertIsNone(price_interval(row, prices))
+
+    def test_unsupported_modifiers_are_counted_unpriced_and_keep_hours(self):
+        cases = [("claude-opus-5-5", "speed", v) for v in ("turbo", "", None, False, 1, [], {})]
+        cases += [("claude-opus-5-5", "inference_geo", v) for v in ("eu", "US", None, False, 1, [], {})]
+        cases += [("claude-sonnet-5-5", "speed", "fast"), ("claude-haiku-4-5-20251001", "inference_geo", "us"),
+                  ("glm-5.3", "speed", "fast")]
+        for model, field, value in cases:
+            for output in (0, 100):
+                with self.subTest(model=model, field=field, value=value, output=output):
+                    with tempfile.TemporaryDirectory() as directory:
+                        write(Path(directory) / "a.jsonl", [response("modifier", model, output_tokens=output,
+                                                                    **{field: value})])
+                        issues = defaultdict(int)
+                        result = report(transcript_records(Path(directory), issues), load_prices(), issues,
+                                        outcomes={"accepted": 1, "unit": "change", "source": "test"})
+                    self.assertEqual(result["responses"], 1)
+                    self.assertEqual(result["issues"].get("records_unsupported_modifiers", 0), 1)
+                    self.assertFalse(result["fully_priced"])
+                    self.assertTrue(result["source_complete"])
+                    self.assertEqual(result["agent_hours_10min_buckets"], 1 / 6)
+                    self.assertEqual(result["project_active_hours_10min_buckets"], 1 / 6)
+                    for key in ("usd_per_agent_hour", "usd_per_project_active_hour", "usd_per_accepted_outcome"):
+                        self.assertIsNone(result[key], key)
+
+    def test_transcript_modifiers_survive_cumulative_copy_selection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write(root / "a.jsonl", [response("shared")])
+            write(root / "z.jsonl", [response("shared", output_tokens=1000000, speed="fast", inference_geo="us")])
+            issues = defaultdict(int)
+            result = report(transcript_records(root, issues), load_prices(), issues)
+        self.assertAlmostEqual(result["priced_records_only_usd"][0], 44)
+        self.assertTrue(result["fully_priced"])
+
     def test_zero_token_unknown_models_cost_zero_and_stay_counted(self):
         with tempfile.TemporaryDirectory() as directory:
             write(Path(directory) / "a.jsonl", [response("paid", output_tokens=1000000),
@@ -350,9 +482,9 @@ class LedgerTests(unittest.TestCase):
             for value in ([], None, 1, "text", True):
                 with self.subTest(reader=reader.__name__, value=value), tempfile.TemporaryDirectory() as directory:
                     path = Path(directory) / "streams/a.jsonl"
-                    totals = {"claude-opus-5-5": {"outputTokens": 100}}
                     valid = (response("paid", output_tokens=100) if reader == transcript_records else
-                             {"type": "result", "modelUsage": totals})
+                             {"type": "result", "modelUsage": {"claude-opus-5-5":
+                              dict.fromkeys(ROUND_COUNTERS, 0) | {"outputTokens": 100}}})
                     write(path, [valid, value])
                     issues = defaultdict(int)
                     result = report(reader(Path(directory), issues), load_prices(), issues,
@@ -487,13 +619,110 @@ class LedgerTests(unittest.TestCase):
         event["modelUsage"]["claude-sonnet-5-5"].update(cacheCreationInputTokens=10, outputTokens=1)
         self.assertEqual(result_records(event)[0]["tokens"]["write_1h"], 10)
 
+    def test_round_counter_completeness_follows_selected_totals_without_changing_ttl_rule(self):
+        for counter in ROUND_COUNTERS:
+            with self.subTest(counter=counter):
+                values = dict.fromkeys(ROUND_COUNTERS, 0) | {"outputTokens": 100}
+                del values[counter]
+                row = result_records({"modelUsage": {"claude-opus-5-5": values}})[0]
+                self.assertTrue(row["missing_counters"])
+                self.assertIsNone(price_interval(row, load_prices()))
+                result = report([row], load_prices(), defaultdict(int))
+                self.assertEqual(result["issues"].get("records_missing_counters", 0), 1)
+        usage = dict.fromkeys(COUNTERS, 0) | {"cache_creation_input_tokens": 10,
+                                             "cache_creation": {"ephemeral_1h_input_tokens": 10}}
+        values = dict.fromkeys(ROUND_COUNTERS, 0) | {"cacheCreationInputTokens": 10}
+        event = {"usage": usage, "modelUsage": {"claude-opus-5-5": values}}
+        row = result_records(event)[0]
+        self.assertEqual(row["tokens"]["write_1h"], 10)
+        self.assertEqual(price_interval(row, load_prices()), (0.00008, 0.00008))
+        del usage["input_tokens"]
+        self.assertIsNone(price_interval(result_records(event)[0], load_prices()))
+        values["outputTokens"] = 100
+        row = result_records(event)[0]
+        self.assertFalse(row["missing_counters"])
+        self.assertEqual(row["tokens"]["write_unknown"], 10)
+        self.assertEqual(row["tokens"]["write_1h"], 0)
+        self.assertEqual(row["tokens"]["output"], 100)
+        self.assertIsNotNone(price_interval(row, load_prices()))
+
+    def test_matched_round_checks_missing_model_counters_even_when_lead_is_complete(self):
+        for counter in ROUND_COUNTERS:
+            with self.subTest(counter=counter):
+                usage = dict.fromkeys(COUNTERS, 0)
+                values = dict.fromkeys(ROUND_COUNTERS, 0)
+                del values[counter]
+                rows = result_records({"usage": usage, "modelUsage": {"claude-opus-5-5": values}})
+                result = report(rows, load_prices(), defaultdict(int))
+                self.assertEqual(result["responses"], 1)
+                self.assertFalse(result["fully_priced"])
+                self.assertEqual(result["issues"].get("records_missing_counters", 0), 1)
+                self.assertIsNone(price_interval(rows[0], load_prices()))
+
+    def test_round_modifiers_price_matched_lead_totals(self):
+        usage = dict.fromkeys(COUNTERS, 0) | {"output_tokens": 1000000,
+                                             "speed": "fast", "inference_geo": "us"}
+        values = dict.fromkeys(ROUND_COUNTERS, 0) | {"outputTokens": 1000000}
+        rows = result_records({"usage": usage, "modelUsage": {"claude-opus-5-5": values}})
+        self.assertEqual(rows[0]["tokens"]["output"], 1000000)
+        self.assertAlmostEqual(price_interval(rows[0], load_prices())[0], 44)
+        result = report(rows, load_prices(), defaultdict(int))
+        self.assertTrue(result["fully_priced"])
+        self.assertEqual(result["issues"].get("records_unsupported_modifiers", 0), 0)
+
+    def test_nonstandard_lead_modifiers_leave_every_model_total_unpriced(self):
+        for modifiers in ({"speed": "fast"}, {"inference_geo": "us"},
+                          {"speed": "fast", "inference_geo": "us"},
+                          {"speed": "turbo"}, {"inference_geo": None}):
+            for lead_output, model_output, helper_output in ((1000000, 2000000, None),
+                                                            (10, 1000000, None),
+                                                            (1000000, 1000000, 0),
+                                                            (1000000, 1000000, 500)):
+                with self.subTest(modifiers=modifiers, lead=lead_output, model=model_output, helper=helper_output):
+                    usage = dict.fromkeys(COUNTERS, 0) | {"output_tokens": lead_output} | modifiers
+                    models = {"claude-opus-5-5": dict.fromkeys(ROUND_COUNTERS, 0) | {"outputTokens": model_output}}
+                    if helper_output is not None:
+                        models["claude-haiku-5-5"] = dict.fromkeys(ROUND_COUNTERS, 0) | {"outputTokens": helper_output}
+                    rows = result_records({"usage": usage, "modelUsage": models})
+                    result = report(rows, load_prices(), defaultdict(int))
+                    self.assertEqual([row["tokens"]["output"] for row in rows],
+                                     [model_output] + ([] if helper_output is None else [helper_output]))
+                    self.assertEqual(result["responses"], len(models))
+                    self.assertEqual(result["issues"].get("records_unsupported_modifiers", 0), len(models))
+                    self.assertFalse(result["fully_priced"])
+                    self.assertTrue(result["source_complete"])
+                    self.assertEqual(result["priced_records_only_usd"], [0, 0])
+                    self.assertTrue(all(price_interval(row, load_prices()) is None for row in rows))
+
+    def test_standard_lead_modifiers_do_not_change_model_total_prices(self):
+        for modifiers in ({}, {"speed": "standard", "inference_geo": "global"}, {"inference_geo": ""}):
+            for helper in (False, True):
+                with self.subTest(modifiers=modifiers, helper=helper):
+                    models = {"claude-opus-5-5": dict.fromkeys(ROUND_COUNTERS, 0) | {"outputTokens": 1000000}}
+                    if helper:
+                        models["claude-sonnet-5-5"] = dict.fromkeys(ROUND_COUNTERS, 0) | {"outputTokens": 1000000}
+                    usage = dict.fromkeys(COUNTERS, 0) | {"output_tokens": 10} | modifiers
+                    rows = result_records({"usage": usage, "modelUsage": models})
+                    result = report(rows, load_prices(), defaultdict(int))
+                    self.assertTrue(result["fully_priced"])
+                    self.assertEqual(result["issues"].get("records_unsupported_modifiers", 0), 0)
+                    self.assertEqual(result["priced_records_only_usd"], [30, 30] if helper else [20, 20])
+
+    def test_unattributed_lead_modifier_defaults_come_from_snapshot(self):
+        prices = load_prices()
+        prices["modifiers"]["speed"]["standard_values"].append("custom-standard")
+        rows = result_records({"usage": dict.fromkeys(COUNTERS, 0) | {"speed": "custom-standard"},
+                               "modelUsage": {"claude-opus-5-5": dict.fromkeys(ROUND_COUNTERS, 0)
+                                              | {"outputTokens": 1000000}}})
+        self.assertEqual(price_interval(rows[0], prices), (20, 20))
+
     def test_round_conflicts_are_located_and_do_not_abort(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             a, z = root / "a/streams/a.jsonl", root / "z/streams/z.jsonl"
             for path, usage in ((a, {"inputTokens": 10}), (z, {"outputTokens": 10})):
                 write(path, [{"type": "result", "uuid": "shared", "modelUsage":
-                              {"claude-opus-5-5": usage}}])
+                              {"claude-opus-5-5": dict.fromkeys(ROUND_COUNTERS, 0) | usage}}])
             results = []
             for paths in ([a, z], [z, a]):
                 issues = defaultdict(int)
@@ -532,6 +761,22 @@ class LedgerTests(unittest.TestCase):
         self.assertAlmostEqual(result["usd_per_project_active_hour"][0], 120.0)
         with self.assertRaises(ValueError):
             timestamp("2026-10-22T12:00:00")
+
+    def test_missing_counter_issues_count_only_records_inside_window(self):
+        with tempfile.TemporaryDirectory() as directory:
+            moments = ("2026-10-22T11:59:59Z", "2026-10-22T12:00:00Z", "2026-10-22T12:10:00Z",
+                       "2026-10-22T12:20:00Z", "2026-10-22T12:20:01Z", None)
+            events = [response(str(index), moment=moment, output_tokens=100) for index, moment in enumerate(moments)]
+            for event in events:
+                del event["message"]["usage"]["input_tokens"]
+            write(Path(directory) / "a.jsonl", events)
+            issues = defaultdict(int)
+            result = report(transcript_records(Path(directory), issues), load_prices(), issues,
+                            timestamp("2026-10-22T12:00:00Z"), timestamp("2026-10-22T12:20:00Z"))
+        self.assertEqual(result["responses"], 2)
+        self.assertEqual(result["issues"].get("records_missing_counters", 0), 2)
+        self.assertEqual(result["issues"]["undated_records_excluded"], 1)
+        self.assertEqual(result["groups"]["session claude-opus-5-5"]["unpriced_records"], 2)
 
     def test_agent_hour_contract_parallel_waiting_overlapping_and_reimported_requests(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -634,6 +879,36 @@ class LedgerTests(unittest.TestCase):
             path.write_text(json.dumps(prices))
             with self.assertRaises(ValueError):
                 load_prices(path)
+
+    def test_invalid_modifier_snapshot_fails(self):
+        for field in ("speed", "inference_geo"):
+            for key, value in (("multiplier", -1), ("multiplier", 0), ("multiplier", True),
+                               ("multiplier", float("inf")), ("multiplier", float("nan")),
+                               ("multiplier", "2"), ("models", []), ("models", "model"), ("models", [None]),
+                               ("models", [""]), ("source", ""), ("as_of", ""),
+                               ("standard_values", None), ("standard_values", [None]), ("value", None),
+                               ("value", ""), ("value", "standard" if field == "speed" else "global")):
+                with self.subTest(field=field, key=key, value=value), tempfile.TemporaryDirectory() as directory:
+                    path = Path(directory) / "prices.json"
+                    prices = load_prices()
+                    prices["modifiers"][field][key] = value
+                    path.write_text(json.dumps(prices))
+                    with self.assertRaises(ValueError):
+                        load_prices(path)
+
+    def test_prices_without_modifiers_name_missing_key_and_file_in_cli_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "replacement-prices.json"
+            prices = load_prices()
+            del prices["modifiers"]
+            path.write_text(json.dumps(prices))
+            with patch("sys.argv", ["claude_ledger", "transcripts", directory, "--prices", str(path)]), \
+                    patch("sys.stderr", new_callable=io.StringIO) as stderr:
+                with self.assertRaises(SystemExit) as error:
+                    main()
+            self.assertEqual(error.exception.code, 2)
+            self.assertIn("missing required key: modifiers", stderr.getvalue())
+            self.assertIn(str(path), stderr.getvalue())
 
 
 if __name__ == "__main__":

@@ -225,14 +225,33 @@ location involved in a conflict (including the retained copy), and `conflicting_
 names them as `path:line`, sorted by path and numeric line number.
 
 Both commands show raw tokens and list-price USD ranges using the dated snapshot in
-`tools/claude_ledger_prices.json`. The snapshot was checked on 2026-10-22 against
-[Anthropic's pricing](https://platform.claude.com/docs/en/about-claude/pricing). Pass `--prices FILE`
-to use another recorded snapshot. Every date is priced at that one snapshot; this is revaluation at
-those prices, not historical billing or subscription quota. Unknown models stay unpriced unless
-all token counts are zero, in which case the record costs zero and remains counted.
-Unknown write TTLs stay unknown and give a price range; aggregate Haiku usage also gives a range
-when individual request context tiers are missing.
-The CLI's recorded amount stays separate in the JSON output.
+`tools/claude_ledger_prices.json`. The snapshot was checked on 2026-10-22 against [Anthropic's
+pricing](https://platform.claude.com/docs/en/about-claude/pricing). Pass `--prices FILE` to use
+another recorded snapshot. Every date is priced at that one snapshot; this is revaluation at those
+prices, not historical billing or subscription quota. Unknown models stay unpriced unless all token
+counters are explicitly present and zero, in which case the record costs zero and remains counted.
+Missing or null `input_tokens`, `output_tokens`, `cache_read_input_tokens`, or
+`cache_creation_input_tokens` make a response unpriced and count as `records_missing_counters`. This
+also checks the selected nested iterations and round totals' equivalent camelCase counters. Known
+token subtotals remain visible; an absent counter is unknown, never evidence of zero usage. Unknown
+write TTLs stay unknown and give a price range; aggregate Haiku usage also gives a range when
+individual request context tiers are missing. The CLI's recorded amount stays separate in the JSON
+output.
+
+The snapshot also records pricing modifiers, their eligible model IDs, sources, and review dates.
+The maintainer verified the modifiers against the same pricing page on 2026-10-23: `usage.speed` of
+`"fast"` doubles every token category for Opus 5.5, Opus 5, and Opus 4.8; `usage.inference_geo` of
+`"us"` multiplies every category by 1.1 for the listed Claude 4.6 and later models. Both stack,
+including cache writes and reads. Fast mode and US geography price only models with base rates in
+the snapshot; other eligible models with nonzero usage stay unpriced as unknown models. Missing
+speed or `"standard"`, and missing, empty, or `"global"` geography use standard prices. Other
+values, or modifiers on an unlisted model, make the record unpriced and count as
+`records_unsupported_modifiers`, even with zero known tokens. Replacement snapshots must include
+both modifier definitions. The round reader uses `result.usage`'s TTL split and modifiers only when
+its totals equal the single model's `modelUsage` totals. Otherwise it uses `modelUsage` totals. If
+the lead's `result.usage` carries a non-standard modifier in that case, every record of the result
+is unpriced and counted in `records_unsupported_modifiers`; the lead's modifier cannot be assigned
+to helper tokens.
 
 Use `--since 2026-10-17T21:00:00Z --until 2026-10-21T12:00:00Z` for a half-open request-time window,
 and `--json` for a machine-readable report. Timestamps require a timezone. Undated records are
@@ -241,13 +260,13 @@ This also applies to `rounds`: its usual undated totals are all excluded when ei
 set, yielding zero responses and unavailable normalizers.
 
 `agent_hours_10min_buckets` unions occupied UTC 10-minute request buckets within each transcript
-file, then adds the files' hours. Three agents requesting every five minutes for one hour give
-three agent-hours. A lead that only waits adds only the buckets containing its own requests.
+file, then adds the files' hours. Three agents requesting every five minutes for one hour give three
+agent-hours. A lead that only waits adds only the buckets containing its own requests.
 `usd_per_agent_hour` uses that denominator. `project_active_hours_10min_buckets` unions buckets
-across all agents; `usd_per_project_active_hour` measures cost per hour of project activity.
-Both measures clip buckets to the requested window; neither measures elapsed or human working
-hours. Round totals give neither measure: they carry no transcript identity, and a dated total
-marks only the run's end. Any undated record also leaves both unavailable.
+across all agents; `usd_per_project_active_hour` measures cost per hour of project activity. Both
+measures clip buckets to the requested window; neither measures elapsed or human working hours.
+Round totals give neither measure: they carry no transcript identity, and a dated total marks only
+the run's end. Any undated record also leaves both unavailable.
 
 Invalid JSON lines, including valid JSON that is not an object, are counted in `invalid_json_lines`
 and named as `path:line` in `invalid_json_locations`, sorted by path and numeric line number. A line
@@ -266,9 +285,9 @@ For cost per accepted outcome, pass `--outcomes FILE` with an explicit denominat
 ```
 
 IDs must be unique; only accepted items completed in the same window count. The caller must match
-the outcome file to the input scope. Unknown model prices or incomplete source accounting make
-the normalized cost unavailable. Token totals, warnings, and priced subtotals remain visible.
-Measure with the ledger before and after a change meant to save cost.
+the outcome file to the input scope. Unpriced records or incomplete source accounting make the
+normalized cost unavailable. Token totals, warnings, and priced subtotals remain visible. Measure
+with the ledger before and after a change meant to save cost.
 
 Each mechanism answers an incident in this repository's evaluations:
 
