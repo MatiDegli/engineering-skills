@@ -12,8 +12,10 @@ works in this order:
 2. start the `process` fixtures, each a real command in the workspace, held to its own time bound;
 3. start the agent, give it the prompt on standard input, and enforce the time limit; meanwhile
    collect the processes that lose their parent, as an init does;
-4. stop every other process except the fixtures and what they started;
-5. record each fixture as alive, exited, killed by a signal, or past its bound, then stop them;
+4. stop every other process except the fixtures and their families (the processes of a fixture's
+   session, and what descends from it);
+5. record each fixture as alive, exited, killed by a signal, or past its bound, then stop each with
+   its family;
 6. write the record, one JSON line, to the descriptor; it says whether the plain init held.
 
 As PID 1 the launcher ignores the signals that a process inside the sandbox sends it, so the agent
