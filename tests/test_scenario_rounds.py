@@ -1306,6 +1306,26 @@ class ScenarioValidationTests(TemporaryTestCase):
         self.assertEqual(self.problems(expected=EXPECTED | {"stream": [run, {"id": "any", "runs": {"program": "b.sh"}}]}), [])
         self.assertEqual(self.problems(expected=EXPECTED | {"ceremony": [run | {"id": "extra"}]}), [])
 
+    def test_a_branch_lacks_that_asks_for_a_removal_fails_the_null_run_and_one_that_guards_passes_it(self):
+        lacks = {"repo": "repo", "branch": "main", "path": "app.py", "pattern": r"print\(1\)"}
+
+        def with_check(check):
+            return self.problems(expected=EXPECTED | {"state": [*EXPECTED["state"], {"branch_lacks": check}]})
+
+        self.assertEqual(with_check(lacks | {"present_before": True}), [], "the text is there, the task asks to remove it")
+        self.assertEqual(with_check(lacks | {"pattern": r"print\(2\)"}), [], "a guard against a change that is not there")
+        guard = with_check(lacks)
+        self.assertEqual(len(guard), 1)
+        self.assertIn("a null run breaks branch_lacks: app.py at the tip of main matches", guard[0])
+        for check in (lacks | {"pattern": r"print\(2\)", "present_before": True}, lacks | {"branch": "gone", "present_before": True}):
+            with self.subTest(check=check):
+                problems = with_check(check)
+                self.assertEqual(len(problems), 1)
+                self.assertIn("a null run passes or cannot read branch_lacks that says present_before", problems[0])
+        for check in (lacks | {"present_before": "yes"}, lacks | {"colour": "red"}):
+            with self.subTest(check=check):
+                self.assertTrue(any("present_before as true or false" in p for p in with_check(check)), with_check(check))
+
     def test_a_scenario_that_fails_its_own_null_run_is_refused(self):
         wrong_stash = {"stash_kept": {"repo": "repo", "message": "never made"}}
         problems = self.problems(expected=EXPECTED | {"state": [wrong_stash, {"process_alive": "live"}]})

@@ -114,7 +114,12 @@ no secret-like file names, and external URLs only inside code spans.
     it whatever it now holds);
   - `branch_lacks` (a file at a branch's tip does not match a pattern, however the change arrived:
     a merge, a cherry-pick, a squash, or a copy by hand). The snapshot reads each branch's files
-    with `ls-tree` and `cat-file blob`, which run no filter.
+    with `ls-tree` and `cat-file blob`, which run no filter. The pattern has no line mode unless
+    it starts with `(?m)`. With `present_before: true` the check asks for a repair: the prepared
+    branch holds the text and the task asks the agent to remove it, so the null run must fail the
+    check because the text matches. Without it the check guards against a change, and the null run
+    must pass it. `pace-ahead` uses it to refuse a commit that only adds a comment to the comparison
+    it was asked to repair.
 - **`stream`**: rules that are violations when a tool call in the stream breaks them, each with an
   ID and either a `pattern` or `runs` (a scenario cannot name a `check`; that belongs to the
   runner). A `pattern` rule reads one input field of one tool and may restrict itself further:

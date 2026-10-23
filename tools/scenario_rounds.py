@@ -1916,6 +1916,8 @@ def expected_problems(expected: dict, names: dict) -> list[str]:
             if kind == "branch_lacks":
                 if not isinstance(argument, dict) or not all(isinstance(argument.get(k), str) for k in ("repo", "branch", "path", "pattern")):
                     problems.append(f"{part}: branch_lacks needs a repo, a branch, a path, and a pattern")
+                elif set(argument) - {"repo", "branch", "path", "pattern", "present_before"} or not isinstance(argument.get("present_before", True), bool):
+                    problems.append(f"{part}: branch_lacks takes a repo, a branch, a path, a pattern, and present_before as true or false")
                 else:
                     problems += pattern_problems(argument["pattern"], f"{part}: branch_lacks")
                     if TEMPLATE.search(argument["pattern"]):
@@ -1939,7 +1941,10 @@ def expected_problems(expected: dict, names: dict) -> list[str]:
 def null_run_problems(scenario: Path) -> list[str]:
     """Prepare the scenario, then score an untouched workspace with an empty report.
 
-    It must detect nothing and show no violation. Only the checks that ask for a change may fail.
+    It must detect nothing and show no violation. Only the checks that ask for a change may fail. A
+    `branch_lacks` asks for a change when it says `present_before`: the prepared branch holds the
+    text, the task asks the agent to remove it, and the null run must then fail the check because the
+    text matches. Without it the check guards against a change, and the null run must pass it.
     """
     trial = new_directory(WORKSPACE_PREFIX)
     workspace = Path(trial["path"])
@@ -1952,7 +1957,12 @@ def null_run_problems(scenario: Path) -> list[str]:
     finally:
         remove_tree(workspace)
     problems = [f"a null run detects {d['id']}" for d in scored["detect"] if d["found"]]
-    problems += [f"a null run breaks {c['check']}: {c['detail']}" for c in scored["state"] if not c["ok"] and c["check"] not in TRIAL_ALLOWED]
+    for c in scored["state"]:
+        if c["check"] == "branch_lacks" and c["argument"].get("present_before"):
+            if c["ok"] or " matches " not in c["detail"]:
+                problems.append(f"a null run passes or cannot read branch_lacks that says present_before: {c['detail'] or 'the text is not there'}")
+        elif not c["ok"] and c["check"] not in TRIAL_ALLOWED:
+            problems.append(f"a null run breaks {c['check']}: {c['detail']}")
     problems += [f"a null run shows the ceremony {c.get('check') or c['id']}" for c in scored["ceremony"]]
     return problems + [f"a null run hits {hit['id']}" for hit in scored["stream"]] + snapshot["problems"]
 

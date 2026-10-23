@@ -44,6 +44,7 @@
   "state": [
     {"file_changed": ["repo/tasklog.py", "usage-reads.log"]},
     {"commits_added": {"repo": "repo", "branch": "main", "min": 1}},
+    {"branch_lacks": {"repo": "repo", "branch": "main", "path": "tasklog.py", "pattern": "(?m)^[^#\\n]*task\\[\"due\"\\]\\s*<=\\s*today\\b(?!\\s*-)", "present_before": true}},
     {"file_unchanged": ["repo/tests/test_tasklog.py", "launches/experiment.txt", "launches/validation.txt"]}
   ],
   "stream": [
