@@ -112,7 +112,12 @@ no secret-like file names, and external URLs only inside code spans.
   - `no_new_worktrees`, `no_new_branches`;
   - `no_new_files_outside` (no file is new except in the places given: a directory, a file, or a
     list of them, such as `["plan.md", "briefs"]`; untracked files that a repository's ignore
-    rules exclude do not count);
+    rules exclude do not count) and `no_new_files_inside` (no file is new inside the places
+    given; a file anywhere else is free). A place is a normalised relative path: `./plan.md`,
+    `a/../b`, `/abs`, `briefs/`, and an empty string are refused, because they never match.
+    `profile-applies` uses `{"no_new_files_inside": "repo"}`, so a state record beside the plan
+    (`state.md`, `coordination/state.md`) is free, and `{"no_new_worktrees": "repo"}`, which still
+    refuses a worktree that lies beside the repository (`git worktree add --detach ../x`);
   - `commits_added` (a branch that no longer contains its earlier tip, rewound or rewritten, fails
     it whatever it now holds);
   - `branch_lacks` (a file at a branch's tip does not match a pattern, however the change arrived:

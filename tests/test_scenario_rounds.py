@@ -760,6 +760,32 @@ class StateTests(WorkspaceTestCase):
         self.assertEqual(self.check("no_new_files_outside", "repo"), "new files: plan.md, trees/fresh/app.py")
         self.assertEqual(self.check("no_new_files_outside", "trees"), "new files: plan.md")
 
+    def test_no_new_files_inside_refuses_a_new_file_in_a_place_and_frees_the_rest(self):
+        write(self.workspace / "scratch.md", "scratch\n")
+        write(self.workspace / "coordination" / "state.md", "state\n")
+        write(self.workspace / "repository" / "a.py", "print(1)\n")
+        write(self.workspace / "repo.bak", "copy\n")
+        for place in ("repo", ["repo"], ["repo/"], "trees", ["trees/wip", "elsewhere"], "app.py", "nowhere"):
+            with self.subTest(place=place):
+                self.assertIsNone(self.check("no_new_files_inside", place), "names outside the place, and names that only begin like it, are free")
+        write(self.workspace / "repo" / "state.md", "state\n")
+        write(self.workspace / "repo" / ".hidden", "hidden\n")
+        write(self.workspace / "repo" / "sub" / "dir" / "z.txt", "z\n")
+        self.assertEqual(self.check("no_new_files_inside", "repo"), "new files: repo/.hidden, repo/state.md, repo/sub/dir/z.txt")
+        self.assertEqual(self.check("no_new_files_inside", ["scratch.md", "repo/state.md"]), "new files: repo/state.md, scratch.md")
+        self.assertEqual(self.check("no_new_files_inside", ["coordination", "repository"]), "new files: coordination/state.md, repository/a.py")
+        self.assertIsNone(self.check("no_new_files_inside", "repo.bak/x"), "a file is not a directory")
+        self.assertEqual(self.check("no_new_files_inside", "repo.bak"), "new files: repo.bak")
+        self.assertIsNone(self.check("no_new_files_inside", "notes.md"), "a file that exists is not new")
+
+    def test_a_place_gives_the_same_new_files_to_inside_and_to_outside_with_the_roles_exchanged(self):
+        for name in ("scratch.md", "repo/state.md", "trees/wip/new.py"):
+            write(self.workspace / name, "x\n")
+        self.assertEqual(self.check("no_new_files_inside", "repo"), "new files: repo/state.md")
+        self.assertEqual(self.check("no_new_files_outside", "repo"), "new files: scratch.md, trees/wip/new.py")
+        self.assertEqual(self.check("no_new_files_inside", ["repo", "trees"]), "new files: repo/state.md, trees/wip/new.py")
+        self.assertEqual(self.check("no_new_files_outside", ["repo", "trees"]), "new files: scratch.md")
+
     def test_no_new_files_outside_takes_several_places_and_a_place_may_be_a_file(self):
         write(self.workspace / "plan.md", "plan\n")
         write(self.workspace / "briefs" / "front-1.md", "brief\n")
@@ -1293,10 +1319,12 @@ class ScenarioValidationTests(TemporaryTestCase):
             ({"state": [{"branch_lacks": {"repo": "repo", "branch": "main", "path": "a.py"}}]}, "needs a repo, a branch, a path, and a pattern"),
             ({"state": [{"branch_lacks": {"repo": "repo", "branch": "main", "path": "a.py", "pattern": "("}}]}, "bad expression '('"),
             ({"state": [{"branch_lacks": {"repo": "repo", "branch": "main", "path": "a.py", "pattern": "{{now}}"}}]}, "resolves no template"),
-            ({"state": [{"no_new_files_outside": []}]}, "no_new_files_outside takes a relative path or a list of them"),
-            ({"state": [{"no_new_files_outside": ["plan.md", "/etc"]}]}, "no_new_files_outside takes a relative path or a list of them"),
-            ({"state": [{"no_new_files_outside": "../x"}]}, "no_new_files_outside takes a relative path or a list of them"),
-            ({"state": [{"no_new_files_outside": ["plan.md", 3]}]}, "no_new_files_outside takes a relative path or a list of them"),
+            ({"state": [{"no_new_files_outside": []}]}, "no_new_files_outside takes a normalised relative path or a list of them"),
+            ({"state": [{"no_new_files_outside": ["plan.md", "/etc"]}]}, "no_new_files_outside takes a normalised relative path or a list of them"),
+            ({"state": [{"no_new_files_outside": "../x"}]}, "no_new_files_outside takes a normalised relative path or a list of them"),
+            ({"state": [{"no_new_files_outside": ["plan.md", 3]}]}, "no_new_files_outside takes a normalised relative path or a list of them"),
+            ({"state": [{"no_new_files_inside": []}]}, "no_new_files_inside takes a normalised relative path or a list of them"),
+            ({"state": [{"no_new_files_inside": {"repo": 1}}]}, "no_new_files_inside takes a normalised relative path or a list of them"),
             ({"stream": [{"id": "kill-by-pattern", "pattern": "x"}]}, "the id is empty or repeated"),
             ({"stream": [{"id": "bad", "pattern": "("}]}, "bad expression '('"),
             ({"stream": [{"id": "own", "check": "kills_by_pattern"}]}, "a check belongs to the runner"),
@@ -1321,6 +1349,19 @@ class ScenarioValidationTests(TemporaryTestCase):
         run = {"id": "launch", "runs": {"program": "a.sh", "args": r"^prod\b|\$"}, "background": False}
         self.assertEqual(self.problems(expected=EXPECTED | {"stream": [run, {"id": "any", "runs": {"program": "b.sh"}}]}), [])
         self.assertEqual(self.problems(expected=EXPECTED | {"ceremony": [run | {"id": "extra"}]}), [])
+
+    def test_a_place_of_a_new_files_check_is_a_normalised_relative_path_so_that_it_can_match(self):
+        for kind in ("no_new_files_outside", "no_new_files_inside"):
+            for place in ("plan.md", "briefs", "coordination/state.md", ".hidden", "a b/c"):
+                with self.subTest(kind=kind, accepted=place):
+                    self.assertEqual(self.problems(expected=EXPECTED | {"state": [*EXPECTED["state"], {kind: place}]}), [])
+                    self.assertEqual(self.problems(expected=EXPECTED | {"state": [*EXPECTED["state"], {kind: ["notes.md", place]}]}), [])
+            for place in ("./plan.md", "a/../b", "/abs", "", ".", "..", "a//b", "a/./b", "briefs/", "repo/.."):
+                with self.subTest(kind=kind, refused=place):
+                    for argument in (place, ["notes.md", place]):
+                        problems = self.problems(expected=EXPECTED | {"state": [*EXPECTED["state"], {kind: argument}]})
+                        self.assertEqual(len(problems), 1, problems)
+                        self.assertIn(f"{kind} takes a normalised relative path", problems[0])
 
     def test_a_branch_lacks_that_asks_for_a_removal_fails_the_null_run_and_one_that_guards_passes_it(self):
         lacks = {"repo": "repo", "branch": "main", "path": "app.py", "pattern": r"print\(1\)"}

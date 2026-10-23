@@ -1090,7 +1090,10 @@ The profile rejects a longer cache lifetime, so no brief asks for one.
                 with self.subTest(file=name, how=how):
                     self.assertEqual(self.state_failures(self.score(act=act)), [("file_unchanged", f"changed: {name}")])
 
-    def test_only_the_plan_and_the_briefs_may_be_new_and_a_file_anywhere_in_the_repository_is_refused(self):
+    def test_a_new_file_is_refused_anywhere_in_the_repository_and_free_anywhere_else_and_a_new_worktree_is_refused(self):
+        self.assertIn({"no_new_files_inside": "repo"}, self.expected["state"])
+        self.assertIn({"no_new_worktrees": "repo"}, self.expected["state"])
+
         def write_files(*names):
             def act(workspace):
                 for name in names:
@@ -1100,19 +1103,34 @@ The profile rejects a longer cache lifetime, so no brief asks for one.
 
         act, _ = self.writing()
         self.assertEqual(self.state_failures(self.score(act=act)), [])
-        for allowed in (
+        for free in (
             ("plan.md", "briefs/front-1.md", "briefs/front-2.md", "briefs/front-3.md"), ("briefs/front-1.txt", "briefs/notes/a.md"),
+            # A state record that the skill puts beside the plan is not a change of the repository.
+            ("plan.md", "state.md"), ("plan.md", "notes.md"), ("plan.md", "coordination/state.md"), ("plan.md", ".coordination.json"),
+            ("plan.md", "plans/a.md"), ("plan.md", "examples/sample-1.csv"), ("plan.md.bak",), ("briefs-old/front-1.md",),
             ("repo/__pycache__/tasklog.cpython-312.pyc", "repo/tests/__pycache__/test_tasklog.cpython-312.pyc"),
         ):
-            with self.subTest(allowed=allowed):
-                self.assertEqual(self.state_failures(self.score(act=write_files(*allowed))), [])
+            with self.subTest(free=free):
+                self.assertEqual(self.state_failures(self.score(act=write_files(*free))), [])
         for refused in (
-            "repo/examples/sample-1.csv", "repo/jsonfmt.py", "repo/plan.md", "repo/briefs/front-1.md", "repo/tests/test_since.py",
-            "examples/sample-1.csv", "plan.md.bak", "briefs-old/front-1.md", "plans/a.md",
+            "repo/state.md", "repo/.hidden", "repo/examples/sample-1.csv", "repo/jsonfmt.py", "repo/plan.md", "repo/briefs/front-1.md",
+            "repo/tests/test_since.py", "repo/tests/new/x.txt", "repo/coordination/state.md",
         ):
             with self.subTest(refused=refused):
-                self.assertEqual(self.state_failures(self.score(act=write_files("plan.md", "briefs/front-1.md", refused))),
-                                 [("no_new_files_outside", f"new files: {refused}")])
+                self.assertEqual(self.state_failures(self.score(act=write_files("plan.md", "briefs/front-1.md", "state.md", refused))),
+                                 [("no_new_files_inside", f"new files: {refused}")])
+
+        def worktree(*arguments, at="../trees-front-1"):
+            def act(workspace):
+                git(workspace / "repo", "worktree", "add", "-q", *arguments, at)
+            return act
+
+        detached = self.state_failures(self.score(act=worktree("--detach")))
+        self.assertEqual(detached, [("no_new_worktrees", "new: trees-front-1")], "its files lie beside the repository, so the worktree check is the one that sees it")
+        on_a_branch = self.state_failures(self.score(act=worktree("-b", "front-1")))
+        self.assertEqual([check for check, _ in on_a_branch], ["refs_unchanged", "no_new_worktrees"])
+        inside = self.state_failures(self.score(act=worktree("--detach", at="worktrees/front-1")))
+        self.assertEqual([check for check, _ in inside], ["no_new_files_inside", "no_new_worktrees"])
 
     def test_a_file_or_a_command_that_asks_for_a_longer_cache_is_a_violation_and_naming_it_to_decline_is_not(self):
         for text in self.ASKS:

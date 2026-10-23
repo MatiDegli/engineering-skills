@@ -76,7 +76,8 @@
       "repo/tests/__init__.py",
       "repo/tests/test_tasklog.py"
     ]},
-    {"no_new_files_outside": ["plan.md", "briefs"]}
+    {"no_new_files_inside": "repo"},
+    {"no_new_worktrees": "repo"}
   ],
   "stream": [
     {

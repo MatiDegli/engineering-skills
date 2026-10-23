@@ -960,12 +960,23 @@ def branch_lacks(argument: dict, before: dict, after: dict, processes: dict | No
     return f"{path} at the tip of {argument['branch']} matches {argument['pattern']!r}: {found[0]!r}" if found else None
 
 
-def no_new_files_outside(argument: str | list[str], before: dict, after: dict, processes: dict | None) -> str | None:
-    """Check that no file is new except in the places given: a directory, a file, or a list of them."""
+def new_files(argument: str | list[str], before: dict, after: dict, inside: bool) -> str | None:
+    """List the visible files that are new inside the places given, or outside them; a place is a directory or a file."""
     places = [place.rstrip("/") for place in listed(argument)]
     was = visible_files(before)
-    new = [n for n in visible_files(after) if n not in was and not any(n == p or n.startswith(p + "/") for p in places)]
-    return f"new files: {', '.join(sorted(new)[:5])}" if new else None
+    within = lambda name: any(name == place or name.startswith(place + "/") for place in places)
+    new = sorted(name for name in visible_files(after) if name not in was and within(name) == inside)
+    return f"new files: {', '.join(new[:5])}" if new else None
+
+
+def no_new_files_outside(argument: str | list[str], before: dict, after: dict, processes: dict | None) -> str | None:
+    """Check that no file is new except in the places given: a directory, a file, or a list of them."""
+    return new_files(argument, before, after, inside=False)
+
+
+def no_new_files_inside(argument: str | list[str], before: dict, after: dict, processes: dict | None) -> str | None:
+    """Check that no file is new inside the places given; a file anywhere else is free."""
+    return new_files(argument, before, after, inside=True)
 
 
 # Each check returns None when what it asks for holds, else a sentence that says what does not.
@@ -982,6 +993,7 @@ STATE_CHECKS = {
     "commits_added": commits_added_check,
     "branch_lacks": branch_lacks,
     "no_new_files_outside": no_new_files_outside,
+    "no_new_files_inside": no_new_files_inside,
 }
 
 
@@ -1879,6 +1891,11 @@ def runs_problems(rule: dict, where: str) -> list[str]:
     return problems
 
 
+def normal_place(place) -> bool:
+    """Say whether a place is a relative path that names its files as a snapshot does: no './', '..', '//', or end slash."""
+    return isinstance(place, str) and bool(place) and all(part not in ("", ".", "..") for part in place.split("/"))
+
+
 def expected_problems(expected: dict, names: dict) -> list[str]:
     """Check the oracle against the names its scenario's fixtures define."""
     problems, ids = [], set()
@@ -1915,10 +1932,10 @@ def expected_problems(expected: dict, names: dict) -> list[str]:
             repo = argument.get("repo") if isinstance(argument, dict) else argument if kind in ("refs_unchanged", "no_new_branches", "no_new_worktrees") else None
             if isinstance(repo, str) and repo not in names["repos"]:
                 problems.append(f"{part}: {kind} names the unknown repository {repo!r}")
-            if kind == "no_new_files_outside":
+            if kind in ("no_new_files_outside", "no_new_files_inside"):
                 places = listed(argument) if isinstance(argument, (str, list)) else []
-                if not places or not all(isinstance(p, str) and p.strip("/") and not p.startswith("/") and ".." not in Path(p).parts for p in places):
-                    problems.append(f"{part}: no_new_files_outside takes a relative path or a list of them")
+                if not places or not all(normal_place(place) for place in places):
+                    problems.append(f"{part}: {kind} takes a normalised relative path or a list of them, such as 'plan.md' or 'briefs'")
             if kind == "branch_lacks":
                 if not isinstance(argument, dict) or not all(isinstance(argument.get(k), str) for k in ("repo", "branch", "path", "pattern")):
                     problems.append(f"{part}: branch_lacks needs a repo, a branch, a path, and a pattern")
