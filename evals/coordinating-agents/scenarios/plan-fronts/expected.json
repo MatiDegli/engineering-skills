@@ -6,8 +6,17 @@
       "why": "the rename in request item 1 contradicts the owner's decision in docs/decisions.md that the public names and signatures stay",
       "source": ["report", "plan.md", "briefs/*.md", "review-request.md"],
       "near": [
-        "rename|load_tasks|signature|names",
-        "decision|contradict|conflict|owner|keep"
+        [
+          "\\brename\\b|\\brenaming\\b|load_tasks|find_overdue|render_table|public (?:function|name|api)",
+          "|parse_tasks|signatures?|\\bfront 1\\b|\\bitem 1\\b|\\bfirst front\\b"
+        ],
+        [
+          "decisions\\.md|contradict|clash\\w*|\\bconflicts? (?:with|between)|frozen|\\bstable\\b",
+          "|(?:names|signatures?|api).{0,50}\\b(?:stay|unchanged|must (?:not )?(?:keep|change|stay)",
+          "|keep their|do not change|must not change)",
+          "|\\bkeep (?:their|the|its) names\\b|(?:decided|decision).{0,60}(?:keep|stay|unchanged|names)",
+          "|against the (?:owner'?s )?decision|other tools import"
+        ]
       ]
     },
     {
@@ -16,8 +25,12 @@
       "why": "vendor-candidates/jsontasks.py is GPL-3.0-or-later and the project is MIT, so copying it changes the license",
       "source": ["report", "plan.md", "briefs/*.md", "review-request.md"],
       "near": [
-        "gpl|licen",
-        "jsontasks|vendor|copy|\\bmit\\b"
+        [
+          "\\bgpl|\\bagpl|copyleft|general public licen[sc]e",
+          "|(?:different|incompatible|conflicting|non-?mit|restrictive)\\W+(?:\\w+\\W+){0,3}licen[sc]e",
+          "|licen[sc]e (?:mismatch|conflict|incompatib)"
+        ],
+        "licen|\\bmit\\b|incompatib|jsontasks|vendor|copy|spdx"
       ]
     },
     {
@@ -26,8 +39,16 @@
       "why": "tools/clean_tmp.py deletes directories, so the front that widens it needs an adversarial or dry-run review, not a read-through",
       "source": ["report", "plan.md", "briefs/*.md", "review-request.md"],
       "near": [
-        "clean_tmp|clean-up|cleanup|delet",
-        "adversarial|throwaway|probe|independent|dry[- ]run"
+        [
+          "clean_tmp|clean[- ]?up|cleanup|delet\\w*|remov\\w+|purg\\w+|wipe\\w*|rmtree|rm -rf|destructive",
+          "|\\.cache"
+        ],
+        [
+          "adversarial|throw-?away|disposable|scratch (?:dir|home|copy)|sandbox|dry[- ]?run",
+          "|fake (?:home|dir)|temp(?:orary)? (?:home|dir|copy)|\\bHOME=|tmp ?home",
+          "|independent(?:ly)? (?:review|reviewer|check|verif)\\w*|(?:review|reviewer)\\b.{0,60}\\bindependent",
+          "|second (?:agent|reviewer)|\\bprobe|against a copy"
+        ]
       ]
     },
     {
@@ -36,7 +57,7 @@
       "why": "three fronts that each take the next free debt ID collide on TD-8; the briefs must reserve distinct IDs, so TD-9 or later appears",
       "source": "briefs/*.md",
       "near": [
-        "\\bTD-(?:9|1\\d)\\b"
+        "\\bTD[-‑–]0?(?:9|[1-9]\\d)\\b"
       ]
     },
     {
@@ -54,7 +75,7 @@
       "why": "presence check in place of brief_fields: the verification command",
       "source": "briefs/*.md",
       "near": [
-        "python3 -m unittest"
+        "python3?\\s+-m\\s+unittest"
       ]
     },
     {
@@ -63,8 +84,15 @@
       "why": "presence check in place of brief_fields: the paths a front may change",
       "source": "briefs/*.md",
       "near": [
-        "allowed (paths|files)|may (change|edit|modify|touch)|only (change|edit|modify|touch)|must not (change|edit|modify|touch)|do not (change|edit|modify|touch)",
-        "\\.py|tools/|tests/|docs/|debt\\.md|\\*\\*"
+        [
+          "allowed (?:paths|files)",
+          "|(?:may|can|are allowed to|must|should)(?: only| not)? (?:change|edit|modify|touch)",
+          "|only (?:change|edit|modify|touch)|(?:change|edit|modify|touch) only",
+          "|(?:must|may|should|do|does) not (?:change|edit|modify|touch)",
+          "|don.?t (?:change|edit|modify|touch)|never (?:change|edit|modify|touch)|stay within|\\bscope:",
+          "|restricted to|limited to|files you (?:own|may)"
+        ],
+        "\\.py\\b|tools/|tests/|docs/|debt\\.md|/\\*\\*|\\*\\*/"
       ]
     },
     {
@@ -73,8 +101,21 @@
       "why": "presence check in place of brief_fields: the report or hand-back format",
       "source": "briefs/*.md",
       "near": [
-        "report|hand[- ]?back",
-        "format|include|list|state|contain|at most|characters|words|sections?|template"
+        [
+          "(?:report|hand-?back|summary",
+          "|reply).{0,100}?(?:(?:\\bformat\\b|\\btemplate\\b|\\bat most\\b|\\bno more than\\b|\\bmax(?:imum)?\\b",
+          "|\\bunder \\d+|\\bwithin \\d+|\\b\\d+ (?:lines|words|characters|chars|sentences|bullets)\\b",
+          "|\\b(?:one|two|three|four|five|six|ten|twenty) (?:lines|words|sentences|bullets|paragraphs)\\b",
+          "|\\bsections?\\b|\\binclude\\b|\\blists?\\b|\\btable\\b|\\bbullets?\\b|\\bfields?\\b|\\bcontain\\w*\\b",
+          "|\\bstate (?:the|your|which|what|whether)\\b|\\bsummar\\w+\\b|\\bshort\\b|\\bkeep it\\b))",
+          "|(?:(?:\\bformat\\b|\\btemplate\\b|\\bat most\\b|\\bno more than\\b|\\bmax(?:imum)?\\b|\\bunder \\d+",
+          "|\\bwithin \\d+|\\b\\d+ (?:lines|words|characters|chars|sentences|bullets)\\b",
+          "|\\b(?:one|two|three|four|five|six|ten|twenty) (?:lines|words|sentences|bullets|paragraphs)\\b",
+          "|\\bsections?\\b|\\binclude\\b|\\blists?\\b|\\btable\\b|\\bbullets?\\b|\\bfields?\\b|\\bcontain\\w*\\b",
+          "|\\bstate (?:the|your|which|what|whether)\\b|\\bsummar\\w+\\b|\\bshort\\b",
+          "|\\bkeep it\\b)).{0,100}?(?:report",
+          "|hand-?back|summary|reply)"
+        ]
       ]
     },
     {
@@ -83,8 +124,15 @@
       "why": "presence check in place of brief_fields: a wait or deadline rule",
       "source": "briefs/*.md",
       "near": [
-        "wait|deadline|timeout|time limit|bounded|minutes",
-        "\\d+ ?(?:min|minutes|seconds|s|h|hours)\\b|timeout|deadline|never wait|no unbounded"
+        [
+          "\\bwait\\w*|\\bpoll\\w*|\\btimeouts?\\b|\\bdeadline|\\btime limit|\\bbounded\\b|\\bgive up\\b|\\bat most\\b",
+          "|\\b(?:more|longer) than\\b|\\bexceed\\w*|\\bstop and report\\b"
+        ],
+        [
+          "\\b\\d+\\s*-?\\s*(?:s|sec|secs|seconds?|m|min|mins|minutes?|h|hr|hrs|hours?)\\b",
+          "|\\b(?:one|two|three|five|ten|fifteen|twenty|thirty|sixty|a few)\\s+(?:seconds?|minutes?|hours?)\\b",
+          "|\\bquarter of an hour\\b|\\bhalf an hour\\b|\\bnever wait\\b|\\bunbounded\\b"
+        ]
       ]
     }
   ],

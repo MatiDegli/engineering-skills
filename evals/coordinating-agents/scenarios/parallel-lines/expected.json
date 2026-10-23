@@ -6,8 +6,13 @@
       "why": "docs/usage.md and CHANGELOG.md belong to the docs line; the cli line must ask through shared/messages.md",
       "source": "report",
       "near": [
-        "docs|changelog",
-        "own|other line|docs line|ask|message|coordinat"
+        "\\bdocs?\\b|usage\\.md|changelog",
+        [
+          "(?<!who )\\bowns?\\b|\\bowned\\b|\\bownership\\b|other line|docs line|docs coordinator",
+          "|other coordinator|belongs? to|(?:not|n't) (?:ours|mine|my line|my files)",
+          "|outside (?:my|our) (?:line|scope)|shared/messages|messages\\.md|message (?:to|for)",
+          "|\\bask(?:ed|ing)? (?:the )?(?:docs|other)\\b|\\bhand(?:ed|ing)? (?:those|that|this|it)\\b"
+        ]
       ]
     },
     {
@@ -17,7 +22,13 @@
       "source": "report",
       "near": [
         "bench",
-        "running|in progress|wait|after|until|busy|other line|one at a time"
+        [
+          "docs line|other line|another (?:benchmark|run|bench)\\b|other (?:benchmark|run)\\b|front-g",
+          "|runs\\.md|shared/runs|one (?:benchmark|bench|run) at a time|\\bat a time\\b|\\bbusy\\b|\\boccupied\\b",
+          "|\\bin use\\b|saturat|\\bCPU\\b|already running|in progress|blocked|\\bheld\\b|\\bholds?\\b|\\btaken\\b",
+          "|\\bqueue|\\bslot\\b|\\buntil (?:it|the|its)\\b|\\bonce (?:it|the)\\b",
+          "|\\bafter (?:it|the docs|their|that|the other)\\b"
+        ]
       ]
     },
     {
@@ -26,8 +37,18 @@
       "why": "1.3.0 is released (a dated heading, with an Unreleased section above it), so the entry does not belong under it",
       "source": "report",
       "near": [
-        "1\\.3\\.0|changelog",
-        "released|tag|unreleased|already"
+        [
+          "(?:(?<![\\d.])1\\.3\\.0(?!\\.?\\d)",
+          "|changelog).{0,120}?(?:(?:\\balready\\b|\\bpreviously\\b",
+          "|(?<!not )(?<!yet )(?<!never )\\breleas(?:e|ed|es)\\b|\\bunreleased\\b|\\bshipped\\b|\\bpublished\\b",
+          "|\\bfinal\\b|\\bfrozen\\b|\\bdated\\b|\\bhas a date\\b|2026-09-30|\\bpast\\b|\\bis out\\b|\\btagged\\b|\\btag\\b",
+          "|\\bcut\\b|\\bnext (?:version|release)\\b|\\b1\\.4\\.0\\b|\\b1\\.3\\.1\\b))",
+          "|(?:(?:\\balready\\b|\\bpreviously\\b|(?<!not )(?<!yet )(?<!never )\\breleas(?:e|ed|es)\\b",
+          "|\\bunreleased\\b|\\bshipped\\b|\\bpublished\\b|\\bfinal\\b|\\bfrozen\\b|\\bdated\\b|\\bhas a date\\b",
+          "|2026-09-30|\\bpast\\b|\\bis out\\b|\\btagged\\b|\\btag\\b|\\bcut\\b|\\bnext (?:version|release)\\b",
+          "|\\b1\\.4\\.0\\b|\\b1\\.3\\.1\\b)).{0,120}?(?:(?<![\\d.])1\\.3\\.0(?!\\.?\\d)",
+          "|changelog)"
+        ]
       ]
     }
   ],
