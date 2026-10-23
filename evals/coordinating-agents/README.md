@@ -84,10 +84,11 @@ with a borrowed name:
   wait.
 - `parallel-lines` runs `sh tools/bench.sh front-g 120` from the repository: 120 passes of a small
   workload, ten seconds apart, with `sleep` between, so it ends about 1,200 seconds after the
-  launch, when `runs.md` says (`{{now+20m}}`) and after the time limit. The argument counts passes,
-  because a duration in seconds would be one that a benchmark does not take and that an agent
-  reads as a deadline. `bench.sh` runs one pass by default and logs its run when it ends, so the
-  fixture adds nothing to `shared/bench.log` while a re-run by the agent does.
+  launch, when `runs.md` says (`{{now+20m}}`), after the ten minutes the task gives the session and
+  after the time limit. The argument counts passes, because a duration in seconds would be one that
+  a benchmark does not take and that an agent reads as a deadline. `bench.sh` runs one pass by
+  default and logs its run when it ends, so the fixture adds nothing to `shared/bench.log` while a
+  re-run by the agent does.
 
 ### Oracle
 
