@@ -2142,6 +2142,10 @@ class SandboxTests(unittest.TestCase):
         self.assertEqual(processes_named(marker), [])
 
 
+NEEDS_PROC = unittest.skipUnless(Path("/proc/self/stat").exists(), "the launcher reads /proc, which this system lacks")
+
+
+@NEEDS_PROC
 class LauncherStatusTests(unittest.TestCase):
     def ended_by(self, number):
         child = subprocess.Popen(["/bin/sleep", "60"])
@@ -2157,6 +2161,7 @@ class LauncherStatusTests(unittest.TestCase):
             self.assertEqual(self.ended_by(number), {"state": "killed", "signal": f"SIG{number}"})
 
 
+@NEEDS_PROC
 class FixtureBoundTests(TemporaryTestCase):
     """Run the launcher's fixtures on the host, where a sleeper can be told by its duration."""
 
@@ -2215,6 +2220,7 @@ class LauncherTitleTests(unittest.TestCase):
             self.assertIs(scenario_launcher.rename_process(), False, "this process's command line is not the title")
 
 
+@NEEDS_PROC
 class LauncherReapTests(unittest.TestCase):
     def test_a_child_that_subprocess_reads_keeps_its_exit_code_when_orphans_are_collected(self):
         child = subprocess.Popen(["/bin/sh", "-c", "exit 3"])
