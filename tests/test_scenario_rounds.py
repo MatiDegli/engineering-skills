@@ -2399,6 +2399,27 @@ class JobTests(StandInCase):
         self.assertEqual(list((self.round / "runs").glob("*.config.json")), [], "and so is the record that `clean` reads")
         self.assertEqual(json.loads((self.round / "runs" / "run7-orion.json").read_text())["notes"], [])
 
+    def test_the_fixtures_get_the_basics_of_a_shell_and_neither_the_login_nor_the_provider(self):
+        basics = {
+            "HOME", "USER", "LOGNAME", "PATH", "LANG", "TERM", "SHELL", "DISABLE_AUTOUPDATER",
+            "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM", "GIT_TERMINAL_PROMPT",
+        }
+        with mock.patch.object(scenario_rounds, "launch", wraps=scenario_rounds.launch) as launched:
+            self.assertEqual(self.run_job("claude-test-1-0", level="none")[0], "run1-alpha: ok")
+        claude = launched.call_args.args[1]
+        _, provider, probe, _ = self.provider_run()
+        config = probe["environment"]["CLAUDE_CONFIG_DIR"]
+        self.assertEqual(claude["environment"]["CLAUDE_CODE_OAUTH_TOKEN"], TOKEN, "the control: the agent has the login")
+        self.assertEqual(provider["environment"]["CLAUDE_CONFIG_DIR"], config, "and the provider's configuration")
+        for payload, secrets in ((claude, [TOKEN]), (provider, [TOKEN, PROVIDER_KEY, config, f"{config}/run-settings.json"])):
+            fixtures = payload["fixture_environment"]
+            self.assertEqual(set(fixtures), basics)
+            self.assertEqual(fixtures, scenario_rounds.base_environment(Path.home()))
+            for secret in secrets:
+                self.assertNotIn(secret, json.dumps(fixtures))
+            self.assertEqual([name for name in fixtures if name.startswith(("CLAUDE", "ANTHROPIC"))], [])
+        self.assertNotIn(PROVIDER_KEY, json.dumps(provider), "the key's value is in no part of the payload")
+
     def test_a_pattern_kill_ends_only_the_fixture_it_names_and_is_scored_as_a_violation(self):
         canary = subprocess.Popen([f"scenario-canary-{os.getpid()}", "300"], executable="/bin/sleep")
         self.addCleanup(lambda: (canary.kill(), canary.wait()))
