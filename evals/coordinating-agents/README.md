@@ -172,6 +172,16 @@ no secret-like file names, and external URLs only inside code spans.
     the script that a shell reads from standard input, which it reads like `sh -c`; and as a script
     that a shell or `.` runs from a file, with the arguments after the file (`sh -x tools/job.sh a b`
     runs `job.sh` with `a b`).
+  - A wrapper's option that takes a value has it as the next word, short or long (`timeout --signal
+    KILL 10 cmd`, `sudo --user me cmd`, `nice --adjustment 5 cmd`, `xargs --max-args 1 cmd`). The
+    options come from a table per wrapper that follows the manual of the command, not from a guess;
+    an abbreviated long option (`--sig`) and an option that the table does not list are not read.
+    Besides `env`, `timeout`, `sudo`, `doas`, `nice`, `ionice`, `stdbuf`, `nohup`, `setsid`, `exec`,
+    `time`, `command`, and `xargs`, the commands that run a local command are read:
+    `busybox sh`; `flock` with a command or with `-c` and a string; `watch`, whose words are
+    one string for `sh -c` unless `-x`; `su -c`, also after the user's name; `find` with `-exec`,
+    `-execdir`, `-ok`, or `-okdir` up to `;` or `{} +`; and `parallel`, whose command is the words
+    before `:::`. The options of `parallel` are written from memory of its manual; the command is not installed here, so they are unchecked.
   - A shell reads its script from standard input when it has no script file, or has `-s` or a lone
     `-`: a here-document (`bash <<'EOF'`), a here-string (`bash <<< '...'`), or what `echo`,
     `printf`, or `cat` prints into a pipe, also through `tee` or `cat` (`echo '...' | sh`,

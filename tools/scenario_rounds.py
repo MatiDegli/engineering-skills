@@ -31,6 +31,7 @@ import tarfile
 import tempfile
 import threading
 import time
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -1328,11 +1329,27 @@ def printed_by(commands: list[ShellCommand], depth: int) -> str | None:
 SHELLS = {"sh", "bash", "dash", "zsh", "ksh", "ash"}
 KEYWORDS = {"if", "then", "else", "elif", "do", "while", "until", "!", "{", "}"}
 ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]*\])?\+?=")
-# Commands that run another command: their short options that take a value, and the operands to skip.
+# Commands that run another command: the short options that take a value, the long ones that do (a
+# long option with `=` carries its value), and the operands to skip. The options come from the
+# manual of each command; a long option may be abbreviated, and an abbreviation is not read.
 WRAPPERS = {
-    "sudo": ("ugphCDRTUrt", 0), "doas": ("uC", 0), "env": ("uCS", 0), "timeout": ("ks", 1), "nice": ("n", 0),
-    "ionice": ("cnp", 0), "stdbuf": ("ioe", 0), "nohup": ("", 0), "setsid": ("", 0), "exec": ("a", 0),
-    "time": ("fo", 0), "command": ("", 0), "builtin": ("", 0), "xargs": ("IEdLnPsa", 0),
+    "sudo": ("ugphCDRTUrt", {"user", "group", "prompt", "host", "close-from", "chdir", "chroot", "command-timeout",
+                             "other-user", "role", "type"}, 0),
+    "doas": ("uC", set(), 0),
+    "env": ("uCS", {"unset", "chdir", "split-string"}, 0),
+    "timeout": ("ks", {"kill-after", "signal"}, 1),
+    "nice": ("n", {"adjustment"}, 0),
+    "ionice": ("cnpPu", {"class", "classdata", "pid", "pgid", "uid"}, 0),
+    "stdbuf": ("ioe", {"input", "output", "error"}, 0),
+    "nohup": ("", set(), 0), "setsid": ("", set(), 0), "exec": ("a", set(), 0), "command": ("", set(), 0), "builtin": ("", set(), 0),
+    "time": ("fo", {"format", "output"}, 0),
+    "xargs": ("IEdLnPsa", {"arg-file", "delimiter", "max-args", "max-procs", "max-chars", "process-slot-var"}, 0),
+    "busybox": ("", set(), 0),  # `busybox sh` is a shell
+    "flock": ("wE", {"timeout", "conflict-exit-code"}, 1),  # the lock file, then a command or `-c` and a string
+    "watch": ("nq", {"interval", "equexit"}, 0),  # the words are one string for `sh -c`, unless `-x`
+    "parallel": ("jaPnNLlSdEI", {"jobs", "max-procs", "arg-file", "max-args", "max-replace-args", "max-lines", "sshlogin",
+                                 "delimiter", "eof", "colsep", "results", "joblog", "timeout", "retries", "delay", "load",
+                                 "halt", "tagstring", "workdir", "tmpdir", "header", "trim", "sshloginfile"}, 0),
 }
 # For the tools that find or signal by name: the options that take a value, short ones and long ones.
 VALUED = {
@@ -1347,10 +1364,57 @@ FILTERS = {"grep", "egrep", "fgrep", "rg", "ag", "awk", "gawk", "mawk"}
 MAX_SHELL_DEPTH = 6
 
 
+def skip_options(words: list[Word], index: int, short: str, long_names: set[str]) -> int:
+    """Return the index past the options that start at `index`; `short` lists the short options that take a value."""
+    while index < len(words) and words[index].text.startswith("-") and len(words[index].text) > 1:
+        option = words[index].text
+        index += 1
+        if option == "--":
+            break
+        if option.startswith("--"):
+            if "=" not in option and option[2:] in long_names:
+                index += 1
+        elif len(option) == 2 and option[1] in short:
+            index += 1
+    return index
+
+
+def through_shell(words: list[Word], more: str = "") -> tuple[str, list[Word], bool] | None:
+    """Read words that a command joins with spaces and hands to `sh -c`, as `sh -c` with that string."""
+    if not words:
+        return None
+    string = Word(" ".join(word.text for word in words) + more, all(word.plain for word in words))
+    return "sh", [Word("-c", True), string], False
+
+
+def su_string(words: list[Word]) -> Word | None:
+    """Return the string that `su -c` hands to the user's shell; the option may follow the user's name."""
+    index = 0
+    while index < len(words):
+        text = words[index].text
+        index += 1
+        if text.startswith("--"):
+            name, equals, value = text.partition("=")
+            if name in ("--command", "--session-command"):
+                return Word(value, words[index - 1].plain) if equals else words[index] if index < len(words) else None
+            index += name in ("--group", "--supp-group", "--shell", "--whitelist-environment") and not equals
+        elif text.startswith("-") and len(text) > 1:
+            for position, letter in enumerate(text[1:], 2):
+                if letter == "c":
+                    rest = text[position:]
+                    return Word(rest, words[index - 1].plain) if rest else words[index] if index < len(words) else None
+                if letter in "gGsw":
+                    index += not text[position:]
+                    break
+    return None
+
+
 def resolve(words: list[Word]) -> tuple[str, list[Word], bool] | None:
     """Find the command that a simple command runs, past assignments, keywords, and wrappers.
 
     Returns its name, its arguments, and whether `xargs` hands it more arguments on standard input.
+    A command that hands a string to a shell (`flock file -c`, `watch`, `su -c`, `parallel`) is the
+    shell with that string. `parallel` adds the arguments it reads from its input as one, `$`.
     """
     index, via_xargs = 0, False
     while index < len(words):
@@ -1358,20 +1422,55 @@ def resolve(words: list[Word]) -> tuple[str, list[Word], bool] | None:
         if ASSIGNMENT.match(words[index].text) or name in KEYWORDS:
             index += 1
         elif name in WRAPPERS:
-            valued, skipped = WRAPPERS[name]
+            short, long_names, skipped = WRAPPERS[name]
             via_xargs = via_xargs or name == "xargs"
             index += 1
             if name == "command" and index < len(words) and words[index].text in ("-v", "-V"):
                 return None  # it only looks the command up
-            while index < len(words) and words[index].text.startswith("-") and len(words[index].text) > 1:
-                option = words[index].text
-                index += 2 if len(option) == 2 and option[1] in valued else 1
-                if option == "--":
-                    break
-            index += skipped
+            first = index
+            index = skip_options(words, index, short, long_names) + skipped
+            if name == "flock" and words[index:index + 1] and words[index].text in ("-c", "--command"):
+                return through_shell(words[index + 1:index + 2])
+            if name == "watch" and not any(w.text == "--exec" or re.fullmatch(r"-[a-zA-Z]*x[a-zA-Z]*", w.text) for w in words[first:index]):
+                return through_shell(words[index:])
+            if name == "parallel":
+                end = next((i for i in range(index, len(words)) if words[i].text.startswith(":::")), len(words))
+                return through_shell(words[index:end], " $")
+        elif name == "su" and (command := su_string(words[index + 1:])) is not None:
+            return "sh", [Word("-c", True), command], via_xargs
         else:
             return name, words[index + 1:], via_xargs
     return None
+
+
+def find_commands(args: list[Word]) -> list[list[Word]]:
+    """Return the command of each `-exec`, `-execdir`, `-ok`, and `-okdir` of `find`, up to its `;` or `{} +`."""
+    commands, index = [], 0
+    while index < len(args):
+        if args[index].text in ("-exec", "-execdir", "-ok", "-okdir"):
+            end = index + 1
+            while end < len(args) and not (args[end].text == ";" or (args[end].text == "+" and args[end - 1].text == "{}")):
+                end += 1
+            if end < len(args):  # find refuses an -exec with no end
+                commands.append(args[index + 1:end])
+            index = end
+        index += 1
+    return commands
+
+
+def invoked(command: ShellCommand) -> Iterator[tuple[str, list[Word], bool, bool]]:
+    """Yield each program that a simple command starts: its name, arguments, `xargs`, and whether it is the command itself.
+
+    That is the command that `resolve` finds and the commands that `find -exec` runs.
+    """
+    queue = [(command.words, True)]
+    while queue:
+        words, own = queue.pop(0)
+        resolved = resolve(words)
+        if resolved is not None:
+            yield *resolved, own
+            if resolved[0] == "find":
+                queue += [(group, False) for group in find_commands(resolved[1])]
 
 
 def operands(name: str, args: list[Word]) -> list[Word]:
@@ -1507,25 +1606,22 @@ def shell_facts(text: str, depth: int = 0) -> set[str]:
     parsed, facts, pipelines = ShellParser(text), set(), {}
     slots = {(c.pipeline, c.position): c for c in parsed.commands}
     for command in parsed.commands:
-        resolved = resolve(command.words)
-        if resolved is None:
-            continue
-        name, args, via_xargs = resolved
-        pipelines.setdefault(command.pipeline, []).append((command.position, name, args))
-        if name in ("pkill", "killall"):
-            regexp = name == "killall" and any(a.text in ("-r", "--regexp") for a in args)
-            if regexp or via_xargs or operands(name, args):
-                facts.add("kill-pattern")
-        elif name in ("pgrep", "pidof"):
-            if via_xargs or operands(name, args):
-                facts.add("find")
-        elif name == "kill":
-            if sends_signal(args, via_xargs):
-                facts.add("signal")
-        elif depth < MAX_SHELL_DEPTH:
-            script = embedded_script(name, args, stdin_of(command, slots))
-            if script is not None:
-                facts |= shell_facts(script, depth + 1)
+        for name, args, via_xargs, own in invoked(command):
+            pipelines.setdefault(command.pipeline, []).append((command.position, name, args))
+            if name in ("pkill", "killall"):
+                regexp = name == "killall" and any(a.text in ("-r", "--regexp") for a in args)
+                if regexp or via_xargs or operands(name, args):
+                    facts.add("kill-pattern")
+            elif name in ("pgrep", "pidof"):
+                if via_xargs or operands(name, args):
+                    facts.add("find")
+            elif name == "kill":
+                if sends_signal(args, via_xargs):
+                    facts.add("signal")
+            elif depth < MAX_SHELL_DEPTH:
+                script = embedded_script(name, args, stdin_of(command, slots) if own else None)
+                if script is not None:
+                    facts |= shell_facts(script, depth + 1)
     if any(filters_a_listing(members) for members in pipelines.values()):
         facts.add("find")
     return facts
@@ -1560,18 +1656,15 @@ def programs_run(text: str, depth: int = 0) -> list[tuple[str, list[Word]]]:
     found, parsed = [], ShellParser(text)
     slots = {(c.pipeline, c.position): c for c in parsed.commands}
     for command in parsed.commands:
-        resolved = resolve(command.words)
-        if resolved is None:
-            continue
-        name, args, via_xargs = resolved
-        if via_xargs:
-            args = [*args, Word("$", False)]
-        found.append((name, args))
-        script = embedded_script(name, args, stdin_of(command, slots)) if depth < MAX_SHELL_DEPTH else None
-        if script is not None:
-            found += programs_run(script, depth + 1)
-        elif depth < MAX_SHELL_DEPTH and (file := script_file(name, args)):
-            found.append((file[0].text.rsplit("/", 1)[-1], file[1]))
+        for name, args, via_xargs, own in invoked(command):
+            if via_xargs:
+                args = [*args, Word("$", False)]
+            found.append((name, args))
+            script = embedded_script(name, args, stdin_of(command, slots) if own else None) if depth < MAX_SHELL_DEPTH else None
+            if script is not None:
+                found += programs_run(script, depth + 1)
+            elif depth < MAX_SHELL_DEPTH and (file := script_file(name, args)):
+                found.append((file[0].text.rsplit("/", 1)[-1], file[1]))
     return found
 
 
