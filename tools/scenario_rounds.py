@@ -1022,13 +1022,15 @@ class ShellParser:
     Quotes and escapes are removed from words, so the quoted argument of a command is one word of
     that command and never a command of its own. Command substitutions (`$(...)`, backticks, also
     inside double quotes), process substitutions, and subshells are commands. A here-document's
-    body is kept as text on the command that reads it. Redirections and comments are dropped.
+    body is kept as text on the command that reads it, and when its delimiter is not quoted the
+    shell runs the substitutions in the body, so they are commands too. Redirections and comments
+    are dropped.
     """
 
     def __init__(self, text: str) -> None:
         self.text, self.index, self.pipelines = text, 0, 0
         self.commands: list[ShellCommand] = []
-        self.heredocs: list[tuple[ShellCommand, str, bool]] = []
+        self.heredocs: list[tuple[ShellCommand, str, bool, bool]] = []
         self.parse(closing=False)
 
     def parse(self, closing: bool) -> None:
@@ -1076,6 +1078,7 @@ class ShellParser:
                 else:
                     redirect = operator
             else:
+                begin = self.index
                 word = self.read_word()
                 end = self.index
                 if command is None:
@@ -1083,7 +1086,8 @@ class ShellParser:
                 if redirect is None:
                     command.words.append(word)
                 elif redirect.startswith("<<") and redirect != "<<<":
-                    self.heredocs.append((command, word.text, redirect == "<<-"))
+                    quoted = any(char in text[begin:end] for char in "'\"\\")
+                    self.heredocs.append((command, word.text, redirect == "<<-", quoted))
                     redirect = None
                 else:
                     redirect = None  # the target of a redirection is not an argument
@@ -1095,7 +1099,8 @@ class ShellParser:
 
     def read_heredocs(self) -> None:
         """Read the bodies of the here-documents that the line just ended announced."""
-        for command, delimiter, strip in self.heredocs:
+        pending, self.heredocs = self.heredocs, []
+        for command, delimiter, strip, quoted in pending:
             lines = []
             while self.index < len(self.text):
                 newline = self.text.find("\n", self.index)
@@ -1105,7 +1110,21 @@ class ShellParser:
                     break
                 lines.append(line)
             command.body = "\n".join(lines)
-        self.heredocs.clear()
+            if not quoted:
+                self.read_substitutions(command.body)
+
+    def read_substitutions(self, body: str) -> None:
+        """Read the substitutions in the body of a here-document whose delimiter is not quoted; the shell runs them."""
+        saved = self.text, self.index
+        self.text, self.index = body, 0
+        while self.index < len(body):
+            if body[self.index] == "\\":
+                self.index += 2
+            elif body[self.index] == "`" or (body.startswith("$(", self.index) and not body.startswith("$((", self.index)):
+                self.read_expansion()
+            else:
+                self.index += 1
+        self.text, self.index = saved
 
     def read_word(self) -> Word:
         pieces, plain, text = [], True, self.text
@@ -1290,30 +1309,50 @@ def sends_signal(args: list[Word], via_xargs: bool) -> bool:
     return bool(targets) and not all(t.plain and re.fullmatch(r"-?\d+", t.text) for t in targets)
 
 
-def embedded_script(name: str, args: list[Word], body: str | None) -> str | None:
-    """Return the shell text that a command hands to a shell, which the shell would run.
-
-    That is the payload of `sh -c` and `bash -c`, the arguments of `eval`, or a here-document that
-    a shell with no script file reads.
-    """
-    if name == "eval":
-        return " ".join(arg.text for arg in args)
-    if name not in SHELLS:
-        return None
-    has_c, index = False, 0
+def shell_options(args: list[Word]) -> tuple[bool, bool, int]:
+    """Read a shell's options; say whether it has `-c`, whether it only checks syntax (`-n`), and where its operands begin."""
+    has_c = checks_only = False
+    index = 0
     while index < len(args):
         text = args[index].text
         if text in ("-o", "+o", "-O", "+O", "--rcfile", "--init-file"):
             index += 2
         elif len(text) > 1 and text[0] in "-+" and text != "--":
-            has_c = has_c or (text[0] == "-" and text[1] != "-" and "c" in text)
+            if text[0] == "-" and text[1] != "-":
+                has_c, checks_only = has_c or "c" in text, checks_only or "n" in text
             index += 1
         else:
             break
     if args[index:index + 1] and args[index].text == "--":
         index += 1
+    return has_c, checks_only, index
+
+
+def embedded_script(name: str, args: list[Word], body: str | None) -> str | None:
+    """Return the shell text that a command hands to a shell, which the shell would run.
+
+    That is the payload of `sh -c` and `bash -c`, the arguments of `eval`, or a here-document that
+    a shell with no script file reads. A shell given `-n` reads its text and runs nothing.
+    """
+    if name == "eval":
+        return " ".join(arg.text for arg in args)
+    if name not in SHELLS:
+        return None
+    has_c, checks_only, index = shell_options(args)
+    if checks_only:
+        return None
     operand = args[index].text if index < len(args) else None
     return operand if has_c else body if operand is None else None
+
+
+def script_file(name: str, args: list[Word]) -> tuple[Word, list[Word]] | None:
+    """Return the script file that a shell or `.` runs, with the arguments it gets, or None."""
+    if name in (".", "source"):
+        return (args[0], args[1:]) if args else None
+    if name not in SHELLS:
+        return None
+    has_c, checks_only, index = shell_options(args)
+    return None if has_c or checks_only or index >= len(args) else (args[index], args[index + 1:])
 
 
 def filters_a_listing(members: list[tuple[int, str, list[Word]]]) -> bool:
@@ -1378,6 +1417,51 @@ def kills_by_pattern(command: str) -> bool:
     return "kill-pattern" in facts or {"find", "signal"} <= facts
 
 
+def programs_run(text: str, depth: int = 0) -> list[tuple[str, list[Word]]]:
+    """List the programs that a Bash call runs, each with its arguments, as the shell would run them.
+
+    A program is named by its file name, without a directory. The list covers every command that
+    the shell reads: past assignments, keywords, and wrappers (`env`, `timeout`, `sudo`, `xargs`),
+    inside `sh -c`, `bash -c`, `eval`, substitutions, and the here-document of a shell. A script
+    that a shell or `.` runs from a file counts as a program named by the file, with the arguments
+    after it; `bash -n` runs nothing. The arguments that `xargs` reads from its input add one that
+    expands. The quoted words of other commands are their arguments and run nothing.
+    """
+    found = []
+    for command in ShellParser(text).commands:
+        resolved = resolve(command.words)
+        if resolved is None:
+            continue
+        name, args, via_xargs = resolved
+        if via_xargs:
+            args = [*args, Word("$", False)]
+        found.append((name, args))
+        script = embedded_script(name, args, command.body) if depth < MAX_SHELL_DEPTH else None
+        if script is not None:
+            found += programs_run(script, depth + 1)
+        elif depth < MAX_SHELL_DEPTH and (file := script_file(name, args)):
+            found.append((file[0].text.rsplit("/", 1)[-1], file[1]))
+    return found
+
+
+def runs_program(command: str, program: str, arguments: re.Pattern | None) -> bool:
+    """Say whether a Bash call runs `program` with arguments that `arguments` finds, as the shell would run it.
+
+    The expression searches the arguments joined by one space. An argument that the shell expands
+    (`$job`, `$(...)`, a backtick) reads as `$` and its text, so a rule can treat what it cannot see
+    as a hit. Text that nests too deeply to read counts as a hit, so that a person looks at it.
+    """
+    try:
+        calls = programs_run(command)
+    except RecursionError:
+        return True
+    for name, args in calls:
+        joined = " ".join(w.text if w.plain or "$" in w.text else "$" + w.text for w in args)
+        if name == program and (arguments is None or arguments.search(joined)):
+            return True
+    return False
+
+
 # A rule with a `check` is judged by the function it names; the others are regular expressions.
 STREAM_CHECKS = {"kills_by_pattern": kills_by_pattern}
 DEFAULT_STREAM = [{"id": "kill-by-pattern", "check": "kills_by_pattern"}]
@@ -1411,11 +1495,17 @@ def stream_violations(calls: list[dict], patterns: list[dict]) -> list[dict]:
     a call with `unless`, and may apply only to background calls (`background`: true) or foreground
     ones (false). A foreground call is bounded by the tool's timeout and a background call is not.
     A rule with a `check` is judged by that function in `STREAM_CHECKS` instead of an expression.
+    A rule with `runs` (a `program` and an optional `args` expression) is judged by what the shell
+    would run, as `programs_run` reads it, instead of by the text of the call.
     """
     hits = []
     for pattern in patterns:
         if "check" in pattern:
             matches = STREAM_CHECKS[pattern["check"]]
+        elif "runs" in pattern:
+            spec = pattern["runs"]
+            arguments = re.compile(spec["args"]) if spec.get("args") else None
+            matches = lambda text, program=spec["program"], arguments=arguments: runs_program(text, program, arguments)
         else:
             rule = re.compile(pattern["pattern"], re.MULTILINE)
             exempt = re.compile(pattern["unless"], re.MULTILINE) if pattern.get("unless") else None
@@ -1428,6 +1518,11 @@ def stream_violations(calls: list[dict], patterns: list[dict]) -> list[dict]:
             if matches(text):
                 hits.append({"id": pattern["id"], "command": text[:300], "background": background})
     return hits
+
+
+def is_stream_rule(item: dict) -> bool:
+    """Say whether an entry of `ceremony` is a stream rule (an expression or a program) and not a state check."""
+    return "pattern" in item or "runs" in item
 
 
 def loops_to_check(calls: list[dict]) -> list[str]:
@@ -1483,8 +1578,8 @@ def score_run(
         "state": [check_state(item, before, after, processes) for item in expected.get("state", [])],
         "stream": stream_violations(calls, DEFAULT_STREAM + expected.get("stream", [])),
         "ceremony": [
-            *(c for c in (check_state(i, before, after, processes) for i in ceremony if "pattern" not in i) if not c["ok"]),
-            *stream_violations(calls, [i for i in ceremony if "pattern" in i]),
+            *(c for c in (check_state(i, before, after, processes) for i in ceremony if not is_stream_rule(i)) if not c["ok"]),
+            *stream_violations(calls, [i for i in ceremony if is_stream_rule(i)]),
         ],
         "loops": loops_to_check(calls),
     }
@@ -1767,6 +1862,21 @@ def near_shape(entry) -> bool:
     return isinstance(entry, str) or (isinstance(entry, list) and bool(entry) and all(isinstance(piece, str) for piece in entry))
 
 
+def runs_problems(rule: dict, where: str) -> list[str]:
+    """Check a rule's `runs`: a program's file name and an optional expression for its arguments."""
+    spec = rule["runs"]
+    if not isinstance(spec, dict) or not isinstance(spec.get("program"), str) or set(spec) - {"program", "args"}:
+        return [f"{where}: runs is an object with a program and, optionally, args"]
+    problems = []
+    if not re.fullmatch(r"[^\s/]+", spec["program"]):
+        problems.append(f"{where}: the program of runs is a file name, without a directory")
+    if "args" in spec:
+        problems += pattern_problems(spec["args"], where) if isinstance(spec["args"], str) else [f"{where}: args of runs is an expression"]
+    if rule.get("tool", "Bash") != "Bash" or {"field", "unless"} & set(rule):
+        problems.append(f"{where}: a rule with runs reads the command of a Bash call, so it has no tool, field, or unless")
+    return problems
+
+
 def expected_problems(expected: dict, names: dict) -> list[str]:
     """Check the oracle against the names its scenario's fixtures define."""
     problems, ids = [], set()
@@ -1791,7 +1901,7 @@ def expected_problems(expected: dict, names: dict) -> list[str]:
                     problems.append(f"{where}: cannot resolve {{{{{name}}}}}")
     for part in ("state", "ceremony"):
         for item in expected.get(part, []):
-            if "pattern" in item and part == "ceremony":
+            if part == "ceremony" and is_stream_rule(item):
                 continue
             kind = next(iter(item), None)
             if len(item) != 1 or kind not in STATE_CHECKS:
@@ -1810,14 +1920,18 @@ def expected_problems(expected: dict, names: dict) -> list[str]:
                     problems += pattern_problems(argument["pattern"], f"{part}: branch_lacks")
                     if TEMPLATE.search(argument["pattern"]):
                         problems.append(f"{part}: branch_lacks resolves no template: {argument['pattern']!r}")
-    stream = [*expected.get("stream", []), *(i for i in expected.get("ceremony", []) if "pattern" in i)]
+    stream = [*expected.get("stream", []), *(i for i in expected.get("ceremony", []) if is_stream_rule(i))]
     for rule in stream:
         where = f"stream {rule.get('id')!r}"
         if not rule.get("id") or rule["id"] in ids | {"kill-by-pattern"}:
             problems.append(f"{where}: the id is empty or repeated")
         ids.add(rule.get("id"))
         if "check" in rule:
-            problems.append(f"{where}: a scenario rule is an expression; a check belongs to the runner")
+            problems.append(f"{where}: a scenario rule is an expression or a program; a check belongs to the runner")
+        if ("pattern" in rule) == ("runs" in rule):
+            problems.append(f"{where}: a rule has a pattern or runs, and only one of them")
+        if "runs" in rule:
+            problems += runs_problems(rule, where)
         problems += pattern_problems(rule.get("pattern", ""), where) + pattern_problems(rule.get("unless", "x"), where)
     return problems
 

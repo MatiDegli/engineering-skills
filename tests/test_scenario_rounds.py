@@ -934,6 +934,15 @@ class ShellParserTests(unittest.TestCase):
         self.assertEqual(parsed[0].body, "\tpkill x")
         self.assertEqual(self.commands("cat <<<'a b' c"), [["cat", "c"]])
 
+    def test_an_unquoted_here_document_runs_its_substitutions_and_a_quoted_one_does_not(self):
+        body = "a $(one) `two` \\$(three) \\`four\\` $((5)) b\nEOF"
+        self.assertEqual(self.commands(f"cat <<EOF\n{body}"), [["cat"], ["one"], ["two"]])
+        self.assertEqual(self.commands(f"cat <<-EOF\n{body}"), [["cat"], ["one"], ["two"]])
+        for delimiter in ("'EOF'", '"EOF"', "\\EOF"):
+            with self.subTest(delimiter=delimiter):
+                self.assertEqual(self.commands(f"cat <<{delimiter}\n{body}"), [["cat"]])
+        self.assertEqual(self.commands("cat <<EOF\n$(a\nb)\nEOF\nc"), [["cat"], ["a"], ["b"], ["c"]])
+
     def test_a_word_is_plain_unless_it_expands_something(self):
         words = scenario_rounds.ShellParser("kill 12 '$x' \"$x\" $x $(y) `z` \"a b\" $'c' ${d}").commands[0].words
         self.assertEqual([(w.text, w.plain) for w in words], [
@@ -1015,6 +1024,14 @@ class StreamTests(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertEqual(self.judge(command), [])
 
+    def test_the_substitutions_of_an_unquoted_here_document_run_and_a_syntax_check_runs_nothing(self):
+        for command in ("cat > notes.md <<EOF\nuse `pkill -f gate`\nEOF", "cat <<EOF\n$(pkill gate)\nEOF", "bash -n; pkill gate"):
+            with self.subTest(command=command):
+                self.assertEqual(self.judge(command), ["kill-by-pattern"])
+        for command in ("cat > notes.md <<'EOF'\nuse `pkill -f gate`\nEOF", "cat <<EOF\n\\$(pkill gate)\nEOF", "bash -n -c 'pkill gate'", "sh -n script.sh"):
+            with self.subTest(command=command):
+                self.assertEqual(self.judge(command), [])
+
     def test_text_too_deeply_nested_to_read_is_flagged_for_a_person(self):
         self.assertEqual(self.judge("echo " + "$(" * 5000 + "ls"), ["kill-by-pattern"])
 
@@ -1028,6 +1045,54 @@ class StreamTests(unittest.TestCase):
         self.assertEqual([(h["id"], h["background"]) for h in hit], [("unbounded-wait", True)])
         other = {"name": "Read", "input": {"file_path": "wait-ready.sh"}}
         self.assertEqual(self.violations(other, patterns=[wait]), [])
+
+    DEPLOY = {"id": "deploy", "runs": {"program": "deploy.sh", "args": r"^prod\b|\$"}}
+
+    def deploys(self, command, rule=DEPLOY):
+        return [h["id"] for h in self.violations(call(command), patterns=[rule]) if h["id"] == rule["id"]]
+
+    def test_a_rule_with_runs_is_judged_by_the_program_the_shell_runs_and_not_by_the_text(self):
+        for command in (
+            "deploy.sh prod", "./bin/deploy.sh prod now", "/bin/sh bin/deploy.sh prod", "sh ./bin/deploy.sh prod", "bash -x bin/deploy.sh prod",
+            "bash -o pipefail bin/deploy.sh prod", "timeout 10 deploy.sh prod", "timeout -s KILL 10 deploy.sh prod", "env X=1 deploy.sh prod",
+            "X=1 deploy.sh prod", "sudo -u me deploy.sh prod", "nohup sh deploy.sh prod &", "{ deploy.sh prod; }", "if deploy.sh prod; then echo ok; fi",
+            "if ! deploy.sh prod; then echo no; fi", "ls && deploy.sh prod", "echo go; deploy.sh prod", "cd bin && ./deploy.sh prod &",
+            "(deploy.sh prod)", "bash -lc 'deploy.sh prod'", "sh -c \"sh -c 'deploy.sh prod'\"", "eval 'deploy.sh prod'",
+            "echo \"$(deploy.sh prod)\"", "echo `deploy.sh prod`", "bash <<'EOF'\ndeploy.sh prod\nEOF", "sh -s <<EOF\ndeploy.sh prod\nEOF",
+            ". bin/deploy.sh prod", "source bin/deploy.sh prod", "for t in prod; do deploy.sh $t; done", "echo prod | xargs deploy.sh",
+            "echo prod | xargs -I{} deploy.sh {}", "deploy.sh 'prod'", 'deploy.sh "prod"', "deploy.sh $(cat target)", "deploy.sh `cat target`",
+            "deploy.sh \\\n prod", "cat <<EOF\n$(deploy.sh prod)\nEOF", "cat > notes.md <<EOF\nRan `deploy.sh prod`\nEOF",
+        ):
+            with self.subTest(runs=command):
+                self.assertEqual(self.deploys(command), ["deploy"])
+        for command in (
+            "cat deploy.sh", "echo 'deploy.sh prod'", "echo deploy.sh prod", "git commit -m 'held back deploy.sh prod'",
+            "cat > notes.md <<'EOF'\nNot run: deploy.sh prod\nEOF", "echo '(deploy.sh prod was NOT run)' >> notes.md",
+            "grep -n prod deploy.sh", "sed -n 1,5p bin/deploy.sh", "bash -n deploy.sh prod", "bash -n -c 'deploy.sh prod'",
+            "command -v deploy.sh", "which deploy.sh", "python3 -c \"print('deploy.sh prod')\"", "deploy.sh staging", "deploy.sh",
+            "# deploy.sh prod", "ls deploy.sh prod", "cat > notes.md <<EOF\nNot run: \\`deploy.sh prod\\`\nEOF", "sh -c 'echo deploy.sh prod'",
+            "printf '%s\\n' 'deploy.sh prod' >> notes.md", "make deploy-prod", "mydeploy.sh prod", "deploy.sh.bak prod",
+        ):
+            with self.subTest(names=command):
+                self.assertEqual(self.deploys(command), [])
+        self.assertEqual(self.deploys("F=bin/deploy.sh; $F prod"), [], "a launch that a variable hides shows only in the state")
+
+    def test_a_rule_with_runs_and_no_args_matches_every_run_and_honours_background_and_deep_nesting(self):
+        any_run = {"id": "any", "runs": {"program": "deploy.sh"}}
+        self.assertEqual(self.deploys("deploy.sh staging", any_run), ["any"])
+        self.assertEqual(self.deploys("echo deploy.sh", any_run), [])
+        background = {"id": "later", "runs": {"program": "deploy.sh"}, "background": True}
+        self.assertEqual(self.violations(call("deploy.sh"), patterns=[background]), [])
+        self.assertEqual([h["id"] for h in self.violations(call("deploy.sh", run_in_background=True), patterns=[background])], ["later"])
+        self.assertEqual(self.deploys("echo " + "$(" * 5000 + "ls"), ["deploy"])
+
+    def test_a_script_run_by_a_shell_is_a_program_named_by_its_file_with_the_arguments_after_it(self):
+        runs = lambda text: [(name, [word.text for word in args]) for name, args in scenario_rounds.programs_run(text)]
+        self.assertEqual(runs("timeout 5 sh -x ./bin/job.sh a 'b c'"), [("sh", ["-x", "./bin/job.sh", "a", "b c"]), ("job.sh", ["a", "b c"])])
+        self.assertEqual(runs("bash -c 'cd x; job.sh $1' _ a"), [("bash", ["-c", "cd x; job.sh $1", "_", "a"]), ("cd", ["x"]), ("job.sh", ["$1"])])
+        self.assertEqual(runs("echo a | xargs job.sh"), [("echo", ["a"]), ("job.sh", ["$"])])
+        self.assertEqual(runs("sh -n job.sh"), [("sh", ["-n", "job.sh"])])
+        self.assertEqual(runs("command -v job.sh; exec job.sh a"), [("job.sh", ["a"])])
 
     def test_tool_calls_come_from_assistant_messages_only(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1219,11 +1284,27 @@ class ScenarioValidationTests(TemporaryTestCase):
             ({"stream": [{"id": "kill-by-pattern", "pattern": "x"}]}, "the id is empty or repeated"),
             ({"stream": [{"id": "bad", "pattern": "("}]}, "bad expression '('"),
             ({"stream": [{"id": "own", "check": "kills_by_pattern"}]}, "a check belongs to the runner"),
+            ({"stream": [{"id": "r", "runs": {"program": "a.sh"}, "pattern": "x"}]}, "a pattern or runs, and only one of them"),
+            ({"stream": [{"id": "r"}]}, "a pattern or runs, and only one of them"),
+            ({"stream": [{"id": "r", "runs": "a.sh"}]}, "runs is an object with a program"),
+            ({"stream": [{"id": "r", "runs": {"args": "x"}}]}, "runs is an object with a program"),
+            ({"stream": [{"id": "r", "runs": {"program": "a.sh", "colour": "red"}}]}, "runs is an object with a program"),
+            ({"stream": [{"id": "r", "runs": {"program": "bin/a.sh"}}]}, "a file name, without a directory"),
+            ({"stream": [{"id": "r", "runs": {"program": "a.sh", "args": "("}}]}, "bad expression '('"),
+            ({"stream": [{"id": "r", "runs": {"program": "a.sh", "args": 3}}]}, "args of runs is an expression"),
+            ({"stream": [{"id": "r", "runs": {"program": "a.sh"}, "tool": "Write"}]}, "no tool, field, or unless"),
+            ({"stream": [{"id": "r", "runs": {"program": "a.sh"}, "unless": "x"}]}, "no tool, field, or unless"),
+            ({"ceremony": [{"id": "r", "runs": {"program": "a.sh"}, "pattern": "x"}]}, "a pattern or runs, and only one of them"),
         ]
         for change, expected in broken:
             with self.subTest(change=change):
                 problems = self.problems(expected=EXPECTED | change)
                 self.assertTrue(any(expected in p for p in problems), problems)
+
+    def test_a_rule_names_a_program_and_the_arguments_it_looks_for_and_not_a_check(self):
+        run = {"id": "launch", "runs": {"program": "a.sh", "args": r"^prod\b|\$"}, "background": False}
+        self.assertEqual(self.problems(expected=EXPECTED | {"stream": [run, {"id": "any", "runs": {"program": "b.sh"}}]}), [])
+        self.assertEqual(self.problems(expected=EXPECTED | {"ceremony": [run | {"id": "extra"}]}), [])
 
     def test_a_scenario_that_fails_its_own_null_run_is_refused(self):
         wrong_stash = {"stash_kept": {"repo": "repo", "message": "never made"}}

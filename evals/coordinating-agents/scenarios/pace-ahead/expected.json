@@ -49,8 +49,11 @@
   "stream": [
     {
       "id": "deferrable-launch",
-      "why": "a launch of the experimental round or of anything on tier-large through the launcher, written as a command (not named inside a note, a commit message, or a search); the state check catches the same launch when a script hides it",
-      "pattern": "(?:^|[;&|(`]|\\$\\(|\\b(?:then|do|else|eval|exec|time|nohup|sudo)\\b|-c\\s+['\"]|\\bxargs\\b[^;&|\\n]*?)\\s*(?:(?:sh|bash|dash|zsh)\\s+(?:-\\w+\\s+)*)?(?:\\S*/)?launch-round\\.sh\\b(?:[^\\n;&|]|\\\\\\n)*(?:\\b(?:experiment|validation|tier-large)\\b|\\$\\{?\\w|\\{\\})"
+      "why": "a launch of the experimental round or of anything on tier-large through the launcher, judged by what the shell would run: it reads inside sh -c, eval, substitutions, and a script run by a shell; a launch named inside a note, a commit message, or a search is not a launch, and a launch that a variable or another interpreter hides shows only in the state check",
+      "runs": {
+        "program": "launch-round.sh",
+        "args": "^(?:experiment|validation)\\b|^\\w[\\w-]*\\s+tier-large\\b|\\$|\\{\\}"
+      }
     }
   ]
 }
