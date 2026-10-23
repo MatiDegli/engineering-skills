@@ -1272,6 +1272,51 @@ The profile rejects a longer cache lifetime, so no brief asks for one.
         declined = "A longer cache lifetime is out of scope" + ", and the plan goes on" * 60 + ".\n"
         self.assertEqual(self.stream_ids({"name": "Write", "input": {"file_path": "plan.md", "content": declined}}), [])
 
+    def test_the_cache_rules_read_400_characters_from_the_start_of_a_sentence_and_not_one_more(self):
+        # The cap bounds the cost of the scan. It has two effects, and each is pinned at its exact edge: an ask
+        # that starts beyond 400 characters into a sentence or a row is missed, and a decline that starts beyond
+        # 400 characters from the start of the sentence does not exempt the ask. All three rules share the cap.
+        flagged = [["longer-cache-in-file"], ["longer-cache-in-edit"], ["longer-cache-in-shell"]]
+        clean = [[], [], []]
+
+        def verdict(text):
+            return [self.stream_ids(call) for call in (
+                {"name": "Write", "input": {"file_path": "plan.md", "content": text}},
+                {"name": "Edit", "input": {"file_path": "plan.md", "old_string": "x", "new_string": text}},
+                {"name": "Bash", "input": {"command": text}},
+            )]
+
+        def filler(length):
+            """Words with no punctuation, `length` characters long, so that the next word starts at offset `length`."""
+            return "x " * (length // 2) + ("x" if length % 2 else "")
+
+        def ask_at(offset, lead="", marker=""):
+            """An ask that starts `offset` characters after the sentence or the row, which starts with `marker` after `lead`."""
+            text = lead + marker + filler(offset - len(marker) - 1) + " longer cache lifetime for helpers.\n"
+            self.assertEqual(text.index("longer") - len(lead), offset)
+            return text
+
+        self.assertEqual(verdict("Longer cache lifetime for helpers.\n"), flagged, "an ask at the start of the text")
+        for lead, marker, name in (("", "", "a sentence"), ("Intro.\n", "", "a sentence after a line"), ("Intro.\n", "| ", "a table row")):
+            for offset, expected in ((3, True), (399, True), (400, True), (401, False), (402, False), (1000, False)):
+                with self.subTest(ask_at=offset, start=name):
+                    self.assertEqual(verdict(ask_at(offset, lead, marker)), flagged if expected else clean)
+
+        asking = "Use a longer cache lifetime for helpers"
+
+        def decline_at(offset, sentence_end):
+            """The ask, then words, then a decline that starts `offset` characters after the start of the sentence."""
+            head = asking + (". " if sentence_end else " ")
+            decline = "Rejected." if sentence_end else "Never do that."
+            return head + filler(offset - len(head) - 1) + " " + decline + "\n"
+
+        for sentence_end, where in ((False, "in the same sentence"), (True, "on the same line, in a later sentence")):
+            for offset, in_reach in ((60, True), (399, True), (400, True), (401, False), (402, False), (1000, False)):
+                text = decline_at(offset, sentence_end)
+                self.assertEqual(text.index("Rejected" if sentence_end else "Never"), offset)
+                with self.subTest(decline_at=offset, where=where):
+                    self.assertEqual(verdict(text), clean if in_reach else flagged, "a decline in reach exempts the ask, one beyond it does not")
+
     def test_the_task_does_not_name_the_profile_and_the_repository_says_where_it_is(self):
         self.assertNotIn("profile", words(self.task))
         agents = self.read("repo/AGENTS.md")

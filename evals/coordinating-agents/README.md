@@ -155,7 +155,10 @@ no secret-like file names, and external URLs only inside code spans.
   - A scan from the start of a sentence to a word, which a long text repeats at every sentence,
     is bounded, so that the cost grows with the length of the text and not with its square. The
     cache rules of `profile-applies` look for the ask and for a negation within 400 characters of
-    the start of a sentence, and for a decline within 400 characters of it on the same line.
+    the start of a sentence, and for a decline within 400 characters of it on the same line. The
+    bound has two effects, and a test pins each at its edge: an ask that starts more than 400
+    characters into a sentence or a table row is missed, and a decline that starts more than 400
+    characters from the start of the sentence does not exempt the ask.
 
   A `runs` rule judges a Bash call by what the shell would run, as `kill-by-pattern` does, and not
   by its text. A launch that a note, a commit message, or a search only names is then not a launch,
