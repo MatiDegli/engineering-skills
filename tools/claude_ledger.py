@@ -1,13 +1,8 @@
 #!/usr/bin/env python3
-"""Show where Claude Code tokens go, by kind of token, for sessions, subagents, and rounds.
+"""Read Claude logs without model calls; report tokens and dated list-price equivalents.
 
-Each share weights tokens by their price relative to uncached input, which is the same for every
-Claude model: input 1, cache write 1.25 with a 5-minute lifetime or 2 with a 1-hour one, cache read
-0.1, and output 5. The shares tell which kind of token to reduce; they are not dollars.
-
-`transcripts` reads a Claude Code project directory, such as
-`~/.claude/projects/<project>`, with its main sessions and their subagents. `rounds` reads the
-round directories of `tools/claude_rounds.py`.
+Unknown cache-write TTLs and aggregate context tiers produce price intervals. Nonzero usage from
+unknown models remains unpriced. CLI-recorded costs are separate; these amounts do not measure plan quota.
 """
 
 from __future__ import annotations
@@ -18,109 +13,121 @@ import math
 from collections import defaultdict
 from pathlib import Path
 
-WEIGHTS = {"input": 1.0, "write_5m": 1.25, "write_1h": 2.0, "read": 0.1, "output": 5.0}
 KINDS = ("input", "write_5m", "write_1h", "write_unknown", "read", "output")
 PRICES = Path(__file__).with_name("claude_ledger_prices.json")
 
 
+def count(value) -> int:
+    if value is None:
+        return 0
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError("token counts must be nonnegative integers")
+    return value
+
+
 def message_usage(message: dict) -> dict[str, int]:
-    """Split one API response's usage into the kinds of WEIGHTS."""
     usage = message.get("usage") or {}
+    flat = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens")
+    iterations = usage.get("iterations") or []
+    if not any(count(usage.get(k)) for k in flat) and iterations:
+        total = dict.fromkeys(KINDS, 0)
+        for iteration in iterations:
+            for kind, value in message_usage({"usage": iteration}).items():
+                total[kind] += value
+        return total
     creation = usage.get("cache_creation") or {}
-    write_1h = creation.get("ephemeral_1h_input_tokens") or 0
-    write_5m = creation.get("ephemeral_5m_input_tokens")
-    if write_5m is None:
-        write_5m = max((usage.get("cache_creation_input_tokens") or 0) - write_1h, 0)
-    return {
-        "input": usage.get("input_tokens") or 0,
-        "write_5m": write_5m,
-        "write_1h": write_1h,
-        "read": usage.get("cache_read_input_tokens") or 0,
-        "output": usage.get("output_tokens") or 0,
-    }
+    w5 = count(creation.get("ephemeral_5m_input_tokens"))
+    w1 = count(creation.get("ephemeral_1h_input_tokens"))
+    written = count(usage.get("cache_creation_input_tokens", w5 + w1))
+    if written < w5 + w1:
+        raise ValueError("cache TTL counts exceed the reported cache writes")
+    return dict(zip(KINDS, (count(usage.get("input_tokens")), w5, w1, written - w5 - w1,
+                            count(usage.get("cache_read_input_tokens")), count(usage.get("output_tokens")))))
 
 
-def read_events(path: Path) -> list[dict]:
-    events = []
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(event, dict):
-            events.append(event)
-    return events
+def events(path: Path, issues: dict):
+    with path.open(encoding="utf-8", errors="replace") as stream:
+        for number, line in enumerate(stream, 1):
+            try:
+                event = json.loads(line)
+                if isinstance(event, dict):
+                    yield number, event
+            except json.JSONDecodeError:
+                issues["invalid_json_lines"] += 1
 
 
-def transcript_usage(path: Path) -> tuple[dict[str, int], int, str]:
-    """Return a transcript's tokens by kind, its API responses, and its model.
-
-    One response can span several transcript lines that repeat its usage, so each message ID
-    counts once.
-    """
-    totals: dict[str, int] = defaultdict(int)
-    seen, model = set(), ""
-    for event in read_events(path):
-        message = event.get("message")
-        if event.get("type") != "assistant" or not isinstance(message, dict) or "usage" not in message:
-            continue
-        key = message.get("id") or event.get("uuid")
-        if key in seen:
-            continue
-        seen.add(key)
-        model = message.get("model") or model
-        for kind, value in message_usage(message).items():
-            totals[kind] += value
-    return dict(totals), len(seen), model
+def keep_record(records: dict, key, record: dict, issues: dict):
+    previous = records.get(key)
+    if previous is None:
+        records[key] = record
+        return
+    issues["duplicate_records"] += 1
+    old, new = previous["tokens"], record["tokens"]
+    if previous["model"] != record["model"]:
+        raise ValueError("one response ID names conflicting models")
+    if old == new:
+        return
+    if all(new[k] >= old[k] for k in KINDS):
+        records[key] = record
+    elif not all(old[k] >= new[k] for k in KINDS):
+        raise ValueError("one response ID has conflicting non-cumulative usage")
 
 
-def stream_usage(path: Path) -> dict[str, dict[str, int]]:
-    """Return a round stream's tokens by model, from its last result's cumulative usage."""
-    results = [e for e in read_events(path) if e.get("type") == "result"]
-    usage: dict[str, dict[str, int]] = {}
-    for model, counts in ((results[-1].get("modelUsage") or {}) if results else {}).items():
-        usage[model] = {
-            "input": counts.get("inputTokens") or 0,
-            "write_5m": counts.get("cacheCreationInputTokens") or 0,
-            "write_1h": 0,
-            "read": counts.get("cacheReadInputTokens") or 0,
-            "output": counts.get("outputTokens") or 0,
-        }
-    return usage
-
-
-def shares(totals: dict[str, int]) -> tuple[float, dict[str, float]]:
-    """Return the weighted total and each kind's share of it."""
-    weighted = {kind: totals.get(kind, 0) * weight for kind, weight in WEIGHTS.items()}
-    total = sum(weighted.values())
-    return total, {kind: value / total if total else 0.0 for kind, value in weighted.items()}
-
-
-def transcripts(directory: Path) -> dict[str, dict]:
-    groups: dict[str, dict] = defaultdict(lambda: {"totals": defaultdict(int), "responses": 0})
+def transcript_records(directory: Path, issues: dict) -> list[dict]:
+    records = {}
     for path in sorted(directory.rglob("*.jsonl")):
-        totals, responses, model = transcript_usage(path)
-        if not responses:
-            continue
-        kind = "subagent" if "subagents" in path.parts else "session"
-        group = groups[f"{kind} {model or 'unknown'}"]
-        group["responses"] += responses
-        for name, value in totals.items():
-            group["totals"][name] += value
-    return groups
+        role = "subagent" if "subagents" in path.parts else "session"
+        meta = path.with_suffix(".meta.json")
+        if role == "subagent" and meta.exists():
+            role = json.loads(meta.read_text()).get("agentType") or role
+        for number, event in events(path, issues):
+            message = event.get("message")
+            if event.get("type") != "assistant" or not isinstance(message, dict) or "usage" not in message:
+                continue
+            key = message.get("id") or event.get("uuid") or (str(path), number)
+            record = {"model": message.get("model") or "unknown", "role": role, "aggregate": False,
+                      "tokens": message_usage(message), "recorded_cli_usd": None}
+            keep_record(records, key, record, issues)
+    return list(records.values())
 
 
-def rounds(directory: Path) -> dict[str, dict]:
-    groups: dict[str, dict] = defaultdict(lambda: {"totals": defaultdict(int), "responses": 0})
-    for path in sorted(directory.glob("*/streams/*.jsonl")):
-        if ".login-failure-" in path.name:
+def result_records(result: dict) -> list[dict]:
+    usage = result.get("modelUsage") or {}
+    own = message_usage(result)
+    rows = []
+    for model, values in usage.items():
+        totals = dict(zip(KINDS, (count(values.get("inputTokens")), 0, 0,
+                                  count(values.get("cacheCreationInputTokens")),
+                                  count(values.get("cacheReadInputTokens")), count(values.get("outputTokens")))))
+        # A result's usage can cover only the lead, while modelUsage includes helpers.
+        if len(usage) == 1 and all(totals[k] == own[k] for k in ("input", "read", "output")) and (
+                totals["write_unknown"] == sum(own[k] for k in KINDS if k.startswith("write_"))):
+            totals = own
+        recorded = values.get("costUSD")
+        if recorded is not None and (not isinstance(recorded, (int, float)) or isinstance(recorded, bool)
+                                     or not math.isfinite(recorded) or recorded < 0):
+            raise ValueError("recorded CLI costs must be nonnegative numbers")
+        rows.append({"model": model, "role": "audit",
+                     "aggregate": True, "tokens": totals, "recorded_cli_usd": recorded})
+    return rows
+
+
+def round_records(directory: Path, issues: dict) -> list[dict]:
+    records = {}
+    for path in sorted(directory.rglob("*.jsonl")):
+        if path.parent.name != "streams" or ".login-failure-" in path.name or path.name.startswith("warmup"):
             continue
-        for model, totals in stream_usage(path).items():
-            group = groups[f"audit {model}"]
-            group["responses"] += 1
-            for name, value in totals.items():
-                group["totals"][name] += value
-    return groups
+        last = None
+        for _, event in events(path, issues):
+            if event.get("type") == "result":
+                last = event
+        if last is None or not last.get("modelUsage"):
+            issues["streams_without_model_totals"] += 1
+            continue
+        identity = last.get("uuid") or str(path)
+        for record in result_records(last):
+            keep_record(records, (identity, record["model"]), record, issues)
+    return list(records.values())
 
 
 def load_prices(path: Path = PRICES) -> dict:
@@ -160,28 +167,64 @@ def price_interval(record: dict, snapshot: dict) -> tuple[float, float] | None:
     return min(costs), max(costs)
 
 
-def table(groups: dict[str, dict], counted: str) -> str:
-    lines = [
-        f"| Group | {counted} | Weighted tokens | Uncached input | 5-minute writes | 1-hour writes | Reads | Output |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- |",
-    ]
-    for name, group in sorted(groups.items(), key=lambda item: -shares(item[1]["totals"])[0]):
-        total, part = shares(group["totals"])
-        cells = " | ".join(f"{100 * part[kind]:.0f}%" for kind in WEIGHTS)
-        lines.append(f"| {name} | {group['responses']} | {total / 1e6:.2f}M | {cells} |")
+def report(records: list[dict], snapshot: dict, issues: dict) -> dict:
+    groups = {}
+    for record in records:
+        key = record["role"] + " " + record["model"]
+        group = groups.setdefault(key, {"responses": 0, "totals": dict.fromkeys(KINDS, 0),
+                                       "usd_min": 0.0, "usd_max": 0.0, "unpriced_records": 0,
+                                       "recorded_cli_usd": 0.0, "recorded_cli_records": 0})
+        group["responses"] += 1
+        for kind, value in record["tokens"].items():
+            group["totals"][kind] += value
+        interval = price_interval(record, snapshot)
+        if interval is None:
+            group["unpriced_records"] += 1
+        else:
+            group["usd_min"] += interval[0]
+            group["usd_max"] += interval[1]
+        if record["recorded_cli_usd"] is not None:
+            group["recorded_cli_usd"] += record["recorded_cli_usd"]
+            group["recorded_cli_records"] += 1
+    low, high = sum(g["usd_min"] for g in groups.values()), sum(g["usd_max"] for g in groups.values())
+    priced = bool(records) and not any(g["unpriced_records"] for g in groups.values())
+    return {"price_snapshot": {k: snapshot[k] for k in ("as_of", "source")},
+            "basis": "List-price revaluation, not billing or subscription quota; intervals include unknown TTL/context tiers",
+            "groups": groups, "issues": dict(issues),
+            "responses": len(records), "priced_records_only_usd": [low, high], "fully_priced": priced}
+
+
+def table(result: dict) -> str:
+    lines = [result["basis"], "", f"Price snapshot: {result['price_snapshot']['as_of']}", "",
+             "| Group | Responses/runs | Input | Writes 5m / 1h / unknown | Reads | Output | Repriced USD range | Unpriced |",
+             "| --- | --- | --- | --- | --- | --- | --- | --- |"]
+    for name, group in sorted(result["groups"].items()):
+        t = group["totals"]
+        lines.append(f"| {name} | {group['responses']} | {t['input']} | {t['write_5m']} / {t['write_1h']} / {t['write_unknown']} | "
+                     f"{t['read']} | {t['output']} | {group['usd_min']:.4f}-{group['usd_max']:.4f} | {group['unpriced_records']} |")
+    lines.extend(("", f"Recorded CLI USD is separate and available in --json; issues: {result['issues']}"))
     return "\n".join(lines)
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("transcripts", help="a Claude Code project directory").add_argument("directory", type=Path)
-    commands.add_parser("rounds", help="a directory of runner rounds").add_argument("directory", type=Path)
-    arguments = parser.parse_args()
-    if arguments.command == "transcripts":
-        print(table(transcripts(arguments.directory.expanduser()), "API responses"))
-    else:
-        print(table(rounds(arguments.directory.expanduser()), "Runs"))
+    for name in ("transcripts", "rounds"):
+        command = commands.add_parser(name)
+        command.add_argument("directory", type=Path)
+        command.add_argument("--prices", type=Path, default=PRICES)
+        command.add_argument("--json", action="store_true", help="machine-readable report")
+    args = parser.parse_args()
+    try:
+        if not args.directory.expanduser().is_dir():
+            raise ValueError("the input directory must exist")
+        issues = defaultdict(int)
+        reader = transcript_records if args.command == "transcripts" else round_records
+        records = reader(args.directory.expanduser(), issues)
+        result = report(records, load_prices(args.prices), issues)
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        parser.error(str(error))
+    print(json.dumps(result, indent=2) if args.json else table(result))
     return 0
 
 

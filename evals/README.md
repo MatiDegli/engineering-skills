@@ -208,11 +208,23 @@ gets its turn; its time in the queue is recorded apart.
 
 ### Cost, incidents, and limits
 
-Most of a Claude round's cost is cached context written and reread, not generated text.
-`python3 -m tools.claude_ledger rounds <runs-dir>` shows each model's share of weighted tokens by
-kind (cache writes, cache reads, output), and `transcripts ~/.claude/projects/<project>` does the
-same for the sessions and subagents that coordinate the work. Measure with it before and after a
-change meant to save cost.
+`python3 -m tools.claude_ledger rounds <runs-dir>` reads the final cumulative model totals in each
+stream, including helpers, without adding the lead's usage again. `transcripts
+~/.claude/projects/<project>` reads sessions and subagents, deduplicating response IDs across files.
+It uses an agent's `agentType` metadata for grouping, never words such as "reviewer" in its prompt.
+General-purpose agents remain general-purpose; the ledger does not infer their actual role.
+
+Both commands show raw tokens and list-price USD ranges using the dated snapshot in
+`tools/claude_ledger_prices.json`. The snapshot was checked on 2026-10-22 against
+[Anthropic's pricing](https://platform.claude.com/docs/en/about-claude/pricing). Pass `--prices FILE`
+to use another recorded snapshot. Every date is priced at that one snapshot; this is revaluation at
+those prices, not historical billing or subscription quota. Unknown models stay unpriced unless
+all token counts are zero, in which case the record costs zero and remains counted.
+Unknown write TTLs stay unknown and give a price range; aggregate Haiku usage also gives a range
+when individual request context tiers are missing.
+The CLI's recorded amount stays separate in the JSON output.
+
+Measure with the ledger before and after a change meant to save cost.
 
 Each mechanism answers an incident in this repository's evaluations:
 
