@@ -303,3 +303,12 @@ Pre-registered before the first round with the skill:
 | 7 | Briefs by their effect (E3) | A worker finishes correctly more often with the skill's brief than with the no-skill brief |
 
 With two runs per scenario and model, the results show a direction, not a size.
+
+What counts as detected for measure 1, fixed on 2026-10-23 before any baseline report was read: a
+seed counts when the report states the specific problem as established, by the agent's own check
+or with evidence it cites. A seed the report raises only as likely or unverified is counted apart,
+as raised, and printed beside the count; a generic caution is neither. Every seed in these
+scenarios can be checked inside the run in minutes, so leaving one unverified is a miss of the
+step that verifies claims. Until the grader is calibrated, the coordinator labels every baseline
+report by hand, seed by seed, with a quote; the maintainer audits four reports drawn at random,
+blind to those labels.
