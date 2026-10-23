@@ -10,7 +10,8 @@ works in this order:
 1. delete its own file and show a plain init in the process table, so that nothing the agent can
    read says what runs as PID 1;
 2. start the `process` fixtures, each a real command in the workspace, held to its own time bound;
-3. start the agent, give it the prompt on standard input, and enforce the time limit;
+3. start the agent, give it the prompt on standard input, and enforce the time limit; meanwhile
+   collect the processes that lose their parent, as an init does;
 4. stop every other process except the fixtures and what they started;
 5. record each fixture as alive, exited, killed by a signal, or past its bound, then stop them;
 6. write the record, one JSON line, to the descriptor.
@@ -105,12 +106,15 @@ class Fixture:
 def wait_for(agent: subprocess.Popen, seconds: float, fixtures: list[Fixture]) -> bool:
     """Wait for the agent to end, for at most `seconds`; return whether it ended.
 
-    The fixtures' bounds are enforced meanwhile, so that none outlives its own.
+    The fixtures' bounds are enforced meanwhile, so that none outlives its own, and the processes
+    that lost their parent are collected, so that none stays `<defunct>` while the agent works.
     """
     deadline = time.monotonic() + seconds
+    spared = {agent.pid, *(fixture.pid for fixture in fixtures if fixture.pid)}
     while True:
         for fixture in fixtures:
             fixture.enforce_bound()
+        reap_orphans(spared)
         left = deadline - time.monotonic()
         try:
             agent.wait(timeout=max(0.0, min(left, TICK)))
@@ -171,6 +175,21 @@ def processes_other_than_this(keep: set[int]) -> list[tuple[int, str]]:
 def live_processes(keep: set[int]) -> list[int]:
     """List the processes of the namespace other than this one, the kept ones, and zombies."""
     return [pid for pid, state in processes_other_than_this(keep) if state != "Z"]
+
+
+def reap_orphans(spared: set[int]) -> None:
+    """Collect the exit status of every zombie that is this process's to collect, as an init does.
+
+    What a process leaves when its parent has gone is passed to PID 1, and stays `<defunct>` in the
+    process table until PID 1 waits for it. `spared` holds the children that `subprocess` reads
+    itself: reaping one here would make it report an exit code of 0 and not the real status.
+    """
+    for pid, state in processes_other_than_this(set()):
+        if state == "Z" and pid not in spared:
+            try:
+                os.waitpid(pid, os.WNOHANG)
+            except ChildProcessError:
+                pass
 
 
 def stop_others(keep: set[int]) -> int:

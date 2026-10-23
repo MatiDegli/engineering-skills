@@ -1921,6 +1921,13 @@ class SandboxTests(unittest.TestCase):
         self.assertEqual(record["fixtures"], {"live": {"state": "alive"}})
         self.assertGreaterEqual(record["left_running"], 1)
 
+    def test_a_process_that_lost_its_parent_is_collected_and_does_not_stay_defunct(self):
+        script = "(sleep 1 &); sleep 4; ps -eo stat=,comm= > ps.txt"
+        self.launch(script, [self.fixture("live", "sleeper")])
+        lines = (self.workspace / "ps.txt").read_text().splitlines()
+        self.assertIn("init", [line.split()[-1] for line in lines], "the control: the listing is the sandbox's")
+        self.assertEqual([line for line in lines if line.startswith("Z")], [], "an orphan's status is collected")
+
     def test_the_launcher_leaves_no_file_and_the_process_table_names_a_plain_init(self):
         script = "\n".join([
             "ls -A /run > run.txt; test -e /run/init.py && echo present > file.txt",
@@ -2057,6 +2064,18 @@ class SandboxTests(unittest.TestCase):
         self.assertFalse(thread.is_alive(), "the stop ended the sandbox, long before its time limit")
         self.assertTrue(outcome["stopped"])
         self.assertEqual(processes_named(marker), [])
+
+
+class LauncherReapTests(unittest.TestCase):
+    def test_a_child_that_subprocess_reads_keeps_its_exit_code_when_orphans_are_collected(self):
+        child = subprocess.Popen(["/bin/sh", "-c", "exit 3"])
+        self.addCleanup(child.wait)
+        for _ in range(100):
+            if Path(f"/proc/{child.pid}/stat").read_text().rpartition(")")[2].split()[0] == "Z":
+                break
+            time.sleep(0.05)
+        scenario_launcher.reap_orphans({child.pid})
+        self.assertEqual(child.wait(timeout=10), 3, "the child's own status, not the 0 of a stolen wait")
 
 
 class LauncherSignalTests(unittest.TestCase):
