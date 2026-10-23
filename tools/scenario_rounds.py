@@ -1735,7 +1735,8 @@ BOUND = re.compile(
 def tool_calls(stream: Path) -> list[dict]:
     """List the tool calls of a stream with their input fields, in order."""
     calls = []
-    for line in stream.read_text(encoding="utf-8", errors="replace").splitlines():
+    # Split on newlines only: splitlines() also breaks on U+2028 and U+0085 inside a JSON string.
+    for line in stream.read_text(encoding="utf-8", errors="replace").split("\n"):
         try:
             event = json.loads(line)
         except json.JSONDecodeError:
@@ -2620,7 +2621,7 @@ def scrub(paths: list[Path], secret_values: list[str]) -> bool:
 
 
 def init_event(stream: Path) -> dict:
-    for line in stream.read_text(encoding="utf-8").splitlines():
+    for line in stream.read_text(encoding="utf-8").split("\n"):
         try:
             event = json.loads(line)
         except json.JSONDecodeError:

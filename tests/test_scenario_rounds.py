@@ -1366,6 +1366,18 @@ class StreamTests(unittest.TestCase):
             stream.write_text("\n".join(["not json", *map(json.dumps, lines)]) + "\n")
             self.assertEqual(scenario_rounds.tool_calls(stream), [{"name": "Bash", "input": tool["input"]}])
 
+    def test_a_line_separator_inside_a_command_keeps_its_stream_line_whole(self):
+        with tempfile.TemporaryDirectory() as directory:
+            stream = Path(directory) / "stream.jsonl"
+            tool = {"type": "tool_use", "name": "Bash", "input": {"command": "echo 'a\u2028b\u0085c'; pkill -f gate"}}
+            lines = [
+                {"type": "system", "subtype": "init", "model": "m\u2028n"},
+                {"type": "assistant", "message": {"content": [tool]}},
+            ]
+            stream.write_text("\n".join(json.dumps(line, ensure_ascii=False) for line in lines) + "\n", encoding="utf-8")
+            self.assertEqual(scenario_rounds.tool_calls(stream), [{"name": "Bash", "input": tool["input"]}])
+            self.assertEqual(scenario_rounds.init_event(stream)["model"], "m\u2028n")
+
     def test_loops_that_wait_without_a_visible_bound_are_listed_for_a_person(self):
         unbounded = "while pgrep -f gate > /dev/null; do sleep 5; done"
         bounded = (call("timeout 120 sh -c 'while pgrep -f gate; do sleep 5; done'"), call("for i in $(seq 20); do sleep 1; done"),
