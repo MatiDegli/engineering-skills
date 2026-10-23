@@ -505,9 +505,20 @@ TABLE_RULE = re.compile(r"[|\s:-]+")
 HEADING = re.compile(r"#{1,6}(?:\s|$)")
 # A line of bold text alone, such as `**Front B**` or `**Front B:**`, labels what follows it.
 BOLD_LABEL = re.compile(r"(\*\*|__)[^*_]+\1:?")
-# A longer unit is flagged for a person to read, not matched; a section may be a little longer.
+# So does a short unindented line that ends with a colon, such as `Front B:` or `NOT CHECKED:`.
+PLAIN_LABEL = re.compile(r"(?![-*+]\s|\d+[.)]\s)[^\s|].{0,58}:")
+QUOTE_MARKS = re.compile(r"\s*(?:>\s?)+")
+# Words saying that the agent did not establish what it wrote. A seed that matches only through
+# such a sentence, or under such a heading, is flagged for a person to read, not matched.
+HEDGE = re.compile(
+    r"\b(?:(?:could|can|did|do|does|have|has|was|were)(?:\s+not\b|n[o’']t\b)|unable to|not yet)\s+(?:\w+\s+){0,2}?"
+    r"(?:verif|check|confirm|determin|establish|inspect)\w*"
+    r"|\b(?:unverified|unchecked|unconfirmed|not (?:verified|checked|confirmed|established|inspected))\b",
+    re.IGNORECASE,
+)
+SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+# A longer unit is flagged for a person to read, not matched.
 MAX_UNIT = 600
-MAX_SECTION = 1200
 MIN_SHA = 7
 
 
@@ -516,6 +527,7 @@ class Unit(NamedTuple):
 
     text: str
     kind: str  # paragraph, table row, list item, or section
+    heading: str = ""  # the nearest heading above it
 
 
 def is_heading(line: str) -> bool:
@@ -527,11 +539,17 @@ def line_kind(line: str) -> str:
     stripped = line.strip()
     if not stripped:
         return "blank"
-    if is_heading(stripped):
+    if is_heading(stripped) or (line == line.lstrip() and PLAIN_LABEL.fullmatch(stripped)):
         return "heading"
     if stripped.startswith("|"):
         return "rule" if TABLE_RULE.fullmatch(stripped) else "table"
     return "item" if LIST_ITEM.match(line) else "text"
+
+
+def unquoted(text: str) -> list[str]:
+    """Return the lines of a text without the quote markers that begin them, tabs expanded."""
+    return [QUOTE_MARKS.sub("", raw.expandtabs(4), count=1).rstrip() if raw.lstrip().startswith(">")
+            else raw.expandtabs(4).rstrip() for raw in text.splitlines()]
 
 
 def item_end(lines: list[str], kinds: list[str], start: int) -> int:
@@ -549,67 +567,93 @@ def item_end(lines: list[str], kinds: list[str], start: int) -> int:
     return end
 
 
-def split_units(text: str) -> list[Unit]:
-    """Split text into paragraphs, table rows, and list items, each item with its nested items.
-
-    A nested item is a unit too, so a short item can match inside a long parent. Headings belong to
-    no unit; `split_sections` reads them.
-    """
-    lines = [raw.expandtabs(4).rstrip() for raw in text.splitlines()]
+def located_units(text: str) -> tuple[list[str], list[tuple[int, int, Unit]]]:
+    """Return the lines of a text and its units, each with its first line and its heading's line (-1 if none)."""
+    lines = unquoted(text)
     kinds = [line_kind(line) for line in lines]
-    found: list[tuple[int, Unit]] = []
+    above, last = [], -1
+    for number, kind in enumerate(kinds):
+        last = number if kind == "heading" else last
+        above.append(last)
+
+    def unit(start: int, words: str, kind: str) -> tuple[int, int, Unit]:
+        heading = above[start]
+        return start, heading, Unit(words, kind, lines[heading].strip() if heading >= 0 else "")
+
+    found: list[tuple[int, int, Unit]] = []
     covered: set[int] = set()
     for start, kind in enumerate(kinds):
         if kind == "item":
             end = item_end(lines, kinds, start)
             covered.update(range(start, end))
-            found.append((start, Unit(" ".join(line.strip() for line in lines[start:end] if line.strip()), "list item")))
+            found.append(unit(start, " ".join(line.strip() for line in lines[start:end] if line.strip()), "list item"))
         elif kind == "table":
-            found.append((start, Unit(lines[start].strip(), "table row")))
+            found.append(unit(start, lines[start].strip(), "table row"))
     paragraph: list[int] = []
     for number in range(len(lines) + 1):
         if number < len(lines) and kinds[number] == "text" and number not in covered:
             paragraph.append(number)
         elif paragraph:
-            found.append((paragraph[0], Unit(" ".join(lines[n].strip() for n in paragraph), "paragraph")))
+            found.append(unit(paragraph[0], " ".join(lines[n].strip() for n in paragraph), "paragraph"))
             paragraph = []
-    return [unit for _, unit in sorted(found, key=lambda entry: entry[0])]
+    return lines, sorted(found, key=lambda entry: entry[0])
+
+
+def split_units(text: str) -> list[Unit]:
+    """Split text into paragraphs, table rows, and list items, each item with its nested items.
+
+    A nested item is a unit too, so a short item can match inside a long parent. Quote markers do
+    not count. Headings, and labels on a line of their own, belong to no unit; `split_sections`
+    reads them.
+    """
+    return [unit for _, _, unit in located_units(text)[1]]
 
 
 def split_sections(text: str) -> list[Unit]:
-    """Split text at its headings: each heading and the text under it, up to the next heading.
+    """Pair each heading with each unit under it, up to the next heading.
 
-    A bold label on a line of its own counts as a heading, since many reports use one instead.
+    A heading gives the units under it their subject, as `## Front C` does to `- conflicts with
+    main`. Two units under one heading never join, so unrelated items cannot add up to a seed. A
+    heading with no unit under it stands alone.
     """
-    sections: list[list[str]] = []
-    for raw in text.splitlines():
-        line = raw.strip()
-        if is_heading(line):
-            sections.append([line])
-        elif sections and line and not TABLE_RULE.fullmatch(line):
-            sections[-1].append(line)
-    return [Unit(" ".join(parts), "section") for parts in sections]
+    lines, units = located_units(text)
+    sections = []
+    for number, line in enumerate(lines):
+        if line_kind(line) != "heading":
+            continue
+        under = [unit for _, heading, unit in units if heading == number]
+        sections += [Unit(f"{line.strip()} {unit.text}", "section", unit.heading) for unit in under]
+        sections += [] if under else [Unit(line.strip(), "section", line.strip())]
+    return sections
 
 
-def known_lines(snapshot: dict) -> set[str]:
-    """Return every line, stripped, of every text file that a snapshot holds."""
-    return {
-        line.strip()
-        for entry in snapshot["files"].values()
-        if isinstance(entry.get("text"), str)
-        for line in entry["text"].splitlines()
-    }
+def plain_line(line: str) -> str:
+    """Return a line without its quote and list markers, so that a quoted or re-listed copy compares equal."""
+    line = QUOTE_MARKS.sub("", line, count=1) if line.lstrip().startswith(">") else line
+    return LIST_ITEM.sub("", line, count=1).strip() if LIST_ITEM.match(line) else line.strip()
+
+
+def known_lines(snapshot: dict, task: str = "") -> set[str]:
+    """Return every line, plain, of every text file that a snapshot holds and of the task."""
+    texts = [entry["text"] for entry in snapshot["files"].values() if isinstance(entry.get("text"), str)]
+    return {plain_line(line) for text in [*texts, task] for line in text.splitlines()} - {""}
 
 
 def new_blocks(text: str, known: set[str]) -> list[str]:
-    """Return the runs of lines of `text` that are not in `known`; blank lines stay inside a run."""
+    """Return the runs of lines of `text` that are not in `known`; blank lines stay inside a run.
+
+    A known heading stays in a run that has new lines, since it gives them their subject.
+    """
     blocks, run = [], []
     for line in [*text.splitlines(), None]:
-        if line is not None and not (line.strip() and line.strip() in known):
-            run.append(line)
+        new = line is not None and plain_line(line) not in known
+        if new or (line is not None and line_kind(unquoted(line)[0]) == "heading"):
+            run.append((line, new and bool(line.strip())))
             continue
-        if any(entry.strip() for entry in run):
-            blocks.append("\n".join(run))
+        while run and not run[-1][1]:
+            run.pop()
+        if run:
+            blocks.append("\n".join(entry for entry, _ in run))
         run = []
     return blocks
 
@@ -638,8 +682,28 @@ def sha_pattern(sha: str) -> str:
     return rf"\b{sha[:MIN_SHA]}{tail}\b"
 
 
-def compile_near(pattern: str, before: dict) -> re.Pattern:
-    """Compile a `near` expression; its sha and short templates resolve against the snapshot before the run."""
+NEAR_FIELDS = {"subject", "finding", "others", "within"}
+
+
+def near_source(entry: str | list | dict) -> str:
+    """Return the expression that a `near` entry stands for.
+
+    An entry is an expression, a list of pieces joined into one, or an object that finds `subject`
+    and `finding` in either order, at most `within` characters apart (200 by default), with nothing
+    between them that matches `others`, such as the name of another front.
+    """
+    if isinstance(entry, list):
+        return "".join(entry)
+    if isinstance(entry, dict):
+        subject, finding = near_source(entry["subject"]), near_source(entry["finding"])
+        gap = f"(?:(?!{near_source(entry.get('others', '(?!)'))}).){{0,{int(entry.get('within', 200))}}}?"
+        return f"(?:{subject}){gap}(?:{finding})|(?:{finding}){gap}(?:{subject})"
+    return entry
+
+
+def compile_near(entry: str | list | dict, before: dict) -> re.Pattern:
+    """Compile a `near` entry; its sha and short templates resolve against the snapshot before the run."""
+    pattern = near_source(entry)
 
     def replace(match: re.Match) -> str:
         found = REVISION_TEMPLATE.fullmatch(match.group(1).strip())
@@ -655,15 +719,15 @@ def written_texts(
 ) -> list[tuple[str, str]]:
     """Return the text the agent wrote in the places a seed looks at, with where each came from.
 
-    The report counts whole. A workspace file counts only through its lines that no file of the
-    snapshot before the run contains, so words that a fixture already held never match by
-    themselves, wherever the agent moved or copied them.
+    The report and the workspace files count only through their lines that neither the task nor a
+    file of the snapshot before the run contains, so words that the agent quoted, moved, or copied
+    from its inputs never match by themselves.
     """
     known = known_lines(before) if known is None else known
     texts = []
     for entry in [source] if isinstance(source, str) else source:
         if entry == "report":
-            texts.append(("report", report))
+            texts += [("report", block) for block in new_blocks(report, known)]
             continue
         for name, now in sorted(after["files"].items()):
             if not fnmatch.fnmatchcase(name, entry) or not isinstance(now.get("text"), str):
@@ -672,27 +736,41 @@ def written_texts(
     return texts
 
 
-def detect(seeds: list[dict], report: str, before: dict, after: dict) -> list[dict]:
+def hedged(unit: Unit, patterns: list[re.Pattern]) -> bool:
+    """Say whether a unit matches only through a sentence, or under a heading, that hedges."""
+    if HEDGE.search(unit.heading):
+        return True
+    firm = " ".join(sentence for sentence in SENTENCE_END.split(unit.text) if not HEDGE.search(sentence))
+    return not all(pattern.search(firm) for pattern in patterns)
+
+
+def detect(seeds: list[dict], report: str, before: dict, after: dict, task: str = "") -> list[dict]:
     """Say which seeds the agent's text names: all `near` patterns must match inside one unit.
 
     A unit is a paragraph, a table row, or a list item with its nested items. When a seed matches no
-    unit, the section under a heading counts too, if it is short. A unit over `MAX_UNIT` characters
-    is flagged, not matched, and only when nothing else matched. Each match says which kind it was.
+    unit, a heading joined to one unit under it counts too. A unit over `MAX_UNIT` characters, or
+    one that matches only where the agent says it did not verify, is flagged for a person to read,
+    not matched, and only when nothing else matched. Each match says which kind it was.
     """
-    results, known = [], known_lines(before)
+    results, known = [], known_lines(before, task)
     for seed in seeds:
         patterns = [compile_near(pattern, before) for pattern in seed["near"]]
         texts = written_texts(seed["source"], report, before, after, known)
         found, flagged = [], []
-        for origin, text in texts:
-            for unit in split_units(text):
-                if all(pattern.search(unit.text) for pattern in patterns):
-                    (flagged if len(unit.text) > MAX_UNIT else found).append({"origin": origin, "unit": unit.text, "kind": unit.kind})
-        if not found:
+        for split in (split_units, split_sections):
             for origin, text in texts:
-                for unit in split_sections(text):
-                    if len(unit.text) <= MAX_SECTION and all(pattern.search(unit.text) for pattern in patterns):
-                        found.append({"origin": origin, "unit": unit.text, "kind": unit.kind})
+                for unit in split(text):
+                    if not all(pattern.search(unit.text) for pattern in patterns):
+                        continue
+                    entry = {"origin": origin, "unit": unit.text, "kind": unit.kind}
+                    if len(unit.text) > MAX_UNIT + (len(unit.heading) if unit.kind == "section" else 0):
+                        flagged.append({**entry, "why": "long"})
+                    elif hedged(unit, patterns):
+                        flagged.append({**entry, "why": "hedged"})
+                    else:
+                        found.append(entry)
+            if found:
+                break
         results.append({"id": seed["id"], "kind": seed["kind"], "found": bool(found), "units": found[:3]})
         if flagged and not found:
             results[-1]["flagged"] = flagged[:3]
@@ -1349,15 +1427,17 @@ def skill_words(calls: list[dict], skill: Path) -> dict:
     return {"words": sum(files.values()), "files": files}
 
 
-def score_run(expected: dict, before: dict, after: dict, launcher: dict | None, report: str, calls: list[dict]) -> dict:
+def score_run(
+    expected: dict, before: dict, after: dict, launcher: dict | None, report: str, calls: list[dict], task: str = ""
+) -> dict:
     """Score a run from its records: seeds detected, state checks, stream violations, and ceremony.
 
-    Everything counts for every run, whether it finished or not.
+    Everything counts for every run, whether it finished or not. Lines of the task count as inputs.
     """
     processes = (launcher or {}).get("fixtures")
     ceremony = expected.get("ceremony", [])
     return {
-        "detect": detect(expected.get("detect", []), report, before, after),
+        "detect": detect(expected.get("detect", []), report, before, after, task),
         "state": [check_state(item, before, after, processes) for item in expected.get("state", [])],
         "stream": stream_violations(calls, DEFAULT_STREAM + expected.get("stream", [])),
         "ceremony": [
@@ -1637,6 +1717,14 @@ def pattern_problems(pattern: str, where: str) -> list[str]:
     return []
 
 
+def near_shape(entry) -> bool:
+    """Say whether a `near` entry has one of the shapes that `near_source` reads."""
+    if isinstance(entry, dict):
+        return ({"subject", "finding"} <= set(entry) <= NEAR_FIELDS and isinstance(entry.get("within", 200), int)
+                and all(near_shape(entry[key]) for key in ("subject", "finding", "others") if key in entry))
+    return isinstance(entry, str) or (isinstance(entry, list) and bool(entry) and all(isinstance(piece, str) for piece in entry))
+
+
 def expected_problems(expected: dict, names: dict) -> list[str]:
     """Check the oracle against the names its scenario's fixtures define."""
     problems, ids = [], set()
@@ -1649,7 +1737,11 @@ def expected_problems(expected: dict, names: dict) -> list[str]:
             problems.append(f"{where}: kind must be seeded or off-list")
         if not isinstance(seed.get("source"), (str, list)) or not seed.get("near"):
             problems.append(f"{where}: needs a source and a non-empty near list")
-        for pattern in seed.get("near", []):
+        for entry in seed.get("near", []):
+            if not near_shape(entry):
+                problems.append(f"{where}: a near entry is an expression, a list of pieces, or an object with {sorted(NEAR_FIELDS)}")
+                continue
+            pattern = near_source(entry)
             problems += pattern_problems(pattern, where)
             for name in (m.strip() for m in TEMPLATE.findall(pattern)):
                 found = REVISION_TEMPLATE.fullmatch(name)
@@ -2322,12 +2414,14 @@ def arm_label(job: dict, jobs: list[dict]) -> str:
 
 def score_record(round_dir: Path, job: dict, record: dict) -> dict:
     """Score a recorded run again with the oracle as it is now, from the saved report and stream."""
-    paths, label = round_paths(round_dir), job["label"]
-    expected = json.loads((SCENARIOS / job["scenario"] / "expected.json").read_text(encoding="utf-8"))
+    paths, label, scenario = round_paths(round_dir), job["label"], SCENARIOS / job["scenario"]
+    expected = json.loads((scenario / "expected.json").read_text(encoding="utf-8"))
+    spec = json.loads((scenario / "scenario.json").read_text(encoding="utf-8"))
     report, stream = paths["reports"] / f"{label}.md", paths["streams"] / f"{label}.jsonl"
     text = report.read_text(encoding="utf-8") if report.is_file() else ""
     calls = tool_calls(stream) if stream.is_file() else []
-    return score_run(expected, record["before"], record["after"], record["launcher"], text, calls)
+    task = (scenario / spec["task"]).read_text(encoding="utf-8")
+    return score_run(expected, record["before"], record["after"], record["launcher"], text, calls, task)
 
 
 def found_count(scored: dict, kind: str) -> tuple[int, int]:
@@ -2379,7 +2473,8 @@ def summarize(round_dir: Path) -> str:
             for unit in seed["units"][:1]:
                 details.append(f"{label}: {seed['id']} matched in {unit['origin']} ({unit['kind']}): {unit['unit'][:200]!r}")
             for unit in seed.get("flagged", [])[:1]:
-                details.append(f"{label}: {seed['id']} matched a unit over {MAX_UNIT} characters, check by hand: {unit['origin']}")
+                why = f"over {MAX_UNIT} characters" if unit["why"] == "long" else "that says it was not verified"
+                details.append(f"{label}: {seed['id']} matched only a unit {why}, check by hand: {unit['origin']}: {unit['unit'][:200]!r}")
         details += [f"{label}: loop without a visible bound, check by hand: {loop!r}" for loop in scored["loops"]]
         notes += [f"{label}: {note}" for note in record["notes"]]
         notes += [f"{label}: outside path in a tool call: {path}" for path in record["outside"]]

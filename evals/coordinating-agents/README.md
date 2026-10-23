@@ -67,18 +67,28 @@ no secret-like file names, and external URLs only inside code spans.
 `expected.json` has four parts:
 
 - **`detect`**: a list of seeds, each with an `id`, a `kind` (`seeded` or `off-list`), a `source`
-  (`report` or a glob of files in the workspace), and `near`, a list of regular expressions that
-  must all match inside one unit of text.
+  (`report` or a glob of files in the workspace), and `near`, a list of entries that must all
+  match inside one unit of text.
+  - An entry is a regular expression, a list of pieces joined into one (so that a long expression
+    reads one alternative per line), or an object that finds a `subject` and a `finding` in either
+    order, at most `within` characters apart (200 by default), with nothing between them that
+    matches `others`. The object keeps a finding about front B from crediting front C when one
+    paragraph names both.
   - A unit is a paragraph, a table row, or a list item together with its nested items. A nested
-    item is a unit too.
-  - When a seed matches no unit, the section under a heading counts as well: the heading and the
-    text up to the next heading, if it is at most 1,200 characters. A report organised by
-    headings is therefore read by section, and words from two sections never combine.
-  - Units longer than 600 characters are flagged rather than matched, and only when nothing else
-    matched.
-  - Only text that the agent wrote counts: the report, and the lines of workspace files that no
-    file of the prepared workspace contains. A seed's words that a fixture already contains never
-    match by themselves, not even when the agent copies or moves them to another file.
+    item is a unit too. Quote markers (`>`) do not change how text splits.
+  - When a seed matches no unit, a heading joined to one unit under it counts as well. A heading
+    is a Markdown heading, a bold label on a line of its own, or a short unindented line that ends
+    with a colon, such as `Front C:`. Two units under one heading never combine, so unrelated items
+    cannot add up to a seed.
+  - A unit longer than 600 characters is flagged rather than matched. So is a unit that matches
+    only through a sentence saying the agent did not establish it (`could not verify`, `not
+    checked`, `unverified`), or that sits under such a heading, such as `NOT CHECKED:`. A hedge
+    reaches to the end of its sentence. Flagged units count only when nothing else matched, and
+    `summarize` prints them for the maintainer to read.
+  - Only text that the agent wrote counts: the lines of the report and of workspace files that
+    neither the task nor a file of the prepared workspace contains, compared without quote or list
+    markers. A seed's words that the agent quoted, copied, or moved from its inputs never match by
+    themselves. A known heading stays when new lines follow it, since it gives them their subject.
   - Matching ignores case.
   - The `{{sha:...}}` templates resolve against the state recorded before the run and match any
     prefix of at least seven characters.

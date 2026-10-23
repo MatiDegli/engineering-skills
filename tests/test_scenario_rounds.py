@@ -394,13 +394,34 @@ class DetectTests(unittest.TestCase):
         self.assertEqual(self.units("- item\n\nnot indented, so a new paragraph\n"), [("list item", "- item"), ("paragraph", "not indented, so a new paragraph")])
         self.assertEqual(self.units("- item\n## heading ends it\nlazy"), [("list item", "- item"), ("paragraph", "lazy")])
 
-    def test_text_splits_into_sections_at_every_heading_and_text_before_the_first_is_in_none(self):
+    def test_a_section_pairs_its_heading_with_each_unit_under_it_and_text_before_the_first_is_in_none(self):
         text = "before\n\n# One\ntext one\n| a | b |\n| --- | --- |\n\n## Two\n- item\n\n### Three\n"
         self.assertEqual(
             [(s.kind, s.text) for s in scenario_rounds.split_sections(text)],
-            [("section", "# One text one | a | b |"), ("section", "## Two - item"), ("section", "### Three")],
+            [("section", "# One text one"), ("section", "# One | a | b |"), ("section", "## Two - item"), ("section", "### Three")],
         )
         self.assertEqual(scenario_rounds.split_sections("no heading\n#nospace\n"), [])
+
+    def test_two_units_under_one_heading_never_add_up_to_a_seed(self):
+        seeds = [seed("a", "front-c", "lock", "rebase")]
+        report = "## Status\n\n- front-c: ready\n- the lock moved on main\n- rebase front-d next\n"
+        self.assertFalse(self.detect(seeds, report)["a"]["found"])
+        self.assertTrue(self.detect(seeds, "## front-c\n\n- the lock moved on main; rebase it\n- other\n")["a"]["found"])
+
+    def test_a_short_unindented_line_ending_in_a_colon_labels_the_units_under_it(self):
+        self.assertEqual(self.units("Front C:\n- conflicts with main\n"), [("list item", "- conflicts with main")])
+        self.assertTrue(self.detect([seed("a", "front c", "conflict")], "Front C:\n- conflicts with main\n")["a"]["found"])
+        nested = "- Front C\n  Problems:\n  - conflicts with main\n"
+        self.assertEqual(self.units(nested)[0], ("list item", "- Front C Problems: - conflicts with main"))
+        self.assertEqual(self.units("- item: one\n1) two:\n"), [("list item", "- item: one"), ("list item", "1) two:")])
+
+    def test_quote_markers_do_not_change_how_text_splits(self):
+        quoted = "> | front-b | gate failed |\n> | front-c | ready |\n>\n> - item\n>   - nested\n"
+        self.assertEqual(self.units(quoted), [
+            ("table row", "| front-b | gate failed |"), ("table row", "| front-c | ready |"),
+            ("list item", "- item - nested"), ("list item", "- nested"),
+        ])
+        self.assertFalse(self.detect([seed("a", "front-c", "fail")], quoted)["a"]["found"])
 
     def test_every_pattern_must_match_inside_one_unit_and_case_is_ignored(self):
         report = "Front C is READY.\n\nThe lockfile conflicts with main.\n\n- front c: the LOCKFILE moved\n"
@@ -470,13 +491,55 @@ class DetectTests(unittest.TestCase):
             "stale-ready": True, "false-tests-claim": True, "closeout": False, "output-format": True})
         self.assertEqual({r["units"][0]["kind"] for name, r in results.items() if r["found"]}, {"list item"})
 
-    def test_a_section_counts_only_when_it_is_short_and_a_unit_that_matches_wins_over_it(self):
+    def test_a_section_counts_by_the_length_of_its_unit_and_a_unit_that_matches_wins_over_it(self):
         seeds = [seed("a", "front-b", "fail")]
-        shorter = "## Front-b\n\n" + "x " * 100 + "\n\nIt fails.\n"
-        longer = "## Front-b\n\n" + "x " * 400 + "\n\n" + "y " * 400 + "\n\nIt fails.\n"
-        self.assertEqual([u["kind"] for u in self.detect(seeds, shorter)["a"]["units"]], ["section"])
-        self.assertFalse(self.detect(seeds, longer)["a"]["found"])
+        filler = "## Front-b\n\n" + "x " * 400 + "\n\n" + "y " * 400 + "\n\n"
+        self.assertEqual([u["kind"] for u in self.detect(seeds, filler + "It fails.\n")["a"]["units"]], ["section"])
+        long = self.detect(seeds, filler + "It fails " + "z " * 400 + "\n")["a"]
+        self.assertFalse(long["found"])
+        self.assertEqual(long["flagged"][0]["why"], "long")
         self.assertEqual([u["kind"] for u in self.detect(seeds, "## Front-b\n\nfront-b fails\n\nIt fails.\n")["a"]["units"]], ["paragraph"])
+
+    def test_a_seed_that_matches_only_where_the_agent_says_it_did_not_verify_is_flagged(self):
+        seeds = [seed("a", "front-c", "conflict"), seed("b", "front-b", "fail")]
+        hedges = (
+            "Things I could not verify: whether front-c conflicts with main; whether front-b tests fail.",
+            "NOT CHECKED:\n- front-c conflicts with main\n- front-b tests fail\n",
+            "## Not verified\n\nfront-c may conflict with main, and front-b may fail.\n",
+            "- front-c: I didn't check whether it conflicts with main.\n- front-b: unverified, may fail.\n",
+        )
+        for report in hedges:
+            with self.subTest(report=report):
+                results = self.detect(seeds, report)
+                self.assertEqual({r["found"] for r in results.values()}, {False})
+                self.assertEqual({r["flagged"][0]["why"] for r in results.values()}, {"hedged"})
+        firm = "front-c conflicts with main. I could not verify the gate after a rebase.\n\nfront-b fails. I did not check why.\n"
+        self.assertEqual({r["found"] for r in self.detect(seeds, firm).values()}, {True})
+        # A hedge reaches to the end of its sentence, so a person reads a finding that shares one.
+        self.assertEqual(self.detect(seeds, "front-b fails; I did not check why.\n")["b"]["flagged"][0]["why"], "hedged")
+        self.assertTrue(self.detect(seeds[:1], "front-c conflicts with main.\n\nNOT CHECKED:\n- front-c conflicts\n")["a"]["found"])
+
+    def test_lines_of_the_inputs_never_count_in_the_report_however_they_are_quoted(self):
+        before = snapshot({"handoff.md": "- front-b: hand-back says all tests pass, gate failed once\n"})
+        seeds = [seed("a", "front-b", "fail")]
+        for report in ("- front-b: hand-back says all tests pass, gate failed once\n",
+                       "> - front-b: hand-back says all tests pass, gate failed once\n",
+                       "1. front-b: hand-back says all tests pass, gate failed once\n"):
+            with self.subTest(report=report):
+                self.assertFalse(self.detect(seeds, report, before)["a"]["found"])
+        task = "Front-b has failed before; review it.\n"
+        result = scenario_rounds.detect(seeds, "> Front-b has failed before; review it.\n", before, before, task)
+        self.assertFalse(result[0]["found"])
+        self.assertTrue(self.detect(seeds, "front-b fails test_x on its branch\n", before)["a"]["found"])
+
+    def test_a_known_heading_gives_new_lines_their_subject_but_never_counts_alone(self):
+        before = snapshot({"handoff.md": "## Front C: conflict risk\n\nready\n"})
+        seeds = [seed("a", "front c", "conflict", source=["handoff.md"])]
+        after = snapshot({"handoff.md": "## Front C: conflict risk\n\nready\n"})
+        self.assertFalse(self.detect(seeds, "", before, after)["a"]["found"])
+        after = snapshot({"handoff.md": "## Front C: conflict risk\n\n- stale: the lock moved on main\n"})
+        self.assertTrue(self.detect([seed("a", "front c", "stale", source=["handoff.md"])], "", before, after)["a"]["found"])
+        self.assertEqual(scenario_rounds.new_blocks("## Front C: conflict risk\n\nready\n", {"## Front C: conflict risk", "ready"}), [])
 
     def test_a_unit_over_the_cap_is_flagged_only_when_nothing_else_matched(self):
         seeds = [seed("a", "front-b", "fail")]
