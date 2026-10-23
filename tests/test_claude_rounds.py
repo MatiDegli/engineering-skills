@@ -1412,6 +1412,17 @@ class SummaryActivityTests(unittest.TestCase):
         ]}})
         self.assertEqual(claude_rounds.stream_activity(self.stream), (0, []))
 
+    def test_line_separators_inside_json_strings_do_not_split_events(self):
+        # The CLI writes raw UTF-8, and JSON lets strings hold U+0085 and U+2028 unescaped.
+        start = self.assistant("Agent")
+        start["message"]["content"][0]["input"] = {"prompt": "a\x85b\u2028c"}
+        init = {"type": "system", "subtype": "init", "cwd": "d\x85e", "apiKeySource": "none"}
+        lines = [json.dumps(e, ensure_ascii=False) for e in (init, start, {"type": "result", "result": "f\x85g"})]
+        self.stream.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        self.assertEqual(claude_rounds.stream_activity(self.stream), (1, []))
+        self.assertEqual(len(claude_rounds.stream_results(self.stream)), 1)
+        self.assertEqual(claude_rounds.init_key_source(self.stream), "none")
+
     def test_unreadable_stream_counts_are_unknown(self):
         self.assertEqual(claude_rounds.stream_activity(self.stream), (None, []))
         for content in (b"", b"bad json\n", b"[]\n", b"null\n", b"\xff"):

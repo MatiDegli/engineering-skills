@@ -394,7 +394,8 @@ def stream_events(path: Path) -> tuple[list[dict], bool]:
     except (OSError, UnicodeError):
         return [], False
     events, readable = [], True
-    for line in text.splitlines():
+    # Split on newlines only: JSON strings may hold U+0085 or U+2028, where splitlines() breaks too.
+    for line in text.split("\n"):
         if not line.strip():
             continue
         try:
@@ -946,7 +947,7 @@ def parse_providers(urls: list[str], keys: list[str]) -> dict[str, dict]:
 
 
 def init_key_source(stream: Path) -> str | None:
-    for line in stream.read_text(encoding="utf-8").splitlines():
+    for line in stream.read_text(encoding="utf-8").split("\n"):
         try:
             event = json.loads(line)
         except json.JSONDecodeError:

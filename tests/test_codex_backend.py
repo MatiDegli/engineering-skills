@@ -699,6 +699,14 @@ class CodexTests(unittest.TestCase):
         path.write_text(json.dumps({"type": "event_msg", "payload": {"type": "task_complete"}}) + "\n{partial")
         self.assertFalse(codex.session_info(path)["finished"])
 
+    def test_line_separators_inside_json_strings_do_not_split_session_records(self):
+        path = self.root / f"rollout-{uuid.uuid4()}.jsonl"
+        events = [{"type": "session_meta", "payload": {"id": "lead", "cwd": "a\x85b"}},
+                  {"type": "event_msg", "payload": {"type": "task_complete", "last_agent_message": "c\u2028d"}}]
+        path.write_text("".join(json.dumps(e, ensure_ascii=False) + "\n" for e in events), encoding="utf-8")
+        self.assertEqual(codex.records(path), events)
+        self.assertTrue(codex.session_info(path)["finished"])
+
     def test_a_codex_timeout_keeps_an_invalid_status_and_missing_accounting(self):
         self.configure(audit_delay=1)
         round_dir = self.codex_plan()
@@ -1062,6 +1070,14 @@ class HelperCountTests(unittest.TestCase):
         self.session("second", "lead")
         self.session("nested", "first")
         self.assertEqual(codex.helpers_started(self.stream), 2)
+
+    def test_line_separators_inside_json_strings_keep_the_count(self):
+        self.session("lead", spawns=1)
+        path = self.session("first", "lead")
+        events = codex.records(path)
+        events[0]["payload"]["cwd"] = "a\x85b\u2028c"
+        path.write_text("".join(json.dumps(e, ensure_ascii=False) + "\n" for e in events), encoding="utf-8")
+        self.assertEqual(codex.helpers_started(self.stream), 1)
 
     def test_lead_session_without_helpers_is_zero(self):
         self.session("lead")

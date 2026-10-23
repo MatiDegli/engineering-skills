@@ -79,7 +79,8 @@ def records(path: Path) -> list[dict]:
     if not path.is_file():
         return []
     found = []
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+    # Split on newlines only: JSON strings may hold U+0085 or U+2028, where splitlines() breaks too.
+    for line in path.read_text(encoding="utf-8", errors="replace").split("\n"):
         try:
             item = json.loads(line)
         except json.JSONDecodeError:
@@ -139,7 +140,7 @@ def session_info(path: Path) -> dict:
     parent = parent if first.get("thread_source") == "subagent" else None
     last = events[-1] if events else {}
     try:
-        final_record = json.loads(path.read_text(encoding="utf-8").rstrip().splitlines()[-1])
+        final_record = json.loads(path.read_text(encoding="utf-8").rstrip().split("\n")[-1])
     except (OSError, ValueError, IndexError):
         final_record = None
     terminal = last.get("payload", {}).get("type") if last.get("type") == "event_msg" else None
@@ -379,7 +380,7 @@ def helpers_started(stream: Path) -> int | None:
         threads = {}
         for path in copied_sessions(stream):
             # Unlike diagnostic readers, a count must not silently skip corrupt evidence.
-            events = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+            events = [json.loads(line) for line in path.read_text(encoding="utf-8").split("\n") if line.strip()]
             if not events or any(not isinstance(e, dict) for e in events):
                 return None
             info = session_info(path)
