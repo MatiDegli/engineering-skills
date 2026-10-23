@@ -19,6 +19,7 @@ are in [docs/decisions.md](../../docs/decisions.md), "Scenario evaluations for w
 | `waits-and-processes` | E1 | An orphaned wait next to a live process with a similar command line, a front marked as waiting whose job already finished, and a wait script that matches itself |
 | `parallel-lines` | E1 | A second coordinator in the same repository: a file it owns and a round it is running |
 | `trivial-fix` | E1 | A one-line fix, where coordination steps count against the run |
+| `pace-ahead` | E1 | A weekly usage reading ahead of the profile's pace, a handoff whose own reading is two days old, and a queue of a repair, an experimental round, and a large validation |
 | `plan-fronts` | E2 | A request to plan and brief three fronts, one of them destructive tooling, with problems the skill does not name |
 | `fix-round` | E2 | Review findings and a hand-back to act on: when to resume or start fresh, and a fix whose deleted lines came back |
 
