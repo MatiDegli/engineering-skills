@@ -239,8 +239,10 @@ Both measures clip buckets to the requested window; neither measures elapsed or 
 hours. Agent hours require transcript identities and are unavailable for round totals; project
 activity hours are also unavailable for undated totals.
 
-Invalid JSON lines are counted in `invalid_json_lines`.
-Every invalid line, or missing round totals, suppresses normalized cost figures rather than
+Invalid JSON lines are counted in `invalid_json_lines` and named as `path:line` in
+`invalid_json_locations`. A line that parses as an object after stripping leading NUL bytes and
+has no usage fields also counts as `recovered_nul_padded_lines`; it does not suppress normalizers.
+Every other invalid line, or missing round totals, suppresses normalized cost figures rather than
 hide incomplete accounting.
 
 For cost per accepted outcome, pass `--outcomes FILE` with an explicit denominator:

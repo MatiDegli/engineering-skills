@@ -55,6 +55,20 @@ def events(path: Path, issues: dict):
                     yield number, event
             except json.JSONDecodeError:
                 issues["invalid_json_lines"] += 1
+                issues.setdefault("invalid_json_locations", []).append(f"{path}:{number}")
+                if not line.startswith("\0"):
+                    continue
+                try:
+                    recovered = json.loads(line.lstrip("\0"))
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(recovered, dict):
+                    continue
+                message = recovered.get("message")
+                if ("usage" in recovered or "modelUsage" in recovered
+                        or isinstance(message, dict) and "usage" in message):
+                    continue
+                issues["recovered_nul_padded_lines"] += 1
 
 
 def timestamp(value: str | None) -> float | None:
@@ -224,8 +238,9 @@ def report(records: list[dict], snapshot: dict, issues: dict, start=None, end=No
             group["recorded_cli_usd"] += record["recorded_cli_usd"]
             group["recorded_cli_records"] += 1
     dated = [r["timestamp"] for r in selected if r["timestamp"] is not None]
-    source_complete = not any(issues.get(k) for k in
-                              ("invalid_json_lines", "streams_without_model_totals", "undated_records_excluded"))
+    source_complete = (issues.get("invalid_json_lines", 0) <= issues.get("recovered_nul_padded_lines", 0)
+                       and not any(issues.get(k) for k in
+                                   ("streams_without_model_totals", "undated_records_excluded")))
     complete = bool(selected) and len(dated) == len(selected) and source_complete
 
     def bucket_hours(buckets):

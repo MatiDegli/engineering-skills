@@ -112,7 +112,7 @@ class LedgerTests(unittest.TestCase):
         self.assertEqual(result["usd_per_accepted_outcome"], [20.0, 20.0])
         self.assertEqual(price_interval(record("<synthetic>", aggregate=True), load_prices()), (0.0, 0.0))
 
-    def test_invalid_lines_are_counted_in_both_readers(self):
+    def test_invalid_lines_are_counted_and_located_in_both_readers(self):
         for reader in (transcript_records, round_records):
             with self.subTest(reader=reader.__name__), tempfile.TemporaryDirectory() as directory:
                 path = Path(directory) / "streams/a.jsonl"
@@ -121,6 +121,8 @@ class LedgerTests(unittest.TestCase):
                 issues = defaultdict(int)
                 reader(Path(directory), issues)
                 self.assertEqual(issues["invalid_json_lines"], 2)
+                self.assertEqual(issues["invalid_json_locations"], [f"{path}:1", f"{path}:2"])
+                self.assertEqual(issues["recovered_nul_padded_lines"], 0)
 
     def test_invalid_line_suppresses_all_normalizers(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -137,6 +139,40 @@ class LedgerTests(unittest.TestCase):
         for key in ("agent_hours_10min_buckets", "project_active_hours_10min_buckets", "usd_per_agent_hour",
                     "usd_per_project_active_hour", "usd_per_accepted_outcome"):
             self.assertIsNone(result[key], key)
+
+    def test_nul_padded_non_usage_line_is_recovered_without_suppressing_normalizers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "a.jsonl"
+            write(path, [response("paid", output_tokens=1000000)])
+            with path.open("a") as stream:
+                stream.write('\0' * 20 + json.dumps({"type": "user"}) + '\n')
+            issues = defaultdict(int)
+            result = report(transcript_records(Path(directory), issues), load_prices(), issues,
+                            outcomes={"accepted": 1, "unit": "change", "source": "test"})
+        self.assertEqual(result["issues"]["invalid_json_lines"], 1)
+        self.assertEqual(result["issues"]["invalid_json_locations"], [f"{path}:2"])
+        self.assertEqual(result["issues"]["recovered_nul_padded_lines"], 1)
+        self.assertTrue(result["source_complete"])
+        self.assertEqual(result["agent_hours_10min_buckets"], 1 / 6)
+        self.assertEqual(result["project_active_hours_10min_buckets"], 1 / 6)
+        self.assertEqual(result["usd_per_agent_hour"], [120.0, 120.0])
+        self.assertEqual(result["usd_per_project_active_hour"], [120.0, 120.0])
+        self.assertEqual(result["usd_per_accepted_outcome"], [20.0, 20.0])
+
+    def test_nul_padded_usage_and_mixed_invalid_lines_still_suppress(self):
+        for event in (response("lost", output_tokens=100), {"usage": {}}, {"modelUsage": {}}, ["user"]):
+            with self.subTest(event=event), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "a.jsonl"
+                write(path, [response("paid", output_tokens=100)])
+                with path.open("a") as stream:
+                    stream.write('\0' + json.dumps({"type": "user"}) + '\n')
+                    stream.write('\0' + json.dumps(event) + '\n')
+                issues = defaultdict(int)
+                result = report(transcript_records(Path(directory), issues), load_prices(), issues)
+                self.assertEqual(issues["invalid_json_lines"], 2)
+                self.assertEqual(issues["recovered_nul_padded_lines"], 1)
+                self.assertFalse(result["source_complete"])
+                self.assertIsNone(result["usd_per_agent_hour"])
 
     def test_haiku_tier_counts_cached_input_and_prices_the_whole_request(self):
         prices = load_prices()
