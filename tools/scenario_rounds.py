@@ -37,14 +37,18 @@ from pathlib import Path
 from typing import NamedTuple
 
 from tools.claude_rounds import (
+    ANTHROPIC,
     init_key_source,
+    log_overlaps,
     login_failed,
     outside_paths,
+    overlap_note,
     parse_providers,
     provider_launch,
     ran_model,
     report_text,
     round_lock,
+    round_resources,
     stop_groups,
     stream_results,
     stream_usage,
@@ -1774,7 +1778,7 @@ def parse_runs(values: list[str]) -> list[tuple[str, str, str | None, str]]:
 
 
 def round_paths(round_dir: Path) -> dict[str, Path]:
-    names = ("plan.json", "streams", "reports", "runs", "log.txt", "summary.md")
+    names = ("plan.json", "streams", "reports", "runs", "log.txt", "summary.md", "resources.json")
     return {name: round_dir / name for name in names}
 
 
@@ -2227,11 +2231,22 @@ def run(
 
     `providers` maps a model served by another provider to its base URL and key file. SIGTERM or
     SIGINT stops every sandbox, starts no other run, and returns 128 plus the signal number; the
-    handlers are restored afterwards. The whole round holds the round lock that the audit runner
-    takes, waiting for it at most `lock_wait` seconds.
+    handlers are restored afterwards. The whole round holds the lock of every resource its models
+    need, as the audit runner's rounds do, waiting for them at most `lock_wait` seconds. It records
+    those resources before it waits, so `clean` takes the same locks, and it logs the other rounds'
+    locks when it starts and before it releases its own, so `summarize` can mark an overlap.
     """
-    with round_lock(f"scenario_rounds run {round_dir.resolve()}", lock_wait):
-        return run_round(round_dir, jobs, budget, stagger, providers or {}, token_file)
+    providers = providers or {}
+    data = json.loads(round_paths(round_dir)["plan.json"].read_text(encoding="utf-8"))
+    resources = round_resources(data["jobs"], providers)
+    round_paths(round_dir)["resources.json"].write_text(json.dumps(list(resources)) + "\n", encoding="utf-8")
+    with round_lock(f"scenario_rounds run {round_dir.resolve()}", lock_wait, resources):
+        start = log_overlaps(round_dir, resources)
+        try:
+            return run_round(round_dir, jobs, budget, stagger, providers, token_file)
+        finally:
+            # Still under the locks: once they are released, the probe cannot tell who holds what.
+            log_overlaps(round_dir, resources, start)
 
 
 def run_round(
@@ -2368,6 +2383,8 @@ def summarize(round_dir: Path) -> str:
         details += [f"{label}: loop without a visible bound, check by hand: {loop!r}" for loop in scored["loops"]]
         notes += [f"{label}: {note}" for note in record["notes"]]
         notes += [f"{label}: outside path in a tool call: {path}" for path in record["outside"]]
+    overlap = overlap_note(paths["log.txt"].read_text(encoding="utf-8") if paths["log.txt"].exists() else "")
+    notes += [overlap] if overlap else []
     lines = [
         f"# Scenario round summary ({now()})",
         "",
@@ -2405,10 +2422,13 @@ def clean(round_dir: Path) -> list[str]:
 
     A workspace goes only after the same re-checks as at the end of a run, against the directory
     recorded when it was made. An export goes only when it is a direct child of the temporary
-    directory with the name `plan` gives it. Anything else is reported and kept. It holds the round
-    lock, so it never deletes the workspaces and the export of a round that is running.
+    directory with the name `plan` gives it. Anything else is reported and kept. It holds the locks
+    of the resources `run` recorded, the Claude login's when none were, so it never deletes the
+    workspaces and the export of a round that is running.
     """
-    with round_lock(f"scenario_rounds clean {round_dir.resolve()}"):
+    recorded = round_paths(round_dir)["resources.json"]
+    resources = tuple(json.loads(recorded.read_text(encoding="utf-8"))) if recorded.exists() else (ANTHROPIC,)
+    with round_lock(f"scenario_rounds clean {round_dir.resolve()}", resources=resources):
         return remove_leftovers(round_dir)
 
 

@@ -209,9 +209,12 @@ The runner therefore works as follows:
   and interop fail. It tries them rather than only looking for them: it connects to each Docker
   socket path and runs `cmd.exe` when it is on the PATH or under `/mnt/c`, and expects both to
   fail. It refuses the round otherwise.
-- **Round:** the whole round holds the same round lock as the audit runner, so one round at a time
-  runs on the machine; `clean` takes the lock too, so it cannot remove the workspaces of a round
-  that is running. A scenario that fails to prepare is a failed run, and the round goes on.
+- **Round:** the whole round holds the audit runner's lock of every resource its models need, the
+  Claude login or a provider's host, so rounds on the same resource run one at a time and rounds on
+  different ones may overlap. The round records its resources in `resources.json`, and `clean`
+  takes the same locks, so it cannot remove the workspaces of a round that is running. The log
+  describes the other rounds' locks at the start and the end, and the summary notes an overlap. A
+  scenario that fails to prepare is a failed run, and the round goes on.
   SIGTERM or SIGINT stops every sandbox, and the order of the levels alternates between scenarios,
   so that neither level always pays the first cache writes.
 

@@ -1973,6 +1973,39 @@ class RoundRefusalTests(RoundCase):
         with claude_rounds.round_lock("the audit runner, round 90"):
             self.assertIn("the audit runner, round 90", self.refusal())
 
+    def test_a_provider_round_takes_only_its_provider_lock_and_logs_the_others(self):
+        self.plan(self.job("glm-test"))
+        providers = {"glm-test": {"url": "https://api.example.com", "key": str(self.root / "key")}}
+        with mock.patch.object(scenario_rounds, "run_round", return_value=0) as body:
+            with claude_rounds.round_lock("an audit round on the Claude login"):
+                self.assertEqual(self.run_round(providers=providers)[0], 0)
+            self.assertEqual(body.call_count, 1, "the Claude login's lock does not hold back a provider round")
+            with claude_rounds.round_lock("round 46 on the same provider", resources=("api.example.com",)):
+                self.assertIn("round 46 on the same provider", self.refusal(providers=providers))
+            self.assertEqual(body.call_count, 1)
+        self.assertEqual(json.loads((self.round / "resources.json").read_text(encoding="utf-8")), ["api.example.com"])
+        log = (self.round / "log.txt").read_text(encoding="utf-8")
+        self.assertRegex(log, r"others start rounds\.lock held=\w+ changed=no holder=an audit round on the Claude login")
+        self.assertIn("others end: 1 files", log)
+        self.assertEqual(claude_rounds.overlap_note(log), "Overlapped with another round: its minutes are not comparable.")
+
+    def test_clean_holds_the_locks_its_round_recorded(self):
+        left = scenario_rounds.new_directory(scenario_rounds.WORKSPACE_PREFIX)
+        self.addCleanup(shutil.rmtree, left["path"], True)
+        write(self.round / "runs" / "run1-alpha.workspace.json", json.dumps(left))
+        write(self.round / "resources.json", json.dumps(["api.example.com"]))
+        with claude_rounds.round_lock("a provider round", resources=("api.example.com",)):
+            with self.assertRaisesRegex(SystemExit, "another round holds .*a provider round"):
+                scenario_rounds.clean(self.round)
+        self.assertTrue(Path(left["path"]).exists())
+        with claude_rounds.round_lock("an audit round on the Claude login"), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(scenario_rounds.clean(self.round), [left["path"]])
+
+    def test_the_summary_says_when_a_round_overlapped_another(self):
+        write(self.round / "log.txt", "others start: 1 files\nothers start rounds.lock held=yes changed=no holder=x\n"
+              "others end: 1 files\nothers end rounds.lock held=no changed=no holder=x\n")
+        self.assertIn("- Overlapped with another round: its minutes are not comparable.", scenario_rounds.summarize(self.round))
+
     def test_clean_removes_what_a_stopped_round_left_and_keeps_what_it_cannot_vouch_for(self):
         left, replaced = (scenario_rounds.new_directory(scenario_rounds.WORKSPACE_PREFIX) for _ in range(2))
         export = Path(tempfile.mkdtemp(prefix="skill.")) / "coordinating-agents"
