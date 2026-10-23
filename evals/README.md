@@ -224,6 +224,36 @@ Unknown write TTLs stay unknown and give a price range; aggregate Haiku usage al
 when individual request context tiers are missing.
 The CLI's recorded amount stays separate in the JSON output.
 
+Use `--since 2026-10-17T21:00:00Z --until 2026-10-21T12:00:00Z` for a half-open request-time window,
+and `--json` for a machine-readable report. Timestamps require a timezone. Undated records are
+excluded from a requested window and counted as an issue, never dated from file modification time.
+This also applies to `rounds`: its usual undated totals are all excluded when either window flag is
+set, yielding zero responses and unavailable normalizers.
+
+`agent_hours_10min_buckets` unions occupied UTC 10-minute request buckets within each transcript
+file, then adds the files' hours. Three agents requesting every five minutes for one hour give
+three agent-hours. A lead that only waits adds only the buckets containing its own requests.
+`usd_per_agent_hour` uses that denominator. `project_active_hours_10min_buckets` unions buckets
+across all agents; `usd_per_project_active_hour` measures cost per hour of project activity.
+Both measures clip buckets to the requested window; neither measures elapsed or human working
+hours. Agent hours require transcript identities and are unavailable for round totals; project
+activity hours are also unavailable for undated totals.
+
+Invalid JSON lines are counted in `invalid_json_lines`.
+Every invalid line, or missing round totals, suppresses normalized cost figures rather than
+hide incomplete accounting.
+
+For cost per accepted outcome, pass `--outcomes FILE` with an explicit denominator:
+
+```json
+{"unit": "merged change", "source": "review receipts", "items": [
+  {"id": "change-1", "completed_at": "2026-10-20T12:00:00Z", "status": "accepted"}
+]}
+```
+
+IDs must be unique; only accepted items completed in the same window count. The caller must match
+the outcome file to the input scope. Unknown model prices or incomplete source accounting make
+the normalized cost unavailable. Token totals, warnings, and priced subtotals remain visible.
 Measure with the ledger before and after a change meant to save cost.
 
 Each mechanism answers an incident in this repository's evaluations:

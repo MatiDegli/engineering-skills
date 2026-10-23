@@ -1,13 +1,15 @@
-"""Regressions for duplicated history, missing cache TTLs, and pricing tiers."""
+"""Regressions for duplicated history, missing cache TTLs, pricing tiers and denominators."""
 
 import json
 import tempfile
 import unittest
 from collections import defaultdict
 from pathlib import Path
+from unittest.mock import patch
 
-from tools.claude_ledger import (KINDS, load_prices, message_usage, price_interval, report,
-                                result_records, round_records, transcript_records)
+from tools.claude_ledger import (KINDS, accepted_outcomes, load_prices, message_usage,
+                                price_interval, report, result_records, round_records,
+                                table, timestamp, transcript_records)
 
 
 def response(identifier, model="claude-opus-5-5", moment="2026-10-22T12:00:00Z", **usage):
@@ -22,6 +24,8 @@ def write(path, rows):
 
 def record(model="claude-opus-5-5", aggregate=False, **tokens):
     return {"model": model, "role": "session", "aggregate": aggregate,
+            "agent": "fixture.jsonl",
+            "timestamp": timestamp("2026-10-22T12:00:00Z"),
             "tokens": {k: tokens.get(k, 0) for k in KINDS}, "recorded_cli_usd": None}
 
 
@@ -97,12 +101,15 @@ class LedgerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             write(Path(directory) / "a.jsonl", [response("paid", output_tokens=1000000),
                                                response("zero", "<synthetic>")])
-            result = report(transcript_records(Path(directory), defaultdict(int)), load_prices(), defaultdict(int))
+            result = report(transcript_records(Path(directory), defaultdict(int)), load_prices(), defaultdict(int),
+                            outcomes={"accepted": 1, "unit": "change", "source": "test"})
         self.assertEqual(result["responses"], 2)
         self.assertEqual(result["groups"]["session <synthetic>"]["responses"], 1)
         self.assertEqual(result["groups"]["session <synthetic>"]["unpriced_records"], 0)
         self.assertEqual(result["priced_records_only_usd"], [20.0, 20.0])
         self.assertTrue(result["fully_priced"])
+        self.assertEqual(result["usd_per_agent_hour"], [120.0, 120.0])
+        self.assertEqual(result["usd_per_accepted_outcome"], [20.0, 20.0])
         self.assertEqual(price_interval(record("<synthetic>", aggregate=True), load_prices()), (0.0, 0.0))
 
     def test_invalid_lines_are_counted_in_both_readers(self):
@@ -114,6 +121,22 @@ class LedgerTests(unittest.TestCase):
                 issues = defaultdict(int)
                 reader(Path(directory), issues)
                 self.assertEqual(issues["invalid_json_lines"], 2)
+
+    def test_invalid_line_suppresses_all_normalizers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "a.jsonl"
+            write(path, [response("paid", output_tokens=1000000)])
+            with path.open("a") as stream:
+                stream.write('broken\n')
+            issues = defaultdict(int)
+            result = report(transcript_records(Path(directory), issues), load_prices(), issues,
+                            outcomes={"accepted": 1, "unit": "change", "source": "test"})
+        self.assertFalse(result["source_complete"])
+        self.assertEqual(result["responses"], 1)
+        self.assertEqual(result["priced_records_only_usd"], [20.0, 20.0])
+        for key in ("agent_hours_10min_buckets", "project_active_hours_10min_buckets", "usd_per_agent_hour",
+                    "usd_per_project_active_hour", "usd_per_accepted_outcome"):
+            self.assertIsNone(result[key], key)
 
     def test_haiku_tier_counts_cached_input_and_prices_the_whole_request(self):
         prices = load_prices()
@@ -158,6 +181,124 @@ class LedgerTests(unittest.TestCase):
         self.assertEqual(row["tokens"]["write_unknown"], 40)
         event["modelUsage"]["claude-sonnet-5-5"].update(cacheCreationInputTokens=10, outputTokens=1)
         self.assertEqual(result_records(event)[0]["tokens"]["write_1h"], 10)
+
+    def test_missing_round_result_is_reported_and_suppresses_per_outcome_cost(self):
+        with tempfile.TemporaryDirectory() as directory:
+            write(Path(directory) / "round/streams/failed.jsonl", [{"type": "system"}])
+            issues = defaultdict(int)
+            self.assertEqual(round_records(Path(directory), issues), [])
+            result = report([record(output=100)], load_prices(), issues,
+                            outcomes={"accepted": 1, "unit": "change", "source": "test"})
+        self.assertFalse(result["source_complete"])
+        self.assertIsNone(result["usd_per_accepted_outcome"])
+
+    def test_half_open_window_and_occupied_ten_minute_buckets(self):
+        start, end = timestamp("2026-10-22T12:00:00Z"), timestamp("2026-10-22T12:20:00Z")
+        rows = [record(output=1000000) for _ in range(4)]
+        for row, moment in zip(rows, (start - 1, start, start + 600, end)):
+            row["timestamp"] = moment
+        result = report(rows, load_prices(), defaultdict(int), start, end,
+                        {"accepted": 2, "unit": "change", "source": "test"})
+        self.assertEqual(result["responses"], 2)
+        self.assertAlmostEqual(result["agent_hours_10min_buckets"], 1 / 3)
+        self.assertAlmostEqual(result["project_active_hours_10min_buckets"], 1 / 3)
+        self.assertEqual(result["usd_per_accepted_outcome"], [20.0, 20.0])
+        self.assertAlmostEqual(result["usd_per_agent_hour"][0], 120.0)
+        self.assertAlmostEqual(result["usd_per_project_active_hour"][0], 120.0)
+        with self.assertRaises(ValueError):
+            timestamp("2026-10-22T12:00:00")
+
+    def test_agent_hour_contract_parallel_waiting_overlapping_and_reimported_requests(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            times = [f"2026-10-22T12:{minute:02d}:00Z" for minute in range(0, 60, 5)]
+            paths = [root / "lead.jsonl", root / "lead/subagents/agent-a.jsonl",
+                     root / "lead/subagents/agent-b.jsonl"]
+            for agent, path in enumerate(paths):
+                write(path, [response(f"{agent}-{index}", moment=moment, output_tokens=1000)
+                             for index, moment in enumerate(times)])
+
+            def measure():
+                issues = defaultdict(int)
+                return report(transcript_records(root, issues), load_prices(), issues)
+
+            busy = measure()
+            self.assertEqual(busy["responses"], 36)
+            self.assertEqual(busy["agent_hours_10min_buckets"], 3.0)
+            self.assertEqual(busy["project_active_hours_10min_buckets"], 1.0)
+            self.assertAlmostEqual(busy["usd_per_agent_hour"][0], 0.24)
+            self.assertAlmostEqual(busy["usd_per_project_active_hour"][0], 0.72)
+            rendered = table(busy)
+            self.assertIn("Agent hours (10-minute buckets per transcript): 3.0", rendered)
+            self.assertIn("Project activity hours (union of 10-minute buckets): 1.0", rendered)
+            # Re-reading the identical file must not add responses, cost, or buckets.
+            with patch.object(Path, "rglob", return_value=iter([*paths, paths[0]])):
+                repeated = measure()
+            for key in ("responses", "priced_records_only_usd", "agent_hours_10min_buckets",
+                        "project_active_hours_10min_buckets", "usd_per_agent_hour"):
+                self.assertEqual(repeated[key], busy[key], key)
+            write(paths[0], [response("lead-start", moment=times[0], output_tokens=1000),
+                             response("lead-end", moment="2026-10-22T12:59:00Z", output_tokens=1000)])
+            waiting = measure()
+            self.assertEqual(waiting["responses"], 26)
+            self.assertAlmostEqual(waiting["agent_hours_10min_buckets"], 2 + 1 / 3)
+            self.assertEqual(waiting["project_active_hours_10min_buckets"], 1.0)
+
+    def test_agent_and_project_buckets_are_clipped_at_each_window_edge(self):
+        for start_text, end_text, moment_text, seconds in (
+                ("12:08:00", "12:10:00", "12:09:00", 120),
+                ("12:00:00", "12:02:00", "12:01:00", 120),
+                ("12:08:00", "12:12:00", "12:09:00", 120),
+                ("12:08:00", "12:09:00", "12:08:30", 60)):
+            with self.subTest(start=start_text, end=end_text):
+                start, end, moment = [timestamp(f"2026-10-22T{t}Z")
+                                      for t in (start_text, end_text, moment_text)]
+                row = record(output=1000000)
+                row["timestamp"] = moment
+                result = report([row], load_prices(), defaultdict(int), start, end)
+                self.assertAlmostEqual(result["agent_hours_10min_buckets"], seconds / 3600)
+                self.assertAlmostEqual(result["project_active_hours_10min_buckets"], seconds / 3600)
+                self.assertAlmostEqual(result["usd_per_agent_hour"][0], 20 / (seconds / 3600))
+
+    def test_dated_round_totals_do_not_invent_agent_identity(self):
+        rows = result_records({"timestamp": "2026-10-22T12:00:00Z", "modelUsage":
+                               {"claude-opus-5-5": {"outputTokens": 1000}}})
+        result = report(rows, load_prices(), defaultdict(int))
+        self.assertIsNone(result["agent_hours_10min_buckets"])
+        self.assertIsNone(result["usd_per_agent_hour"])
+        self.assertEqual(result["project_active_hours_10min_buckets"], 1 / 6)
+
+    def test_undated_and_unpriced_records_do_not_produce_false_normalizers(self):
+        undated = record()
+        undated["timestamp"] = None
+        result = report([undated], load_prices(), defaultdict(int), start=0)
+        self.assertEqual(result["issues"]["undated_records_excluded"], 1)
+        self.assertIsNone(result["agent_hours_10min_buckets"])
+        self.assertIsNone(result["project_active_hours_10min_buckets"])
+        result = report([undated], load_prices(), defaultdict(int))
+        self.assertEqual(result["responses"], 1)
+        self.assertIsNone(result["agent_hours_10min_buckets"])
+        self.assertIsNone(result["project_active_hours_10min_buckets"])
+        self.assertIsNone(result["usd_per_agent_hour"])
+        result = report([record("unknown", read=1000)], load_prices(), defaultdict(int),
+                        outcomes={"accepted": 1, "unit": "change", "source": "test"})
+        self.assertFalse(result["fully_priced"])
+        self.assertIsNone(result["usd_per_accepted_outcome"])
+
+    def test_outcomes_are_explicit_deduplicated_and_filtered_to_the_same_window(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "outcomes.json"
+            doc = {"unit": "merged change", "source": "review receipts", "items":
+                   [{"id": "a", "completed_at": "2026-10-22T12:00:00Z", "status": "accepted"},
+                    {"id": "b", "completed_at": "2026-10-22T12:10:00Z", "status": "rejected"},
+                    {"id": "c", "completed_at": "2026-10-22T12:20:00Z", "status": "accepted"}]}
+            path.write_text(json.dumps(doc))
+            result = accepted_outcomes(path, timestamp("2026-10-22T12:00:00Z"), timestamp("2026-10-22T12:20:00Z"))
+            self.assertEqual(result["accepted"], 1)
+            doc["items"].append(doc["items"][0])
+            path.write_text(json.dumps(doc))
+            with self.assertRaises(ValueError):
+                accepted_outcomes(path, None, None)
 
     def test_invalid_price_snapshot_fails(self):
         with tempfile.TemporaryDirectory() as directory:
