@@ -5,6 +5,7 @@ import json
 import tempfile
 import unittest
 from collections import defaultdict
+from itertools import permutations
 from pathlib import Path
 from unittest.mock import patch
 
@@ -34,15 +35,17 @@ def record(model="claude-opus-5-5", aggregate=False, **tokens):
 
 
 class LedgerTests(unittest.TestCase):
-    def read_both_orders(self, root, paths, reader=transcript_records, snapshot=None):
+    def read_orders(self, root, paths, reader=transcript_records, snapshot=None):
         snapshot = load_prices() if snapshot is None else snapshot
         results = []
-        for order in (paths, paths[::-1]):
+        orders = permutations(paths) if 3 <= len(paths) <= 5 else (paths, paths[::-1])
+        for order in orders:
             issues = defaultdict(int)
             with patch.object(Path, "rglob", return_value=iter(order)):
                 rows = reader(root, issues, snapshot)
             results.append((rows, report(rows, snapshot, issues)))
-        self.assertEqual(results[0], results[1])
+        for result in results[1:]:
+            self.assertEqual(results[0], result)
         return results[0]
 
     def test_containment_chain_keeps_three_two_and_one_responses(self):
@@ -54,7 +57,7 @@ class LedgerTests(unittest.TestCase):
                       for i in range(6)]
             for path, length in ((a, 3), (b, 5), (c, 6)):
                 write(path, events[:length])
-            rows, result = self.read_both_orders(root, [a, b, c])
+            rows, result = self.read_orders(root, [a, b, c])
         self.assertEqual([sum(r["path"] == str(p) for r in rows) for p in (a, b, c)], [3, 2, 1])
         self.assertEqual([r["tokens"]["output"] for r in rows], [1, 2, 3, 4, 5, 6])
         self.assertEqual(result["responses"], 6)
@@ -70,7 +73,7 @@ class LedgerTests(unittest.TestCase):
                 write(original, events)
                 write(resumed, events[2:] if tail_only else events + [response(
                     "new", moment="2026-10-22T12:40:00Z", output_tokens=5)])
-                rows, _ = self.read_both_orders(root, [original, resumed])
+                rows, _ = self.read_orders(root, [original, resumed])
                 self.assertEqual([r["path"] for r in rows if r["tokens"]["output"] <= 4], [str(original)] * 4)
                 self.assertEqual(len(rows), 4 if tail_only else 5)
 
@@ -86,7 +89,7 @@ class LedgerTests(unittest.TestCase):
                 shared = response("shared", output_tokens=1)
                 write(z, [shared])
                 write(a, [shared] + [response(f"extra-{i}", moment=t) for i, t in enumerate(extras)])
-                rows, _ = self.read_both_orders(root, [a, z])
+                rows, _ = self.read_orders(root, [a, z])
                 owner = next(r for r in rows if r["tokens"]["output"])
                 self.assertEqual(owner["path"], str(root / f"{winner}.jsonl"))
 
@@ -99,7 +102,7 @@ class LedgerTests(unittest.TestCase):
                 shared = response("shared", moment=shared_time, output_tokens=1)
                 write(z, [shared])
                 write(a, [shared] + ([] if extra_time == "equal-set" else [response("extra", moment=extra_time)]))
-                rows, _ = self.read_both_orders(root, [a, z])
+                rows, _ = self.read_orders(root, [a, z])
                 self.assertEqual(next(r for r in rows if r["tokens"]["output"])["path"], str(a))
 
     def test_containment_only_compares_files_tied_on_the_earliest_timestamp(self):
@@ -108,21 +111,32 @@ class LedgerTests(unittest.TestCase):
             a, z = root / "a.jsonl", root / "z.jsonl"
             write(z, [response("shared", moment="2026-10-22T12:01:00Z", output_tokens=100)])
             write(a, [response("shared", output_tokens=1), response("extra", moment="2026-10-22T13:00:00Z")])
-            rows, _ = self.read_both_orders(root, [a, z])
+            rows, _ = self.read_orders(root, [a, z])
         shared = next(r for r in rows if r["tokens"]["output"])
         self.assertEqual(shared["path"], str(a))
         self.assertEqual(shared["tokens"]["output"], 100)
         self.assertEqual(shared["timestamp"], timestamp("2026-10-22T12:00:00Z"))
 
-    def test_containment_allows_undated_shared_keys_when_original_has_a_dated_response(self):
+    def test_any_undated_response_in_subset_blocks_containment(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             a, z = root / "a.jsonl", root / "z.jsonl"
             shared = [response("dated", output_tokens=1), response("undated", moment=None, output_tokens=2)]
             write(z, shared)
             write(a, shared + [response("extra", moment="2026-10-22T13:00:00Z")])
-            rows, _ = self.read_both_orders(root, [a, z])
-        self.assertEqual([r["path"] for r in rows if r["tokens"]["output"]], [str(z)] * 2)
+            rows, _ = self.read_orders(root, [a, z])
+        self.assertEqual([r["path"] for r in rows if r["tokens"]["output"]], [str(a)] * 2)
+
+    def test_subset_dates_are_read_in_the_subset_file_itself(self):
+        # u is undated in z, so z's set is not fully dated, though a dates u.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            a, z = root / "a.jsonl", root / "z.jsonl"
+            write(z, [response("d", output_tokens=1), response("u", moment=None, output_tokens=2)])
+            write(a, [response("d", output_tokens=1), response("u", moment="2026-10-22T12:30:00Z", output_tokens=2),
+                      response("e", moment="2026-10-22T13:00:00Z", output_tokens=3)])
+            rows, _ = self.read_orders(root, [a, z])
+        self.assertEqual([r["path"] for r in rows if r["tokens"]["output"]], [str(a)] * 3)
 
     def test_containment_uses_each_keys_earliest_timestamp_in_each_file(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -133,7 +147,7 @@ class LedgerTests(unittest.TestCase):
             write(z, [early, response("first", moment=None, output_tokens=1), shared,
                       response("first", moment="2026-10-22T14:00:00Z", output_tokens=10)])
             write(a, [early, shared, response("extra", moment="2026-10-22T13:00:00Z")])
-            rows, _ = self.read_both_orders(root, [a, z])
+            rows, _ = self.read_orders(root, [a, z])
         self.assertEqual([r["path"] for r in rows if r["tokens"]["output"]], [str(z)] * 2)
         self.assertEqual(sum(r["tokens"]["output"] for r in rows), 12)
 
@@ -146,8 +160,79 @@ class LedgerTests(unittest.TestCase):
             del extra["message"]["usage"]
             write(z, [shared])
             write(a, [shared, extra])
-            rows, _ = self.read_both_orders(root, [a, z])
+            rows, _ = self.read_orders(root, [a, z])
         self.assertEqual(rows[0]["path"], str(z))
+
+    def test_repeated_key_uses_earliest_time_even_when_later_line_is_earlier(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            a, z = root / "a.jsonl", root / "z.jsonl"
+            shared = response("shared", output_tokens=1)
+            write(z, [shared])
+            write(a, [shared, response("extra", moment="2026-10-22T13:00:00Z", output_tokens=2),
+                      response("extra", moment="2026-10-22T11:00:00Z", output_tokens=2)])
+            rows, _ = self.read_orders(root, [a, z])
+        self.assertEqual([r["path"] for r in rows], [str(a)] * 2)
+
+    def test_dropped_tied_file_can_still_drop_another_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            a, x, y = [root / f"{name}.jsonl" for name in ("a", "x", "y")]
+            shared = response("a", output_tokens=1)
+            write(x, [shared])
+            write(y, [shared, response("b", moment="2026-10-22T12:10:00Z", output_tokens=2)])
+            write(a, [shared, response("b", moment="2026-10-22T11:00:00Z", output_tokens=2),
+                      response("c", moment="2026-10-22T12:20:00Z", output_tokens=3)])
+            rows, _ = self.read_orders(root, [a, x, y])
+        self.assertEqual({r["tokens"]["output"]: r["path"] for r in rows}, {1: str(x), 2: str(a), 3: str(a)})
+
+    def test_own_activity_excludes_dropped_rivals_for_original_full_copy_and_tail(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            z, x, w = [root / f"{name}.jsonl" for name in ("z", "x", "w")]
+            original = [response(f"z{i}", moment=f"2026-10-22T1{i}:00:00Z", output_tokens=i + 1)
+                        for i in range(3)]
+            write(z, original)
+            write(x, original + [response("x1", moment="2026-10-22T14:00:00Z", output_tokens=4)])
+            write(w, original[-1:] + [response("w1", moment="2026-10-22T13:00:00Z", output_tokens=5)])
+            rows, _ = self.read_orders(root, [z, x, w])
+        self.assertEqual([sum(r["path"] == str(p) for r in rows) for p in (z, x, w)], [3, 1, 1])
+
+    def test_own_activity_uses_per_file_earliest_time_without_outside_rivals(self):
+        for own_time, winner in (("11:00", "z"), ("11:45", "a")):
+            with self.subTest(own_time=own_time), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                a, z, outside = [root / f"{name}.jsonl" for name in ("a", "z", "outside")]
+                shared = response("shared", output_tokens=1)
+                write(a, [shared, response("own-a", moment="2026-10-22T11:30:00Z")])
+                write(z, [shared, response("own-z", moment="2026-10-22T13:00:00Z"),
+                          response("own-z", moment=f"2026-10-22T{own_time}:00Z")])
+                write(outside, [response("own-z", moment="2026-10-22T10:00:00Z")])
+                rows, _ = self.read_orders(root, [a, z, outside])
+                owner = next(r for r in rows if r["tokens"]["output"])
+                self.assertEqual(owner["path"], str(root / f"{winner}.jsonl"))
+
+    def test_round_own_activity_ignores_undated_responses(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            a, z = [root / name / "streams/run.jsonl" for name in ("a", "z")]
+            for path, models in ((a, ["shared"]), (z, ["shared", "own-z"])):
+                write(path, [{"type": "result", "uuid": "shared", "modelUsage": {
+                    model: dict.fromkeys(ROUND_COUNTERS, 0) | {"outputTokens": 1} for model in models}}])
+            rows, _ = self.read_orders(root, [a, z], round_records)
+        self.assertEqual(next(r for r in rows if r["model"] == "shared")["path"], str(a))
+
+    def test_four_and_five_file_chains_are_independent_of_every_read_order(self):
+        for length in (4, 5):
+            with self.subTest(length=length), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                paths = [root / f"{length - i}.jsonl" for i in range(length)]
+                events = [response(str(i), moment=f"2026-10-22T12:{i:02}:00Z", output_tokens=i + 1)
+                          for i in range(length * 2)]
+                for i, path in enumerate(paths):
+                    write(path, events[:(i + 1) * 2])
+                rows, _ = self.read_orders(root, paths)
+                self.assertEqual([sum(r["path"] == str(p) for r in rows) for p in paths], [2] * length)
 
     def test_bad_usageless_timestamps_still_participate_in_containment_sets(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -158,7 +243,7 @@ class LedgerTests(unittest.TestCase):
             # The unknown extra prevents z from being dropped as an extension of a.
             write(a, [shared])
             write(z, [shared, extra, response("own-z", moment="2026-10-22T13:00:00Z")])
-            rows, _ = self.read_both_orders(root, [a, z])
+            rows, _ = self.read_orders(root, [a, z])
         self.assertEqual(next(r for r in rows if r["tokens"]["output"])["path"], str(z))
 
     def test_round_reader_uses_the_same_containment_rule(self):
@@ -169,7 +254,7 @@ class LedgerTests(unittest.TestCase):
                 write(path, [{"type": "result", "uuid": "shared", "timestamp": "2026-10-22T12:00:00Z",
                               "modelUsage": {f"model-{i}": dict.fromkeys(ROUND_COUNTERS, 0)
                                              | {"outputTokens": i + 1} for i in range(length)}}])
-            rows, _ = self.read_both_orders(root, [a, b, c], round_records)
+            rows, _ = self.read_orders(root, [a, b, c], round_records)
         self.assertEqual([sum(r["path"] == str(p) for r in rows) for p in (a, b, c)], [3, 2, 1])
 
     def test_modifier_only_mismatch_is_unpriced_even_when_every_other_field_is_equal(self):
@@ -180,7 +265,7 @@ class LedgerTests(unittest.TestCase):
                     root = Path(directory)
                     path = root / "a.jsonl"
                     write(path, [response("shared", output_tokens=output, **{field: v}) for v in values])
-                    rows, result = self.read_both_orders(root, [path])
+                    rows, result = self.read_orders(root, [path])
                 self.assertEqual(len(rows), 1)
                 self.assertEqual(rows[0]["line"], 1)
                 self.assertIsNone(price_interval(rows[0], load_prices()))
@@ -199,7 +284,7 @@ class LedgerTests(unittest.TestCase):
             write(a, [response("shared", speed="fast", output_tokens=10),
                       response("priced", "claude-sonnet-5-5", moment="2026-10-22T11:00:00Z", output_tokens=1000000)])
             write(z, [response("shared", speed="standard", output_tokens=1000000)])
-            rows, result = self.read_both_orders(root, [a, z])
+            rows, result = self.read_orders(root, [a, z])
         shared = next(r for r in rows if r["model"] == "claude-opus-5-5")
         self.assertEqual(shared["path"], str(a))
         self.assertEqual(shared["tokens"]["output"], 1000000)
@@ -221,7 +306,7 @@ class LedgerTests(unittest.TestCase):
             write(a, [{"type": "user"}] * 8 + [response("shared", speed="fast"),
                                                          response("shared", speed="standard")])
             write(z, [response("shared"), response("shared", speed="fast")])
-            _, result = self.read_both_orders(root, [a, z])
+            _, result = self.read_orders(root, [a, z])
         self.assertEqual(result["issues"]["records_modifier_mismatch"], 1)
         self.assertEqual(result["issues"]["modifier_mismatch_locations"], [f"{a}:9", f"{a}:10", f"{z}:2"])
 
@@ -233,7 +318,7 @@ class LedgerTests(unittest.TestCase):
             a, z = root / "a.jsonl", root / "z.jsonl"
             write(a, [response("shared", speed="standard", inference_geo="", output_tokens=1000000)])
             write(z, [response("shared", speed="custom-standard", inference_geo="global", output_tokens=1000000)])
-            rows, result = self.read_both_orders(root, [a, z], snapshot=prices)
+            rows, result = self.read_orders(root, [a, z], snapshot=prices)
             price_path = root / "prices.json"
             price_path.write_text(json.dumps(prices))
             with patch("sys.argv", ["claude_ledger", "transcripts", str(root), "--prices", str(price_path), "--json"]), \
@@ -253,7 +338,7 @@ class LedgerTests(unittest.TestCase):
                 known, full = (a, z) if known_in_a else (z, a)
                 write(known, [response("shared", output_tokens=10, speed="fast", inference_geo="us")])
                 write(full, [response("shared", output_tokens=1000000)])
-                rows, result = self.read_both_orders(root, [a, z])
+                rows, result = self.read_orders(root, [a, z])
             self.assertEqual(rows[0]["path"], str(a))
             self.assertEqual(rows[0]["speed"], "fast")
             self.assertEqual(rows[0]["inference_geo"], "us")
@@ -261,13 +346,111 @@ class LedgerTests(unittest.TestCase):
             self.assertEqual(result["issues"].get("records_modifier_mismatch", 0), 0)
             self.assertAlmostEqual(result["priced_records_only_usd"][0], 44)
 
+    def test_known_modifier_and_mismatch_from_copy_outside_timestamp_tie(self):
+        for earlier_speed in (None, "fast"):
+            with self.subTest(earlier_speed=earlier_speed), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                a, z = root / "a.jsonl", root / "z.jsonl"
+                write(a, [response("s", output_tokens=1000000,
+                                   **({} if earlier_speed is None else {"speed": earlier_speed}))])
+                write(z, [response("s", moment="2026-10-22T12:05:00Z", output_tokens=10,
+                                   speed="fast" if earlier_speed is None else "standard")])
+                rows, result = self.read_orders(root, [a, z])
+            self.assertEqual(rows[0]["path"], str(a))
+            self.assertEqual(rows[0].get("speed"), "fast")
+            if earlier_speed is None:
+                self.assertEqual(price_interval(rows[0], load_prices()), (40, 40))
+                self.assertEqual(result["issues"].get("records_modifier_mismatch", 0), 0)
+            else:
+                self.assertIsNone(price_interval(rows[0], load_prices()))
+                self.assertEqual(result["issues"]["records_modifier_mismatch"], 1)
+                self.assertEqual(result["issues"]["modifier_mismatch_locations"], [f"{a}:1", f"{z}:1"])
+
+    def test_null_modifiers_keep_known_values_in_both_readers_and_round_scopes(self):
+        for reader in (transcript_records, round_records):
+            for matched in (False, True) if reader is round_records else (True,):
+                for known_first in (False, True):
+                    with self.subTest(reader=reader.__name__, matched=matched, known_first=known_first), \
+                            tempfile.TemporaryDirectory() as directory:
+                        root = Path(directory)
+                        paths = [root / (f"{n}/streams/run.jsonl" if reader is round_records else f"{n}.jsonl")
+                                 for n in ("a", "z")]
+                        known = {"speed": "fast", "inference_geo": "us"}
+                        unknown = dict.fromkeys(known)
+                        for path, modifiers in zip(paths, (known, unknown) if known_first else (unknown, known)):
+                            if reader is transcript_records:
+                                event = response("s", output_tokens=1000000, **modifiers)
+                            else:
+                                event = {"type": "result", "uuid": "s", "usage": dict.fromkeys(COUNTERS, 0)
+                                         | {"output_tokens": 1000000 if matched else 10} | modifiers,
+                                         "modelUsage": {"claude-opus-5-5": dict.fromkeys(ROUND_COUNTERS, 0)
+                                                        | {"outputTokens": 1000000}}}
+                            write(path, [event])
+                        rows, result = self.read_orders(root, paths, reader)
+                    values = rows[0] if matched else rows[0]["unattributed_modifiers"]
+                    self.assertEqual({k: values.get(k) for k in known}, known)
+                    self.assertEqual(result["issues"].get("records_modifier_mismatch", 0), 0)
+                    if matched:
+                        self.assertAlmostEqual(price_interval(rows[0], load_prices())[0], 44)
+                    else:
+                        self.assertEqual(result["issues"]["records_unsupported_modifiers"], 1)
+
+    def test_empty_modifiers_are_standard_under_any_snapshot_in_both_readers(self):
+        prices = load_prices()
+        for modifier in prices["modifiers"].values():
+            modifier["standard_values"] = [v for v in modifier["standard_values"] if v != ""]
+        for reader in (transcript_records, round_records):
+            for matched in (False, True) if reader is round_records else (True,):
+                with self.subTest(reader=reader.__name__, matched=matched), tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    paths = [root / (f"{n}/streams/run.jsonl" if reader is round_records else f"{n}.jsonl")
+                             for n in ("a", "z")]
+                    for path, modifiers in zip(paths, ({"speed": "", "inference_geo": ""},
+                                                       {"speed": "standard", "inference_geo": "global"})):
+                        if reader is transcript_records:
+                            event = response("s", output_tokens=1000000, **modifiers)
+                        else:
+                            event = {"type": "result", "uuid": "s", "usage": dict.fromkeys(COUNTERS, 0)
+                                     | {"output_tokens": 1000000 if matched else 10} | modifiers,
+                                     "modelUsage": {"claude-opus-5-5": dict.fromkeys(ROUND_COUNTERS, 0)
+                                                    | {"outputTokens": 1000000}}}
+                        write(path, [event])
+                    rows, result = self.read_orders(root, paths, reader, prices)
+                self.assertEqual(result["issues"].get("records_modifier_mismatch", 0), 0)
+                self.assertEqual(result["issues"].get("records_unsupported_modifiers", 0), 0)
+                self.assertEqual(price_interval(rows[0], prices), (20, 20))
+
+    def test_lone_null_modifiers_price_like_absent_including_unattributed_totals(self):
+        prices = load_prices()
+        row = record(output=1000000)
+        absent = report([row.copy()], prices, defaultdict(int))
+        row.update(speed=None, inference_geo=None, unattributed_modifiers={"speed": None, "inference_geo": None})
+        self.assertEqual(price_interval(row, prices), (20, 20))
+        self.assertEqual(report([row], prices, defaultdict(int)), absent)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "a.jsonl"
+            write(path, [response("s", output_tokens=1000000, speed=None, inference_geo=None)])
+            rows, result = self.read_orders(root, [path])
+        self.assertTrue(result["fully_priced"])
+        self.assertEqual(price_interval(rows[0], prices), (20, 20))
+
+    def test_mismatch_can_also_count_as_unsupported(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "a.jsonl"
+            write(path, [response("s", speed=speed, output_tokens=1000000) for speed in ("turbo", "standard")])
+            _, result = self.read_orders(root, [path])
+        self.assertEqual(result["issues"]["records_modifier_mismatch"], 1)
+        self.assertEqual(result["issues"]["records_unsupported_modifiers"], 1)
+
     def test_modifiers_merge_field_by_field_from_different_copies(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             paths = [root / f"{name}.jsonl" for name in ("a", "b", "c")]
             for path, modifiers, output in zip(paths, ({"speed": "fast"}, {"inference_geo": "us"}, {}), (1, 2, 1000000)):
                 write(path, [response("shared", output_tokens=output, **modifiers)])
-            rows, result = self.read_both_orders(root, paths)
+            rows, result = self.read_orders(root, paths)
         self.assertEqual((rows[0]["speed"], rows[0]["inference_geo"]), ("fast", "us"))
         self.assertAlmostEqual(result["priced_records_only_usd"][0], 44)
 
@@ -280,7 +463,7 @@ class LedgerTests(unittest.TestCase):
                     write(path, [{"type": "result", "uuid": "shared", "usage": dict.fromkeys(COUNTERS, 0) | modifiers,
                                   "modelUsage": {"claude-opus-5-5": dict.fromkeys(ROUND_COUNTERS, 0)
                                                  | {"outputTokens": output}}}])
-                rows, result = self.read_both_orders(root, paths, round_records)
+                rows, result = self.read_orders(root, paths, round_records)
             self.assertEqual(rows[0]["unattributed_modifiers"], {"speed": speed, "inference_geo": geo})
             self.assertEqual(rows[0]["tokens"]["output"], 1000000)
             self.assertEqual(result["issues"].get("records_modifier_mismatch", 0), 0)
@@ -297,7 +480,7 @@ class LedgerTests(unittest.TestCase):
                                   | {"output_tokens": 1000000 if matched else 10, "speed": speed},
                                   "modelUsage": {"claude-opus-5-5": dict.fromkeys(ROUND_COUNTERS, 0)
                                                  | {"outputTokens": 1000000}}}])
-                rows, result = self.read_both_orders(root, paths, round_records)
+                rows, result = self.read_orders(root, paths, round_records)
             self.assertEqual(len(rows), 1)
             self.assertEqual(result["issues"]["records_modifier_mismatch"], 1)
             self.assertEqual(result["issues"]["modifier_mismatch_locations"], [f"{p}:1" for p in paths])
@@ -314,13 +497,73 @@ class LedgerTests(unittest.TestCase):
                               | {"output_tokens": 1, "inference_geo": geo},
                               "modelUsage": {model: dict.fromkeys(ROUND_COUNTERS, 0) | {"outputTokens": 1000000}
                                              for model in ("claude-opus-5-5", "claude-sonnet-5-5")}}])
-            rows, result = self.read_both_orders(root, paths, round_records)
+            rows, result = self.read_orders(root, paths, round_records)
         self.assertEqual(len(rows), 2)
         self.assertEqual(result["issues"]["records_modifier_mismatch"], 2)
         self.assertEqual(result["issues"]["modifier_mismatch_locations"], [f"{p}:1" for p in paths])
         self.assertTrue(result["source_complete"])
         self.assertEqual(sum(g["unpriced_records"] for g in result["groups"].values()), 2)
         self.assertEqual(sum(g["totals"]["output"] for g in result["groups"].values()), 2000000)
+
+    def test_fullest_matched_round_has_no_unattributed_modifiers_but_still_compares_copies(self):
+        for smaller_speed in ("fast", "standard"):
+            with self.subTest(smaller_speed=smaller_speed), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                paths = [root / name / "streams/run.jsonl" for name in ("a", "z")]
+                for path, output, speed in ((paths[0], 1000000, "fast"), (paths[1], 10, smaller_speed)):
+                    write(path, [{"type": "result", "uuid": "s", "usage": dict.fromkeys(COUNTERS, 0)
+                                  | {"output_tokens": 1000000, "speed": speed},
+                                  "modelUsage": {"claude-opus-5-5": dict.fromkeys(ROUND_COUNTERS, 0)
+                                                 | {"outputTokens": output}}}])
+                rows, result = self.read_orders(root, paths, round_records)
+            self.assertTrue(rows[0]["totals_from_lead"])
+            self.assertEqual(rows[0]["unattributed_modifiers"], {})
+            self.assertEqual(result["issues"].get("records_unsupported_modifiers", 0), 0)
+            if smaller_speed == "fast":
+                self.assertEqual(price_interval(rows[0], load_prices()), (40, 40))
+                self.assertEqual(result["issues"].get("records_modifier_mismatch", 0), 0)
+            else:
+                self.assertIsNone(price_interval(rows[0], load_prices()))
+                self.assertEqual(result["issues"]["records_modifier_mismatch"], 1)
+                self.assertEqual(result["issues"]["modifier_mismatch_locations"], [f"{p}:1" for p in paths])
+
+    def test_round_reader_uses_active_snapshot_for_standard_aliases(self):
+        prices = load_prices()
+        prices["modifiers"]["speed"]["standard_values"].append("custom-standard")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = [root / name / "streams/run.jsonl" for name in ("a", "z")]
+            for path, speed in zip(paths, ("standard", "custom-standard")):
+                write(path, [{"type": "result", "uuid": "s", "usage": dict.fromkeys(COUNTERS, 0)
+                              | {"output_tokens": 1000000, "speed": speed},
+                              "modelUsage": {"claude-opus-5-5": dict.fromkeys(ROUND_COUNTERS, 0)
+                                             | {"outputTokens": 1000000}}}])
+            rows, result = self.read_orders(root, paths, round_records, prices)
+            price_path = root / "prices.json"
+            price_path.write_text(json.dumps(prices))
+            with patch("sys.argv", ["claude_ledger", "rounds", str(root), "--prices", str(price_path), "--json"]), \
+                    patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                self.assertEqual(main(), 0)
+            self.assertEqual(result, json.loads(stdout.getvalue()))
+        self.assertEqual(result["issues"].get("records_modifier_mismatch", 0), 0)
+        self.assertEqual(price_interval(rows[0], prices), (20, 20))
+
+    def test_new_attribution_does_not_change_equal_fullness_round_token_selection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            a, z = [root / name / "streams/run.jsonl" for name in ("a", "z")]
+            for path, lead_output, helper in ((a, 1000000, False), (z, 10, True)):
+                models = {"claude-opus-5-5": dict.fromkeys(ROUND_COUNTERS, 0) | {"outputTokens": 1000000}}
+                if helper:
+                    models["claude-haiku-5-5"] = dict.fromkeys(ROUND_COUNTERS, 0)
+                write(path, [{"type": "result", "uuid": "s", "usage": dict.fromkeys(COUNTERS, 0)
+                              | {"output_tokens": lead_output, "speed": "fast"}, "modelUsage": models}])
+            rows, result = self.read_orders(root, [a, z], round_records)
+        opus = next(r for r in rows if r["model"] == "claude-opus-5-5")
+        self.assertEqual(opus["path"], str(a))
+        self.assertFalse(opus["totals_from_lead"])
+        self.assertEqual(opus["unattributed_modifiers"], {"speed": "fast"})
+        self.assertEqual(result["issues"]["records_unsupported_modifiers"], 2)
 
     def test_modifier_mismatches_do_not_replace_model_or_non_cumulative_conflicts(self):
         for model, tokens in (("claude-sonnet-5-5", {"input_tokens": 10}),
@@ -330,7 +573,7 @@ class LedgerTests(unittest.TestCase):
                 path = root / "a.jsonl"
                 write(path, [response("shared", input_tokens=10, speed="fast"),
                              response("shared", model, speed="standard", **tokens)])
-                _, result = self.read_both_orders(root, [path])
+                _, result = self.read_orders(root, [path])
             self.assertEqual(result["issues"]["conflicting_copies"], 2)
             self.assertFalse(result["source_complete"])
             self.assertIsNone(result["agent_hours_10min_buckets"])
@@ -345,7 +588,7 @@ class LedgerTests(unittest.TestCase):
             for path in paths:
                 write(path, [event])
             for selected in (paths[:1], paths):
-                rows, result = self.read_both_orders(root, selected, round_records)
+                rows, result = self.read_orders(root, selected, round_records)
                 self.assertEqual(rows[0]["speed"], "standard")
                 self.assertEqual(rows[0]["unattributed_modifiers"], {"speed": "fast"})
                 self.assertEqual(result["issues"].get("records_modifier_mismatch", 0), 0)
@@ -365,7 +608,7 @@ class LedgerTests(unittest.TestCase):
                     write(path, [{"type": "result", "uuid": "shared", "usage": usage,
                                   "modelUsage": {"claude-opus-5-5": dict.fromkeys(ROUND_COUNTERS, 0)
                                                  | {"outputTokens": output}}}])
-                rows, result = self.read_both_orders(root, paths, round_records)
+                rows, result = self.read_orders(root, paths, round_records)
             self.assertEqual(rows[0]["speed"], "fast")
             self.assertEqual(rows[0]["tokens"]["output"], 1000000)
             self.assertFalse(result["fully_priced"])
@@ -569,7 +812,7 @@ class LedgerTests(unittest.TestCase):
                 owner = next(r for r in rows if r["tokens"]["output"])
                 self.assertEqual(owner["agent"], str(a))
 
-    def test_undated_own_activity_sorts_after_dated_activity_and_before_no_activity(self):
+    def test_undated_own_activity_is_ignored_and_none_falls_back_to_path(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             a, y, z = (root / f"{name}.jsonl" for name in ("a", "y", "z"))
@@ -583,7 +826,7 @@ class LedgerTests(unittest.TestCase):
                     with self.subTest(dated=dated, paths=paths), patch.object(Path, "rglob", return_value=iter(paths)):
                         rows = transcript_records(root, defaultdict(int))
                     owner = next(r for r in rows if r["tokens"]["output"])
-                    self.assertEqual(owner["agent"], str(z if dated else y))
+                    self.assertEqual(owner["agent"], str(z if dated else a))
 
     def test_usageless_assistant_with_bad_or_missing_timestamp_gives_no_own_activity(self):
         for value in ("missing", None, 12345, False, [], {}, "", "bad", "2026-10-22T12:00:00"):
@@ -612,7 +855,7 @@ class LedgerTests(unittest.TestCase):
                 with self.assertRaises(error):
                     transcript_records(Path(directory), defaultdict(int))
 
-    def test_usageless_bad_timestamp_still_removes_copied_id_from_own_activity(self):
+    def test_copy_outside_dispute_does_not_remove_own_activity(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             shared = response("shared", output_tokens=10)
@@ -622,10 +865,10 @@ class LedgerTests(unittest.TestCase):
                                      "message": {"id": "own-a", "model": "m"}}])
             rows = transcript_records(root, defaultdict(int))
         owner = next(r for r in rows if r["tokens"]["output"])
-        self.assertEqual(owner["agent"], str(root / "b.jsonl"))
+        self.assertEqual(owner["agent"], str(root / "a.jsonl"))
         self.assertEqual(len(rows), 3)
 
-    def test_own_activity_includes_responses_without_usage_and_excludes_copies_without_usage(self):
+    def test_dated_usageless_activity_is_own_even_when_copied_outside_dispute(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             no_usage = response("no-usage", moment="2026-10-22T10:00:00Z")
@@ -636,11 +879,11 @@ class LedgerTests(unittest.TestCase):
             rows = transcript_records(root, defaultdict(int))
             shared = next(r for r in rows if r["tokens"]["output"])
             self.assertEqual(shared["agent"], str(root / "z.jsonl"))
-            # Its copy in another file removes this ID from both files' own activity.
+            # A file outside the dispute does not remove this ID from z's own activity.
             write(root / "b.jsonl", [no_usage])
             rows = transcript_records(root, defaultdict(int))
             shared = next(r for r in rows if r["tokens"]["output"])
-            self.assertEqual(shared["agent"], str(root / "a.jsonl"))
+            self.assertEqual(shared["agent"], str(root / "z.jsonl"))
 
     def test_last_resort_is_smallest_path_then_group(self):
         for own_activity in (False, True):
@@ -778,8 +1021,8 @@ class LedgerTests(unittest.TestCase):
         self.assertIsNone(price_interval(row, prices))
 
     def test_unsupported_modifiers_are_counted_unpriced_and_keep_hours(self):
-        cases = [("claude-opus-5-5", "speed", v) for v in ("turbo", "", None, False, 1, [], {})]
-        cases += [("claude-opus-5-5", "inference_geo", v) for v in ("eu", "US", None, False, 1, [], {})]
+        cases = [("claude-opus-5-5", "speed", v) for v in ("turbo", False, 1, [], {})]
+        cases += [("claude-opus-5-5", "inference_geo", v) for v in ("eu", "US", False, 1, [], {})]
         cases += [("claude-sonnet-5-5", "speed", "fast"), ("claude-haiku-4-5-20251001", "inference_geo", "us"),
                   ("glm-5.3", "speed", "fast")]
         for model, field, value in cases:
@@ -1033,7 +1276,7 @@ class LedgerTests(unittest.TestCase):
     def test_nonstandard_lead_modifiers_leave_every_model_total_unpriced(self):
         for modifiers in ({"speed": "fast"}, {"inference_geo": "us"},
                           {"speed": "fast", "inference_geo": "us"},
-                          {"speed": "turbo"}, {"inference_geo": None}):
+                          {"speed": "turbo"}):
             for lead_output, model_output, helper_output in ((1000000, 2000000, None),
                                                             (10, 1000000, None),
                                                             (1000000, 1000000, 0),
@@ -1055,7 +1298,8 @@ class LedgerTests(unittest.TestCase):
                     self.assertTrue(all(price_interval(row, load_prices()) is None for row in rows))
 
     def test_standard_lead_modifiers_do_not_change_model_total_prices(self):
-        for modifiers in ({}, {"speed": "standard", "inference_geo": "global"}, {"inference_geo": ""}):
+        for modifiers in ({}, {"speed": "standard", "inference_geo": "global"},
+                          {"speed": "", "inference_geo": ""}, {"speed": None, "inference_geo": None}):
             for helper in (False, True):
                 with self.subTest(modifiers=modifiers, helper=helper):
                     models = {"claude-opus-5-5": dict.fromkeys(ROUND_COUNTERS, 0) | {"outputTokens": 1000000}}

@@ -100,7 +100,7 @@ def timestamp(value: str | None) -> float | None:
 
 
 def file_own_activity(copies: dict) -> dict:
-    # Own activity excludes every ID copied into another file, regardless of read order.
+    # Preserve the existing copy order for equal-fullness token selection and output ordering.
     own_activity = {}
     for rows in copies.values():
         if len({r["path"] for r in rows}) == 1:
@@ -114,9 +114,24 @@ def file_own_activity(copies: dict) -> dict:
     return own_activity
 
 
+def disputed_own_activity(responses: dict, paths: frozenset) -> dict:
+    # Only dated responses unique among the files still in dispute establish a start.
+    starts = {}
+    for path in paths:
+        rivals = set().union(*(responses[other] for other in paths if other != path))
+        starts[path] = min((responses[path][key] for key in responses[path].keys() - rivals
+                            if responses[path][key] is not None), default=math.inf)
+    return starts
+
+
+def standard_modifier(value, modifier: dict) -> bool:
+    return value == "" or value in modifier["standard_values"]
+
+
 def deduplicate_records(copies: dict, issues: dict, activity=None, snapshot=None) -> list[dict]:
     activity = copies if activity is None else activity
     own_activity = file_own_activity(activity)
+    disputed_activity = {}
     snapshot = load_prices() if snapshot is None else snapshot
     responses = defaultdict(dict)
     for key, rows in activity.items():
@@ -136,6 +151,7 @@ def deduplicate_records(copies: dict, issues: dict, activity=None, snapshot=None
             first, second = responses[original], responses[extended]
             last = last_response[original]
             extensions[pair] = (first.keys() < second.keys() and last is not None
+                                and all(t is not None for t in first.values())
                                 and all(second[key] is not None and second[key] >= last
                                         for key in second.keys() - first.keys()))
         return extensions[pair]
@@ -162,7 +178,13 @@ def deduplicate_records(copies: dict, issues: dict, activity=None, snapshot=None
         tied = [row for row in rows if row["timestamp"] == rows[0]["timestamp"]]
         paths = {row["path"] for row in tied}
         dropped = {y for y in paths if any(copied_extension(x, y) for x in paths if x != y)}
-        chosen = dict(next(row for row in tied if row["path"] not in dropped))
+        disputed = frozenset(paths - dropped)
+        if disputed not in disputed_activity:
+            disputed_activity[disputed] = disputed_own_activity(responses, disputed)
+        starts = disputed_activity[disputed]
+        chosen = dict(min((row for row in tied if row["path"] in disputed),
+                          key=lambda row: (starts[row["path"]], row["path"],
+                                           row["role"] + " " + row["model"], row["line"])))
         if conflicting:
             # Keep the attributed copy intact; conflicting totals are not reconcilable.
             conflicts.update(conflicting)
@@ -177,20 +199,22 @@ def deduplicate_records(copies: dict, issues: dict, activity=None, snapshot=None
             for field, modifier in snapshot["modifiers"].items():
                 for container in (None, "unattributed_modifiers"):
                     # A matched smaller lead copy cannot price a fuller total including helpers.
-                    source = ("lead_modifiers" if container is not None
-                              and not fullest.get("totals_from_lead", True) else container)
+                    source = "lead_modifiers" if container is not None else None
                     known = [(row, values[field]) for row in rows
                              for values in [row if source is None else row.get(source, {})]
-                             if field in values]
+                             if values.get(field) is not None]
                     for index, (old, old_value) in enumerate(known):
                         for new, new_value in known[index + 1:]:
                             if old_value != new_value and not (
-                                    old_value in modifier["standard_values"]
-                                    and new_value in modifier["standard_values"]):
+                                    standard_modifier(old_value, modifier)
+                                    and standard_modifier(new_value, modifier)):
                                 mismatch.update((old["location"], new["location"]))
+                    if container is not None and fullest.get("totals_from_lead", False):
+                        chosen[container] = {}
+                        continue
                     values = [row if source is None else row.get(source, {})
                               for row in [fullest, *rows]]
-                    value = next((v for v in values if field in v), None)
+                    value = next((v for v in values if v.get(field) is not None), None)
                     target = chosen if container is None else chosen.get(container, {}).copy()
                     if value is not None:
                         target[field] = value[field]
@@ -334,12 +358,12 @@ def pricing_multiplier(record: dict, snapshot: dict) -> float | None:
     multiplier = 1.0
     for field, modifier in snapshot["modifiers"].items():
         unattributed = record.get("unattributed_modifiers", {})
-        if field in unattributed and unattributed[field] not in modifier["standard_values"]:
+        if unattributed.get(field) is not None and not standard_modifier(unattributed[field], modifier):
             return None
-        if field not in record:
+        if record.get(field) is None:
             continue
         value = record[field]
-        if value in modifier["standard_values"]:
+        if standard_modifier(value, modifier):
             continue
         if value != modifier["value"] or record["model"] not in modifier["models"]:
             return None

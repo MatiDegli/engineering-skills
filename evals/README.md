@@ -222,18 +222,20 @@ stream, including helpers, without adding the lead's usage again. `transcripts
 It uses an agent's `agentType` metadata for grouping, never words such as "reviewer" in its prompt.
 General-purpose agents remain general-purpose; the ledger does not infer their actual role. For
 copied response IDs, attribution goes to the earliest timestamp. Among files tied on that timestamp,
-drop a file when another tied file has a strict subset of its response keys and every extra response
-is dated at or after that other file's last response. Response sets include all assistant events,
-including those without usage; each key's time is its earliest timestamp in that file. An undated
-extra response, or a subset file with no dated response, prevents this containment step. Equal sets
-are kept. This leaves an original's responses with the original when a resume copies them and adds
-later responses; a resume containing only the original's tail also leaves the original's responses
-in place. Among the remaining files, ties go to the file whose own activity started first: its
-earliest response with an ID found in no other file. A file with only
-undated own responses follows every file with dated own activity and precedes every file with none.
-Usage-less assistant lines with missing, non-string, naive, or unparseable timestamps give no own
-activity; their IDs still participate in copy detection. Remaining ties use the smallest file path,
-then the reported group. Tokens come from the most complete cumulative copy without moving that
+drop a file when another tied file has a strict subset of its response keys, every response of that
+subset is dated, and every extra response is dated at or after the subset's last response. Any tied
+file may drop another, including a file that is itself dropped. Transcript response sets include all
+assistant events, including those without usage; a round file's response set is its final result's
+`(uuid, model)` pairs. Each key's time is its earliest dated timestamp in that file, or unknown if
+none is dated. Any undated response in the subset or among the extra responses prevents this
+containment step. Equal sets are kept. When all responses are dated, a full resume with only later
+extra responses leaves the original's responses in place. Among the files still tied and not
+dropped, own activity starts at the earliest dated response that no other remaining file holds,
+using that response's per-file time. The earliest start wins; a file with no such dated response
+cannot win this step. Undated own responses are ignored. Usage-less assistant lines with missing,
+non-string, naive, or unparseable timestamps give no dated activity; their IDs still participate in
+copy detection. If no file has dated own activity, or starts tie, use the smallest file path, then
+the reported group. Tokens come from the most complete cumulative copy without moving that
 attribution; file read order does not affect the result. Different models or non-cumulative token
 counts are conflicts: the attributed copy stays intact, `conflicting_copies` counts each source
 location involved in a conflict (including the retained copy), and `conflicting_copy_locations`
@@ -242,13 +244,16 @@ names them as `path:line`, sorted by path and numeric line number.
 Copies with different known `speed` or `inference_geo` values still merge and use that attribution
 rule, but the response stays unpriced. `records_modifier_mismatch` counts affected responses in the
 selected window; `modifier_mismatch_locations` names every copy involved as `path:line`, sorted by
-path and numeric line number. Values listed as standard in the active snapshot are equivalent,
-including empty and `"global"` geography. A missing modifier keeps the known value from another
-copy, even a less complete one; round results' `unattributed_modifiers` merge field by field too.
-If a smaller round copy matched the lead's usage but the fullest includes helpers, its known lead
-modifiers remain unattributed to those fuller totals, preserving the round pricing rule below.
-Modifier mismatches keep token totals, hours, source completeness, and other records' prices.
-Both readers use these containment and modifier rules.
+path and numeric line number. Values listed as standard in the active snapshot are equivalent; an
+explicit `""` is always standard for both modifiers, regardless of the snapshot. Missing and `null`
+modifiers are unknown: they keep a known value from another copy, even a less complete or
+later-dated one, without a mismatch. Round results' `unattributed_modifiers` merge field by field
+too. If a smaller round copy matched the lead's usage but the fullest includes helpers, its known
+lead modifiers remain unattributed to those fuller totals, preserving the round pricing rule below.
+When the fullest round copy's totals match its lead, no modifiers remain unattributed, but copies'
+lead modifiers are still compared for mismatches. Modifier mismatches keep token totals, hours,
+source completeness, and other records' prices. A response can count in both
+`records_modifier_mismatch` and `records_unsupported_modifiers`. Both readers use these rules.
 
 Both commands show raw tokens and list-price USD ranges using the dated snapshot in
 `tools/claude_ledger_prices.json`. The snapshot was checked on 2026-10-22 against [Anthropic's
@@ -269,10 +274,10 @@ The maintainer verified the modifiers against the same pricing page on 2026-10-2
 `"fast"` doubles every token category for Opus 5.5, Opus 5, and Opus 4.8; `usage.inference_geo` of
 `"us"` multiplies every category by 1.1 for the listed Claude 4.6 and later models. Both stack,
 including cache writes and reads. Fast mode and US geography price only models with base rates in
-the snapshot; other eligible models with nonzero usage stay unpriced as unknown models. Missing
-speed or `"standard"`, and missing, empty, or `"global"` geography use standard prices. Other
-values, or modifiers on an unlisted model, make the record unpriced and count as
-`records_unsupported_modifiers`, even with zero known tokens. Replacement snapshots must include
+the snapshot; other eligible models with nonzero usage stay unpriced as unknown models. Missing or
+`null` modifiers apply no modifier; `""` or `"standard"` speed, and `""` or `"global"` geography use
+standard prices. Other values, or modifiers on an unlisted model, make the record unpriced and count
+as `records_unsupported_modifiers`, even with zero known tokens. Replacement snapshots must include
 both modifier definitions. The round reader uses `result.usage`'s TTL split and modifiers only when
 its totals equal the single model's `modelUsage` totals. Otherwise it uses `modelUsage` totals. If
 the lead's `result.usage` carries a non-standard modifier in that case, every record of the result
