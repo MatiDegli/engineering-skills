@@ -1,5 +1,22 @@
 # Decisions
 
+## 2026-10-23 — Scenario findings judged by behaviour and a calibrated grader
+
+"Scenario evaluations for work skills" reads a run's report with patterns. Three review rounds
+showed the limit of that: each fixed the wordings its review listed and left their neighbours open.
+The last one scored about 120 of 370 new sentences wrongly, among them "over the weekly limit"
+missed and a helper reviewing its own change credited. Patterns that read a report race against
+natural language.
+
+The maintainer chose, on 2026-10-23, to score what an agent does wherever the scenario allows: what
+it launched, which files and branches it changed, and which commands it ran. These checks read the
+state and the stream and need no reading of prose. A finding that exists only in the report is
+judged by a model against a written rubric per seed, and the judgment must quote the report. The
+labelled phrasings measure the grader's accuracy before any round relies on it. The patterns stay
+as a second opinion, and the maintainer's blind comparison stays on top. The grader sees the
+report and the rubric, never the arm. The maintainer also approved the oracle changes through
+`3e6aaad` as the base for the baseline.
+
 ## 2026-10-23 — Provider-neutral coordination with a profile per repository
 
 The maintainer wants `coordinating-agents` to hold, in general form, the cost and workflow
