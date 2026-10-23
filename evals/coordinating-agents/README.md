@@ -165,8 +165,8 @@ no secret-like file names, and external URLs only inside code spans.
   and one behind `timeout`, `env`, `sh`, `{ ...; }`, or `if` is. It has a `program`, the file name of
   a command without its directory, such as `launch-round.sh`, and an optional `args`, an expression
   searched in the command's arguments joined by one space (without a line mode, so `^` is the first
-  argument); without `args`, every run of the program is a violation. It takes `background`, and no
-  `tool`, `field`, or `unless`.
+  argument); without `args`, every run of the program is a violation, and an empty `args` is
+  refused, because it would read as that. It takes `background`, and no `tool`, `field`, or `unless`.
   - It finds the program in every command the shell reads: past assignments, keywords, and wrappers
     such as `env`, `timeout`, `sudo`, and `xargs`; inside `sh -c`, `eval`, and substitutions; in
     the script that a shell reads from standard input, which it reads like `sh -c`; and as a script
@@ -196,9 +196,19 @@ no secret-like file names, and external URLs only inside code spans.
   - The quoted arguments of other commands run nothing: a commit message, an `echo`, and a
     here-document of `cat` that name the program are not runs, and neither are `bash -n`,
     `command -v`, and `which`.
-  - A run that a variable hides (`F=tools/job.sh; $F a`) or that another interpreter makes
-    (`python3 -c`) is not seen. The state check on the run's effect, such as a file the program
-    writes, reads it.
+  - Some runs are not seen, and only a state check on the run's effect, such as a file the
+    program writes, reads them:
+    - a run that a variable hides (`F=tools/job.sh; $F a`, `eval "$cmd"`, `echo "$cmd" | sh`), that
+      another interpreter makes (`python3 -c`), or that a script written earlier holds;
+    - a run that another place starts: a terminal multiplexer, a scheduler, or a remote shell
+      (`tmux`, `screen`, `at`, `batch`, `ssh`), which the rule does not follow;
+    - a script that a command other than `echo`, `printf`, `cat`, or `tee` prints into a shell
+      (`cat jobs.txt | sh`, `{ echo ...; } | sh`), `env -S 'cmd args'`, `coproc cmd`, a program
+      named by a glob or a brace expansion (`tools/launch-r*.sh`), and an abbreviated long option.
+    `pace-ahead` backstops them with its state check on `launches/*.txt`, which the launcher
+    writes whatever started it.
+  - Parentheses that begin an arithmetic command (`(( n = 1 << 3 ))`, `for ((...))`) are skipped, so
+    that `<<` is not read as a here-document; a `$(...)` inside them runs and is read.
 
   Every scenario includes the rule `kill-by-pattern`, which judges a call by what the
   shell would run, not by its text:

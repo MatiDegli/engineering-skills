@@ -1040,6 +1040,24 @@ REDIRECT = re.compile(r"&>>?|<<<|<<-?|<>|>>|>&|<&|>\||>|<")
 WORD_END = " \t\n;&|()<>"
 
 
+def arithmetic_end(text: str, start: int) -> int | None:
+    """Return the index past the `))` of the arithmetic command that `((` begins at `start`.
+
+    None when the parentheses close some other way, as in `((a); (b))`, two subshells in a third.
+    """
+    depth, inner = 0, None
+    for index in range(start, len(text)):
+        if text[index] == "(":
+            depth += 1
+        elif text[index] == ")":
+            depth -= 1
+            if depth == 1 and inner is None:
+                inner = index  # the first `)` closes the second `(`
+            elif depth == 0:
+                return index + 1 if inner == index - 1 else None
+    return None
+
+
 class ShellParser:
     """Split shell text into simple commands the way the shell reads it, without running anything.
 
@@ -1080,6 +1098,10 @@ class ShellParser:
             elif char == ")" and closing:
                 self.index += 1
                 return
+            elif (char == "(" and text.startswith("((", self.index) and (command is None or all(w.text in ARITHMETIC_AFTER for w in command.words))
+                  and (stop := arithmetic_end(text, self.index))):
+                self.read_substitutions(text[self.index:stop])  # `(( n = 1 << 3 ))` is no here-document; its `$(...)` runs
+                self.index, command, redirect = stop, None, None
             elif char in ";&|()" and not text.startswith("&>", self.index):
                 operator = text[self.index:self.index + 2]
                 self.index += 2 if operator in ("&&", "||", "|&", ";;") else 1
@@ -1328,6 +1350,7 @@ def printed_by(commands: list[ShellCommand], depth: int) -> str | None:
 
 SHELLS = {"sh", "bash", "dash", "zsh", "ksh", "ash"}
 KEYWORDS = {"if", "then", "else", "elif", "do", "while", "until", "!", "{", "}"}
+ARITHMETIC_AFTER = KEYWORDS | {"for"}  # `for ((i = 0; i < n; i++))` and `if (( n ))` begin with arithmetic
 ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]*\])?\+?=")
 # Commands that run another command: the short options that take a value, the long ones that do (a
 # long option with `=` carries its value), and the operands to skip. The options come from the
@@ -2095,7 +2118,12 @@ def runs_problems(rule: dict, where: str) -> list[str]:
     if not re.fullmatch(r"[^\s/]+", spec["program"]):
         problems.append(f"{where}: the program of runs is a file name, without a directory")
     if "args" in spec:
-        problems += pattern_problems(spec["args"], where) if isinstance(spec["args"], str) else [f"{where}: args of runs is an expression"]
+        if not isinstance(spec["args"], str):
+            problems.append(f"{where}: args of runs is an expression")
+        elif not spec["args"]:
+            problems.append(f"{where}: args of runs is empty, which counts every run; leave args out for that")
+        else:
+            problems += pattern_problems(spec["args"], where)
     if rule.get("tool", "Bash") != "Bash" or {"field", "unless"} & set(rule):
         problems.append(f"{where}: a rule with runs reads the command of a Bash call, so it has no tool, field, or unless")
     return problems

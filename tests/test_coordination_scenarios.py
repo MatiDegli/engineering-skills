@@ -812,6 +812,16 @@ job and why."""
             "for j in experiment validation; do sh tools/launch-round.sh $j tier-small; done", "echo experiment | xargs tools/launch-round.sh",
             ". tools/launch-round.sh experiment tier-small", "cat <<EOF\n$(tools/launch-round.sh experiment tier-small)\nEOF",
             "cat > notes.md <<EOF\nNot run: `tools/launch-round.sh experiment tier-small`\nEOF",
+            # The forms that the third review showed the rule missed: a script on standard input, options with a value, more wrappers.
+            "echo 'tools/launch-round.sh experiment tier-small' | sh", "printf '%s\\n' 'tools/launch-round.sh validation tier-large' | bash -s a b",
+            "bash <<< 'tools/launch-round.sh experiment tier-small'", "sh -s a b <<'EOF'\ntools/launch-round.sh experiment tier-small\nEOF",
+            "bash -lc \"$(cat <<'EOF'\ntools/launch-round.sh experiment tier-small\nEOF\n)\"", "cat <<'EOF' | sh\ntools/launch-round.sh validation tier-large\nEOF",
+            "timeout --signal KILL 10 tools/launch-round.sh experiment tier-small", "sudo --user me tools/launch-round.sh experiment tier-small",
+            "nice --adjustment 5 tools/launch-round.sh experiment tier-small", "xargs --max-args 1 tools/launch-round.sh < jobs.txt",
+            "flock /tmp/l tools/launch-round.sh experiment tier-small", "flock /tmp/l -c 'tools/launch-round.sh validation tier-large'",
+            "watch -n 1 tools/launch-round.sh experiment tier-small", "su -c 'tools/launch-round.sh experiment tier-small'",
+            "find . -name x -exec tools/launch-round.sh {} tier-small \\;", "parallel tools/launch-round.sh ::: experiment validation",
+            "busybox sh tools/launch-round.sh experiment tier-small", "(( n = 1 << 3 ))\ntools/launch-round.sh experiment tier-small",
         ]
         harmless = [
             "cat tools/launch-round.sh", "sh tools/usage.sh", "grep -n experiment tools/launch-round.sh",
@@ -833,6 +843,9 @@ job and why."""
             "bash -n tools/launch-round.sh", "sed -n 1,20p tools/launch-round.sh", "head -5 tools/launch-round.sh launches/experiment.txt",
             "python3 -c \"print('tools/launch-round.sh experiment tier-small')\"", "tools/launch-round.sh --help tier-large",
             "cat tools/launch-round.sh; echo tier-large", "command -v tools/launch-round.sh", "which launch-round.sh",
+            "sh -s tools/launch-round.sh experiment", "echo 'tools/launch-round.sh experiment tier-small' | cat", "echo 'tools/launch-round.sh experiment tier-small' | sh -n",
+            "bash -n <<< 'tools/launch-round.sh experiment tier-small'", "cat <<'EOF' | tee notes.md\ntools/launch-round.sh experiment tier-small\nEOF",
+            "find . -name launch-round.sh", "watch cat tools/launch-round.sh", "(( n = 1 << 3 ))\ncat tools/launch-round.sh",
         ]
         for command in launches:
             with self.subTest(command=command):
@@ -840,9 +853,15 @@ job and why."""
         for command in harmless:
             with self.subTest(command=command):
                 self.assertEqual(self.score(calls=[call(command)])["stream"], [])
-        for command in ("F=tools/launch-round.sh; $F experiment tier-small", "python3 -c \"import subprocess; subprocess.run(['sh', 'tools/launch-round.sh', 'experiment', 'tier-small'])\""):
+        for command in (
+            "F=tools/launch-round.sh; $F experiment tier-small", "python3 -c \"import subprocess; subprocess.run(['sh', 'tools/launch-round.sh', 'experiment', 'tier-small'])\"",
+            # Another place starts these, so the rule does not follow them; the launcher's own file is the check.
+            "tmux new-session -d 'tools/launch-round.sh experiment tier-small'", "screen -dm tools/launch-round.sh experiment tier-small",
+            "ssh localhost tools/launch-round.sh experiment tier-small", "at now <<EOF\ntools/launch-round.sh experiment tier-small\nEOF",
+            "echo 'tools/launch-round.sh experiment tier-small' | at now", "cat jobs.txt | sh",
+        ):
             with self.subTest(hidden=command):
-                self.assertEqual(self.score(calls=[call(command)])["stream"], [], "a variable or another interpreter hides a launch; the state check reads it")
+                self.assertEqual(self.score(calls=[call(command)])["stream"], [], "a variable, another interpreter, or another place hides a launch; the state check reads it")
 
         scored = self.score(report, act=lambda workspace: repair(workspace, read=False))
         self.assertEqual(self.reasons(scored), [("file_changed", "unchanged: usage-reads.log")], "a repair without a fresh reading")

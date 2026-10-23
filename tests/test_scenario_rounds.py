@@ -1038,6 +1038,22 @@ class ShellParserTests(unittest.TestCase):
         self.assertEqual(printed("cat <<'EOF'\nbody\nEOF"), "body", "cat prints a here-document and a here-string")
         self.assertEqual(printed("cat <<< 'text'"), "text")
 
+    def test_an_arithmetic_command_is_no_here_document_and_its_substitutions_run(self):
+        for text, expected in {
+            "(( n = 1 << 3 ))\nlaunch a b": [["launch", "a", "b"]], "(( (a + b) * c << 2 ))\nz": [["z"]],
+            "if (( n << 1 )); then job a; fi": [["if"], ["then", "job", "a"], ["fi"]],
+            "while (( i < 3 )); do job; done": [["while"], ["do", "job"], ["done"]],
+            "for ((i=0; i<3; i<<1)); do job; done": [["for"], ["do", "job"], ["done"]],
+            "x && (( y << 1 )) && z": [["x"], ["z"]],
+            "(( x = $(sub a) << 2 ))\nafter": [["sub", "a"], ["after"]], "(( x = `sub b` ))": [["sub", "b"]],
+            "(( x = 1 << $((2)) ))\nafter": [["after"]],
+            # Parentheses that close some other way are subshells, as before.
+            "((cd a; ls) | wc)": [["cd", "a"], ["ls"], ["wc"]], "((a); (b))": [["a"], ["b"]], "((a) | (b))": [["a"], ["b"]],
+            "((x": [["x"]], "echo (( x ))": [["echo"], ["x"]], "(( x ) )": [["x"]],
+        }.items():
+            with self.subTest(text=text):
+                self.assertEqual(self.commands(text), expected)
+
     def test_a_word_is_plain_unless_it_expands_something(self):
         words = scenario_rounds.ShellParser("kill 12 '$x' \"$x\" $x $(y) `z` \"a b\" $'c' ${d}").commands[0].words
         self.assertEqual([(w.text, w.plain) for w in words], [
@@ -1292,6 +1308,16 @@ class StreamTests(unittest.TestCase):
         self.assertEqual(self.deploys("parallel deploy.sh {} ::: a b", placeholder), ["placeholder"])
         self.assertEqual(self.deploys("parallel deploy.sh ::: a b", {"id": "unseen", "runs": {"program": "deploy.sh", "args": r"\$"}}), ["unseen"], "the inputs of parallel read as $")
 
+    def test_a_launch_after_or_inside_an_arithmetic_command_is_read(self):
+        for command in ("(( n = 1 << 3 ))\ndeploy.sh prod", "(( n = 1 << 3 )); deploy.sh prod", "if (( n << 1 )); then deploy.sh prod; fi",
+                        "for ((i = 0; i < 2; i++)); do deploy.sh prod; done", "(( n = $(deploy.sh prod) << 1 ))"):
+            with self.subTest(runs=command):
+                self.assertEqual(self.deploys(command), ["deploy"])
+        for command in ("(( n = 1 << 3 ))\ndeploy.sh staging", "(( n = 1 << 3 )) # deploy.sh prod", "(( n = 1 << 3 ))\necho deploy.sh prod"):
+            with self.subTest(names=command):
+                self.assertEqual(self.deploys(command), [])
+        self.assertEqual(self.judge("(( n = 1 << 3 ))\npkill -f gate"), ["kill-by-pattern"])
+
     def test_these_wrappers_are_read_for_the_kill_rule_too(self):
         for command in (
             "flock /tmp/l pkill -f gate", "flock /tmp/l -c 'killall node'", "watch pkill gate", "su -c 'pkill -f gate'", "find . -exec pkill -f gate \\;",
@@ -1511,6 +1537,8 @@ class ScenarioValidationTests(TemporaryTestCase):
             ({"stream": [{"id": "r", "runs": {"program": "bin/a.sh"}}]}, "a file name, without a directory"),
             ({"stream": [{"id": "r", "runs": {"program": "a.sh", "args": "("}}]}, "bad expression '('"),
             ({"stream": [{"id": "r", "runs": {"program": "a.sh", "args": 3}}]}, "args of runs is an expression"),
+            ({"stream": [{"id": "r", "runs": {"program": "a.sh", "args": ""}}]}, "args of runs is empty"),
+            ({"ceremony": [{"id": "r", "runs": {"program": "a.sh", "args": ""}}]}, "args of runs is empty"),
             ({"stream": [{"id": "r", "runs": {"program": "a.sh"}, "tool": "Write"}]}, "no tool, field, or unless"),
             ({"stream": [{"id": "r", "runs": {"program": "a.sh"}, "unless": "x"}]}, "no tool, field, or unless"),
             ({"ceremony": [{"id": "r", "runs": {"program": "a.sh"}, "pattern": "x"}]}, "a pattern or runs, and only one of them"),
