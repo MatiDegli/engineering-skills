@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 """Run a scenario's agent inside its sandbox as the sandbox's PID 1.
 
-`tools/scenario_rounds.py` starts this file under `bwrap --as-pid-1` and sends one JSON object on
-standard input: the files to write, the processes to start, the agent's command, environment,
-prompt, and time limit, and the number of the descriptor for the record. Nothing about the fixtures is written anywhere the agent can read. It
+`tools/scenario_rounds.py` delivers this file into the sandbox's /run and starts it under
+`bwrap --as-pid-1`, then sends one JSON object on standard input: the files to write, the processes
+to start, the agent's command, environment, prompt, and time limit, and the number of the
+descriptor for the record. Nothing about the fixtures is written anywhere the agent can read. It
 works in this order:
 
-1. start the `process` fixtures, each a real command in the workspace, held to its own time bound;
-2. start the agent, give it the prompt on standard input, and enforce the time limit;
-3. stop every other process except the fixtures and what they started;
-4. record each fixture as alive, exited, killed by a signal, or past its bound, then stop them;
-5. write the record, one JSON line, to the descriptor.
+1. delete its own file and show a plain init in the process table, so that nothing the agent can
+   read says what runs as PID 1;
+2. start the `process` fixtures, each a real command in the workspace, held to its own time bound;
+3. start the agent, give it the prompt on standard input, and enforce the time limit;
+4. stop every other process except the fixtures and what they started;
+5. record each fixture as alive, exited, killed by a signal, or past its bound, then stop them;
+6. write the record, one JSON line, to the descriptor.
 
 As PID 1 the launcher ignores the signals that a process inside the sandbox sends it, so the agent
 cannot kill it. That holds only for a signal with no handler, so it first restores the default
@@ -35,6 +38,10 @@ GRACE = 10
 SWEEP_SECONDS = 10
 # How often the launcher looks at the fixtures' bounds while it waits for the agent.
 TICK = 0.5
+# What the process table shows for this process: a plain init.
+TITLE = b"/sbin/init"
+# The directory the runner delivers this file into; only a file there is deleted.
+DELIVERED_IN = "/run"
 
 
 def signal_group(process: subprocess.Popen, number: int) -> None:
@@ -199,6 +206,36 @@ def forbid_inspection() -> None:
         pass
 
 
+def remove_own_file() -> None:
+    """Delete the file this process was started from, which Python has read in full by now.
+
+    Only a file delivered into /run goes, so a copy run by hand elsewhere is never touched.
+    """
+    path = Path(sys.argv[0])
+    if str(path.parent) == DELIVERED_IN:
+        try:
+            path.unlink()
+        except OSError:
+            pass
+
+
+def rename_process() -> None:
+    """Show a plain init in the process table: set the name, and overwrite the command line.
+
+    The command line that started the launcher names its file, and any process can read it under
+    /proc/1. The kernel serves it from the memory where the arguments live, so writing a title
+    there, padded with zeros to the old length, replaces it.
+    """
+    try:
+        fields = Path("/proc/self/stat").read_text().rpartition(")")[2].split()
+        start, end = int(fields[45]), int(fields[46])  # arg_start and arg_end
+        if end - start > len(TITLE) and start > 0:
+            ctypes.memmove(start, TITLE.ljust(end - start, b"\0"), end - start)
+        ctypes.CDLL(None).prctl(15, b"init", 0, 0, 0)  # PR_SET_NAME
+    except (OSError, AttributeError, IndexError, ValueError):
+        pass
+
+
 def restore_default_signals() -> None:
     """Give every signal that Python handles back its default disposition.
 
@@ -216,6 +253,8 @@ def main() -> int:
     if os.getpid() != 1:
         print("the launcher runs only as PID 1 of a sandbox", file=sys.stderr)
         return 2
+    remove_own_file()
+    rename_process()
     payload = json.load(sys.stdin)
     forbid_inspection()
     for name, text in payload.get("files", {}).items():

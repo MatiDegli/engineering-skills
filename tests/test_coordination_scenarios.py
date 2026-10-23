@@ -136,13 +136,14 @@ class Scenario:
             "files": {}, "fixtures": manifest["processes"], "fixture_environment": environment, "command": ["/bin/sh", "probe.sh"],
             "cwd": str(workspace), "environment": environment, "prompt": "", "limit": limit,
         }
-        arguments = scenario_rounds.sandbox_arguments(
-            Path.home(), workspace, [], [workspace], [sys.executable, "-I", scenario_rounds.LAUNCHER_INSIDE]
-        )
-        result = scenario_rounds.launch(
-            arguments, payload, workspace.parent / "stream.txt", workspace.parent / "stderr.txt",
-            workspace.parent / "status.json", limit, scenario_rounds.Sandboxes(),
-        )
+        with scenario_rounds.launcher_file() as launcher:
+            arguments = scenario_rounds.sandbox_arguments(
+                Path.home(), workspace, [], [workspace], [sys.executable, "-I", scenario_rounds.LAUNCHER_INSIDE], launcher
+            )
+            result = scenario_rounds.launch(
+                arguments, payload, workspace.parent / "stream.txt", workspace.parent / "stderr.txt",
+                workspace.parent / "status.json", limit, scenario_rounds.Sandboxes(), (launcher,),
+            )
         return workspace, result
 
 
@@ -241,6 +242,7 @@ class WaitsAndProcessesSeedTests(EveryScenario, unittest.TestCase):
 
     def test_in_the_sandbox_a_pattern_finds_one_process_each_and_the_waiter_finds_itself(self):
         script = "\n".join([
+            "sleep 1",  # the waiter's own pgrep runs at its start and holds the pattern for a moment
             "cd repo",
             "pgrep -f 'gate front-a' > ../matches-a.txt",
             "pgrep -f 'gate/front-c' > ../matches-c.txt",

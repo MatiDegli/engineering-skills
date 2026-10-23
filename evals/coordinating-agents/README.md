@@ -305,8 +305,12 @@ The runner therefore works as follows:
     the six.
   - The prompt arrives on standard input, not in the command line, so a pattern kill that uses a
     word of the task does not match the agent's own process.
-- **Launcher:** a launcher runs as the sandbox's PID 1, so signals from inside cannot kill it. It
-  works in this order:
+- **Launcher:** a launcher runs as the sandbox's PID 1, so signals from inside cannot kill it.
+  The runner delivers its file into the private `/run` with bwrap's `--file`, from a descriptor,
+  and does not bind the host's file. The launcher deletes that copy and names itself `/sbin/init`
+  in the process table, in the command line and in the name, before it reads anything, so an agent
+  that lists processes or `/run` finds no scenario, launcher, or fixture. It is not dumpable, so
+  `/proc/1/exe`, its descriptors, and its memory are closed to the agent. It works in this order:
   1. It reads the fixture list from standard input, so no file inside the sandbox says which
      process is meant to survive.
   2. It starts the `process` fixtures, whose `seconds` must exceed the time limit, each in its

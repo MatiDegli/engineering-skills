@@ -12,6 +12,7 @@ repository and outside /tmp, which a restart may clear.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import fnmatch
 import functools
 import glob
@@ -1833,7 +1834,8 @@ def score_run(
 
 
 LAUNCHER = Path(__file__).with_name("scenario_launcher.py")
-LAUNCHER_INSIDE = "/run/scenario-launcher.py"
+# Where the launcher's file lands inside; it deletes itself as soon as it starts.
+LAUNCHER_INSIDE = "/run/init.py"
 # Directories that the sandbox replaces with empty private ones; only what is bound back is there.
 MASKED = ("/tmp", "/run", "/mnt", "/var/tmp", "/dev/shm")
 SANDBOX_PATH = "/usr/local/bin:/usr/bin:/bin"
@@ -1844,17 +1846,32 @@ LAUNCHER_GRACE = 20
 BACKSTOP_MARGIN = 60
 
 
+@contextlib.contextmanager
+def launcher_file() -> Iterator[int]:
+    """Open the launcher's file for `--file`, which reads a descriptor to its end; each sandbox needs its own."""
+    descriptor = os.open(LAUNCHER, os.O_RDONLY | os.O_CLOEXEC)
+    try:
+        yield descriptor
+    finally:
+        os.close(descriptor)
+
+
 def sandbox_arguments(
-    home: Path, directory: Path, read_only: list[Path], read_write: list[Path], command: list[str]
+    home: Path, directory: Path, read_only: list[Path], read_write: list[Path], command: list[str],
+    launcher: int | None = None,
 ) -> list[str]:
     """Return the command that runs `command` in a sandbox built from an allow-list.
 
     The root file system is read-only. The home directory and the directories in `MASKED` are
     empty private file systems, so the repository, the oracle, other sessions' files, the Docker
     socket, and the Windows drives are absent rather than read-only. Only the paths passed here are
-    bound back, at their own paths, and the launcher is bound under /run. The sandbox has its own
-    PID, IPC, and UTS namespaces, the command is its PID 1, and the network stays open because the
-    agent must reach the model. `setpriv` ends the sandbox if the runner's thread dies.
+    bound back, at their own paths. The sandbox has its own PID, IPC, and UTS namespaces, the
+    command is its PID 1, and the network stays open because the agent must reach the model.
+    `setpriv` ends the sandbox if the runner's thread dies.
+
+    The launcher is a copy of its file, written by `--file` from the descriptor `launcher` into the
+    private /run, not a bind of the host's file. It deletes the copy when it starts, so nothing of
+    it is left to read. The caller passes the descriptor on to the sandbox, as `launch` does.
     """
     arguments = [
         *("setpriv", "--pdeathsig", "KILL", "bwrap"),
@@ -1864,7 +1881,8 @@ def sandbox_arguments(
     ]
     for masked in (*MASKED, str(home)):
         arguments += ["--tmpfs", masked]
-    arguments += ["--ro-bind", str(LAUNCHER), LAUNCHER_INSIDE]
+    if launcher is not None:
+        arguments += ["--file", str(launcher), LAUNCHER_INSIDE]
     resolver = Path(os.path.realpath("/etc/resolv.conf"))
     if resolver.is_file() and any(resolver.is_relative_to(masked) for masked in (*MASKED, str(home))):
         read_only = [*read_only, resolver]
@@ -1884,8 +1902,11 @@ def sandbox_problem() -> str | None:
     for tool in ("bwrap", "setpriv"):
         if not shutil.which(tool):
             return f"{tool} is not installed"
-    probe = sandbox_arguments(Path.home(), Path("/"), [], [], [shutil.which("true") or "/usr/bin/true"])
-    result = subprocess.run(probe, capture_output=True, text=True, timeout=60, env={"PATH": SANDBOX_PATH})
+    with launcher_file() as launcher:
+        probe = sandbox_arguments(Path.home(), Path("/"), [], [], [shutil.which("true") or "/usr/bin/true"], launcher)
+        result = subprocess.run(
+            probe, capture_output=True, text=True, timeout=60, env={"PATH": SANDBOX_PATH}, pass_fds=(launcher,)
+        )
     lines = result.stderr.strip().splitlines()
     return None if result.returncode == 0 else (lines[-1] if lines else f"bwrap exited {result.returncode}")
 
@@ -1917,12 +1938,14 @@ def launch(
     status: Path,
     limit: float,
     sandboxes: Sandboxes,
+    inherit: tuple[int, ...] = (),
 ) -> dict:
     """Run one sandbox and return how it ended.
 
     The payload goes to the launcher on standard input, never in the command line or the
     environment, where another process could read it. The launcher answers on a descriptor that
-    only it holds. The runner waits a little longer than the time limit, which the launcher
+    only it holds. `inherit` lists the descriptors that `sandbox_arguments` named, such as the
+    launcher's file. The runner waits a little longer than the time limit, which the launcher
     enforces itself, and then ends the sandbox's process group.
     """
     descriptor = os.open(status, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -1936,7 +1959,7 @@ def launch(
                 stdin=subprocess.PIPE,
                 stdout=out,
                 stderr=err,
-                pass_fds=(descriptor,),
+                pass_fds=(descriptor, *inherit),
                 start_new_session=True,
                 env={"PATH": SANDBOX_PATH},
             )
@@ -2709,12 +2732,16 @@ def execute_job(round_dir: Path, job: dict, context: dict, workspace: Path) -> s
         "limit": limit,
     }
     stream, stderr = paths["streams"] / f"{label}.jsonl", paths["streams"] / f"{label}.stderr.txt"
-    arguments = sandbox_arguments(
-        home, workspace, [context["executable"], *([skill] if skill else [])], read_write,
-        [INTERPRETER, "-I", LAUNCHER_INSIDE],
-    )
     try:
-        outcome = launch(arguments, payload, stream, stderr, paths["runs"] / f"{label}.launcher.json", limit, context["sandboxes"])
+        with launcher_file() as launcher:
+            arguments = sandbox_arguments(
+                home, workspace, [context["executable"], *([skill] if skill else [])], read_write,
+                [INTERPRETER, "-I", LAUNCHER_INSIDE], launcher,
+            )
+            outcome = launch(
+                arguments, payload, stream, stderr, paths["runs"] / f"{label}.launcher.json", limit,
+                context["sandboxes"], (launcher,),
+            )
     finally:
         # Whatever happened, a stopped run, an exception, or a normal end, the streams never keep a secret.
         if config:

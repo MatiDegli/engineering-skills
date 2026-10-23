@@ -8,6 +8,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import shutil
 import signal
 import socket
@@ -1827,6 +1828,15 @@ class SandboxArgumentTests(unittest.TestCase):
         last_mask = max(i for i, a in enumerate(arguments) if a == "--tmpfs")
         self.assertTrue(all(i > last_mask for i, a in enumerate(arguments) if a in ("--bind", "--ro-bind") and arguments[i + 1] != "/"))
 
+    def test_the_launcher_is_a_copy_written_into_the_masked_run_and_never_a_bind_of_the_host_file(self):
+        home, workspace = Path("/home/someone"), Path("/tmp/scenario.AbCdEfGh")
+        arguments = scenario_rounds.sandbox_arguments(home, workspace, [], [workspace], ["agent"], 7)
+        place = arguments.index("--file")
+        self.assertEqual(arguments[place:place + 3], ["--file", "7", scenario_rounds.LAUNCHER_INSIDE])
+        self.assertGreater(place, max(i for i, a in enumerate(arguments) if a == "--tmpfs"), "after /run is masked")
+        self.assertNotIn(str(scenario_rounds.LAUNCHER), arguments, "the host's file is not mounted")
+        self.assertNotIn("--file", scenario_rounds.sandbox_arguments(home, workspace, [], [workspace], ["agent"]))
+
 
 @unittest.skipIf(SANDBOX_PROBLEM, f"bwrap cannot create a sandbox here: {SANDBOX_PROBLEM}")
 class SandboxTests(unittest.TestCase):
@@ -1852,12 +1862,15 @@ class SandboxTests(unittest.TestCase):
             "files": {}, "fixtures": list(fixtures), "fixture_environment": base, "command": command, "cwd": str(self.workspace),
             "environment": base | (environment or {}), "prompt": prompt, "limit": limit,
         }
-        arguments = scenario_rounds.sandbox_arguments(
-            Path.home(), self.workspace, list(read_only), [self.workspace], [sys.executable, "-I", scenario_rounds.LAUNCHER_INSIDE]
-        )
-        return scenario_rounds.launch(
-            arguments, payload, self.root / "stream.txt", self.root / "stderr.txt", self.root / "status.json", limit, self.sandboxes,
-        )
+        with scenario_rounds.launcher_file() as launcher:
+            arguments = scenario_rounds.sandbox_arguments(
+                Path.home(), self.workspace, list(read_only), [self.workspace],
+                [sys.executable, "-I", scenario_rounds.LAUNCHER_INSIDE], launcher,
+            )
+            return scenario_rounds.launch(
+                arguments, payload, self.root / "stream.txt", self.root / "stderr.txt", self.root / "status.json", limit,
+                self.sandboxes, (launcher,),
+            )
 
     def test_a_pattern_kill_inside_ends_only_the_fixture_it_names_and_no_host_process(self):
         marker = f"scenario-canary-{os.getpid()}"
@@ -1873,7 +1886,7 @@ class SandboxTests(unittest.TestCase):
 
     def test_the_launcher_ignores_what_the_agent_sends_it(self):
         script = (
-            "kill -9 1; kill -TERM 1; kill -INT 1; kill -HUP 1; pkill -9 -f scenario-launche[r]; pkill -INT -f scenario-launche[r]; "
+            "kill -9 1; kill -TERM 1; kill -INT 1; kill -HUP 1; pkill -9 -f /sbin/ini[t]; pkill -INT -f /sbin/ini[t]; "
             "ls /proc/1/fd > fds.txt 2>&1; echo alive > survived.txt"
         )
         result = self.launch(script, [self.fixture("live", "sleeper")])
@@ -1898,6 +1911,29 @@ class SandboxTests(unittest.TestCase):
         record = result["launcher"]
         self.assertEqual(record["fixtures"], {"live": {"state": "alive"}})
         self.assertGreaterEqual(record["left_running"], 1)
+
+    def test_the_launcher_leaves_no_file_and_the_process_table_names_a_plain_init(self):
+        script = "\n".join([
+            "ls -A /run > run.txt; test -e /run/init.py && echo present > file.txt",
+            "tr '\\0' ' ' < /proc/1/cmdline > cmdline.txt; cat /proc/1/comm > comm.txt",
+            "ps -ef > ps.txt; ps -o comm= -p 1 > ps-comm.txt",
+            "for name in cmdline comm status stat statm cgroup limits sched wchan mountinfo; do cat /proc/1/$name; done > proc.txt 2> /dev/null",
+            "ls -l /proc/1/exe > exe.txt 2>&1; cat /proc/1/environ > environ.txt 2>&1; cat /proc/1/maps > maps.txt 2>&1",
+            "grep -rl 'restore_default_signal[s]' /run /tmp /var/tmp /dev/shm \"$HOME\" 2> /dev/null > found.txt; true",
+        ])
+        (self.workspace / "probe.sh").write_text(script)  # a file, because ps shows the words of a script given to -c
+        self.launch(["/bin/sh", "probe.sh"], [self.fixture("live", "sleeper")])
+        text = lambda name: (self.workspace / name).read_text()
+        self.assertEqual(text("run.txt"), "", "nothing is left in /run")
+        self.assertFalse((self.workspace / "file.txt").exists())
+        self.assertEqual(text("cmdline.txt").strip(), "/sbin/init")
+        self.assertEqual((text("comm.txt").strip(), text("ps-comm.txt").strip()), ("init", "init"))
+        self.assertIn("/sbin/init", text("ps.txt"))
+        words = re.compile(r"scenario|launcher|fixture|evaluat|harness|sandbox|init\.py", re.I)
+        self.assertEqual(words.findall(text("ps.txt") + text("proc.txt")), [])
+        for name in ("exe", "environ", "maps"):
+            self.assertIn("denied", text(f"{name}.txt").lower(), f"/proc/1/{name} is closed to the agent")
+        self.assertEqual(text("found.txt"), "", "no readable file holds the launcher's text")
 
     def test_a_fixture_runs_in_its_directory_with_the_fixture_environment_and_no_login(self):
         (self.workspace / "repo").mkdir()
@@ -1957,7 +1993,7 @@ class SandboxTests(unittest.TestCase):
         self.assertFalse((self.workspace / "visible.txt").exists())
         self.assertEqual(seen("home.txt"), [])
         self.assertEqual([name for name in seen("mnt.txt") if len(name) == 1], [])
-        self.assertEqual([name for name in seen("run.txt") if name not in ("scenario-launcher.py",)], [])
+        self.assertEqual(seen("run.txt"), [])
         if self.root.parent == Path("/tmp"):
             self.assertEqual(seen("tmp.txt"), [self.root.name], "only the workspace's own path is bound back into /tmp")
         self.assertEqual((self.workspace / "env.txt").read_text().strip(), "x")
