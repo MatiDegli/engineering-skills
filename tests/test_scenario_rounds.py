@@ -831,6 +831,29 @@ class StateTests(WorkspaceTestCase):
         del old["repos"]["repo"]["trees"]
         self.assertIn("a runner older than this check", scenario_rounds.check_state({"branch_lacks": lacks}, self.before, old, None)["detail"])
 
+    def test_a_branch_lacks_that_asks_for_a_repair_fails_a_file_that_is_removed_or_moved_and_passes_one_that_is_emptied(self):
+        repo = self.workspace / "repo"
+        lacks = {"repo": "repo", "branch": "main", "path": "app.py", "pattern": r"print\(1\)"}
+        asked = lacks | {"present_before": True}
+        self.assertIn("app.py at the tip of main matches", self.check("branch_lacks", asked), "as prepared, the text is there")
+
+        def commit_and_check(*arguments):
+            git(repo, *arguments)
+            git(repo, "commit", "-q", "-am", "agent: change")
+            return self.check("branch_lacks", lacks), self.check("branch_lacks", asked)
+
+        gone = "app.py is not at the tip of main: a repair changes the file and leaves it there"
+        (repo / "src").mkdir()
+        self.assertEqual(commit_and_check("mv", "app.py", "src/app.py"), (None, gone), "moved: a guard passes, a repair fails")
+        git(repo, "reset", "-q", "--hard", "HEAD~1")
+        self.assertEqual(commit_and_check("rm", "-q", "app.py"), (None, gone), "removed")
+        git(repo, "reset", "-q", "--hard", "HEAD~1")
+        (repo / "app.py").write_text("")
+        self.assertEqual(commit_and_check("add", "app.py"), (None, None), "emptied: no text is left to match, so no pattern check fails it")
+        git(repo, "reset", "-q", "--hard", "HEAD~1")
+        self.assertIn("matches", self.check("branch_lacks", asked), "back as prepared")
+        self.assertIn("is gone", self.check("branch_lacks", asked | {"branch": "nothing"}), "a branch that is gone is named first")
+
     def test_a_missing_object_of_a_promisor_repository_runs_nothing_on_this_machine(self):
         repo, marker = self.workspace / "repo", self.root / "fetched"
         git(repo, "commit", "-q", "--allow-empty", "-m", "agent: commit")
@@ -1382,6 +1405,19 @@ class ScenarioValidationTests(TemporaryTestCase):
         for check in (lacks | {"present_before": "yes"}, lacks | {"colour": "red"}):
             with self.subTest(check=check):
                 self.assertTrue(any("present_before as true or false" in p for p in with_check(check)), with_check(check))
+
+    def test_a_ceremony_check_cannot_ask_for_a_repair_because_the_null_run_would_always_report_it(self):
+        lacks = {"repo": "repo", "branch": "main", "path": "app.py", "pattern": r"print\(1\)"}
+
+        def with_ceremony(check):
+            return self.problems(expected=EXPECTED | {"ceremony": [{"branch_lacks": check}]})
+
+        problems = with_ceremony(lacks | {"present_before": True})
+        self.assertTrue(any("branch_lacks with present_before asks for a repair" in p for p in problems), problems)
+        self.assertTrue(any(p.startswith("ceremony: ") for p in problems))
+        guard = with_ceremony(lacks | {"pattern": r"print\(2\)"})
+        self.assertEqual(guard, [], "a guard in a ceremony is fine, and so is present_before false")
+        self.assertEqual(with_ceremony(lacks | {"pattern": r"print\(2\)", "present_before": False}), [])
 
     def test_a_scenario_that_fails_its_own_null_run_is_refused(self):
         wrong_stash = {"stash_kept": {"repo": "repo", "message": "never made"}}

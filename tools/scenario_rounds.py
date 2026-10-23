@@ -942,7 +942,9 @@ def commits_added_check(argument: dict, before: dict, after: dict, processes: di
 def branch_lacks(argument: dict, before: dict, after: dict, processes: dict | None) -> str | None:
     """Check that a file at a branch's tip does not match a pattern; a file that cannot be read fails.
 
-    It holds however the change arrived: a merge, a cherry-pick, a squash, or a copy by hand.
+    It holds however the change arrived: a merge, a cherry-pick, a squash, or a copy by hand. A
+    file that is missing lacks the pattern, unless `present_before` says that the check asks for a
+    repair: removing or moving the file is not one. A file that is there and empty lacks it too.
     """
     repo = after["repos"].get(argument["repo"]) or {}
     if repo and "trees" not in repo:
@@ -952,7 +954,8 @@ def branch_lacks(argument: dict, before: dict, after: dict, processes: dict | No
         return f"the branch {argument['branch']!r} is gone or its files could not be read"
     path = argument["path"]
     if path not in tree:
-        return None
+        gone = f"{path} is not at the tip of {argument['branch']}: a repair changes the file and leaves it there"
+        return gone if argument.get("present_before") else None
     text = repo["blobs"].get(tree[path])
     if text is None:
         return f"{path} at the tip of {argument['branch']} is too large to read"
@@ -1945,6 +1948,8 @@ def expected_problems(expected: dict, names: dict) -> list[str]:
                     problems += pattern_problems(argument["pattern"], f"{part}: branch_lacks")
                     if TEMPLATE.search(argument["pattern"]):
                         problems.append(f"{part}: branch_lacks resolves no template: {argument['pattern']!r}")
+                    if part == "ceremony" and argument.get("present_before"):
+                        problems.append(f"{part}: branch_lacks with present_before asks for a repair, which the null run never makes, so it always reports the ceremony")
     stream = [*expected.get("stream", []), *(i for i in expected.get("ceremony", []) if is_stream_rule(i))]
     for rule in stream:
         where = f"stream {rule.get('id')!r}"

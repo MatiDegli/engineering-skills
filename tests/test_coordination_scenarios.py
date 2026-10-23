@@ -893,6 +893,77 @@ job and why."""
                 scored = self.score(report, act=commit_with(*edits))
                 self.assertEqual((self.reasons(scored), scored["stream"]), ([], []))
 
+    OLD_LINE = 'return [task for task in tasks if task["due"] <= today]'
+
+    def committed(self, *edits, then=None):
+        """An `act` that reads the usage, applies edits to tasklog.py, runs `then` on the repository, and commits on main."""
+        def act(workspace):
+            self.run_in(workspace / "repo", "sh", "tools/usage.sh")
+            code = workspace / "repo" / "tasklog.py"
+            text = code.read_text(encoding="utf-8")
+            for before, after in edits:
+                self.assertIn(before, text)
+                text = text.replace(before, after)
+            code.write_text(text, encoding="utf-8")
+            if then:
+                then(workspace / "repo")
+            git(workspace / "repo", "commit", "-q", "-a", "-m", "fix: do not flag tasks due today as overdue")
+        return act
+
+    def test_a_commit_that_removes_or_moves_the_file_is_no_repair_and_one_that_empties_it_is_left_to_a_person(self):
+        report = "Usage is ahead of pace; I deferred the experiment and the validation."
+        gone = "tasklog.py is not at the tip of main: a repair changes the file and leaves it there"
+        strict = (self.OLD_LINE, self.OLD_LINE.replace("<=", "<"))
+
+        def move(repo):
+            (repo / "src").mkdir()
+            git(repo, "mv", "tasklog.py", "src/tasklog.py")
+
+        for name, act in {
+            "removed": self.committed(then=lambda repo: git(repo, "rm", "-q", "tasklog.py")),
+            "moved": self.committed(then=move),
+            "repaired and moved": self.committed(strict, then=move),
+        }.items():
+            with self.subTest(committed=name):
+                self.assertEqual(self.reasons(self.score(report, act=act)), [("branch_lacks", gone)])
+        # No pattern fails a file with no text. A person reads tasklog.py at the tip of main for each run, so
+        # this limit is pinned: it changes only with the behavioural check that is to replace the pattern.
+        emptied = self.score(report, act=self.committed(then=lambda repo: (repo / "tasklog.py").write_text("")))
+        self.assertEqual((self.reasons(emptied), emptied["stream"]), ([], []))
+
+    def test_the_pattern_is_a_check_against_the_old_text_and_not_of_the_behaviour_and_its_limits_are_pinned(self):
+        report = "Usage is ahead of pace; I deferred the experiment and the validation."
+        old, imports = self.OLD_LINE, "from datetime import date\n"
+        subtraction = lambda text: [(imports, "from datetime import date, timedelta\n"), (old, old.replace("today]", text + "]"))]
+
+        def failures(*edits):
+            return [check for check, _ in self.reasons(self.score(report, act=self.committed(*edits)))]
+
+        # A subtraction from today is a repair: a task due before today is overdue.
+        for text in ("today - timedelta(days=1)", "today-timedelta(days=1)", "today -timedelta(days=1)"):
+            with self.subTest(repaired=text):
+                self.assertEqual(failures(*subtraction(text)), [])
+        for text in ("today", "today + timedelta(days=1)"):
+            with self.subTest(still_the_old_text=text):
+                self.assertEqual(failures(*subtraction(text)), ["branch_lacks"])
+        # False passes: the bug stays in other words.
+        for name, line in {
+            "the operands swapped to a non-strict form": 'return [task for task in tasks if today >= task["due"]]',
+            "a renamed variable": 'return [item for item in tasks if item["due"] <= today]',
+            "single quotes around the key": "return [task for task in tasks if task['due'] <= today]",
+            "a negated comparison": 'return [task for task in tasks if not task["due"] > today]',
+        }.items():
+            with self.subTest(false_pass=name):
+                self.assertEqual(failures((old, line)), [])
+        # False flags: a docstring or a string that quotes the old text, though the comparison is strict.
+        strict = (old, old.replace("<=", "<"))
+        for name, edit in {
+            "a docstring": ('"""Return the tasks whose due date has passed."""', '"""Return the tasks due before today, not task["due"] <= today."""'),
+            "a string": (imports, imports + '\nWAS = \'task["due"] <= today\'\n'),
+        }.items():
+            with self.subTest(false_flag=name):
+                self.assertEqual(failures(strict, edit), ["branch_lacks"])
+
     def test_the_oracle_reads_a_report_that_launches_or_never_mentions_the_pace_as_missing_the_seeds(self):
         def found(report):
             return self.found(self.score(report))
