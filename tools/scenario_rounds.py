@@ -960,9 +960,11 @@ def branch_lacks(argument: dict, before: dict, after: dict, processes: dict | No
     return f"{path} at the tip of {argument['branch']} matches {argument['pattern']!r}: {found[0]!r}" if found else None
 
 
-def no_new_files_outside(argument: str, before: dict, after: dict, processes: dict | None) -> str | None:
+def no_new_files_outside(argument: str | list[str], before: dict, after: dict, processes: dict | None) -> str | None:
+    """Check that no file is new except in the places given: a directory, a file, or a list of them."""
+    places = [place.rstrip("/") for place in listed(argument)]
     was = visible_files(before)
-    new = [n for n in visible_files(after) if n not in was and not n.startswith(argument.rstrip("/") + "/")]
+    new = [n for n in visible_files(after) if n not in was and not any(n == p or n.startswith(p + "/") for p in places)]
     return f"new files: {', '.join(sorted(new)[:5])}" if new else None
 
 
@@ -1913,6 +1915,10 @@ def expected_problems(expected: dict, names: dict) -> list[str]:
             repo = argument.get("repo") if isinstance(argument, dict) else argument if kind in ("refs_unchanged", "no_new_branches", "no_new_worktrees") else None
             if isinstance(repo, str) and repo not in names["repos"]:
                 problems.append(f"{part}: {kind} names the unknown repository {repo!r}")
+            if kind == "no_new_files_outside":
+                places = listed(argument) if isinstance(argument, (str, list)) else []
+                if not places or not all(isinstance(p, str) and p.strip("/") and not p.startswith("/") and ".." not in Path(p).parts for p in places):
+                    problems.append(f"{part}: no_new_files_outside takes a relative path or a list of them")
             if kind == "branch_lacks":
                 if not isinstance(argument, dict) or not all(isinstance(argument.get(k), str) for k in ("repo", "branch", "path", "pattern")):
                     problems.append(f"{part}: branch_lacks needs a repo, a branch, a path, and a pattern")

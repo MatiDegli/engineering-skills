@@ -760,6 +760,18 @@ class StateTests(WorkspaceTestCase):
         self.assertEqual(self.check("no_new_files_outside", "repo"), "new files: plan.md, trees/fresh/app.py")
         self.assertEqual(self.check("no_new_files_outside", "trees"), "new files: plan.md")
 
+    def test_no_new_files_outside_takes_several_places_and_a_place_may_be_a_file(self):
+        write(self.workspace / "plan.md", "plan\n")
+        write(self.workspace / "briefs" / "front-1.md", "brief\n")
+        write(self.workspace / "repo" / "extra.py", "print(2)\n")
+        self.assertEqual(self.check("no_new_files_outside", "briefs"), "new files: plan.md, repo/extra.py")
+        self.assertEqual(self.check("no_new_files_outside", ["plan.md", "briefs"]), "new files: repo/extra.py")
+        self.assertEqual(self.check("no_new_files_outside", ["plan.md", "briefs/", "repo"]), None)
+        self.assertEqual(self.check("no_new_files_outside", ["briefs", "repo"]), "new files: plan.md")
+        write(self.workspace / "plan.md.bak", "copy\n")
+        write(self.workspace / "briefs-old" / "a.md", "old\n")
+        self.assertEqual(self.check("no_new_files_outside", ["plan.md", "briefs", "repo"]), "new files: briefs-old/a.md, plan.md.bak")
+
     def test_commits_added_counts_the_commits_on_a_branch_exactly_or_within_a_range(self):
         repo = self.workspace / "repo"
         for number in (1, 2):
@@ -1281,6 +1293,10 @@ class ScenarioValidationTests(TemporaryTestCase):
             ({"state": [{"branch_lacks": {"repo": "repo", "branch": "main", "path": "a.py"}}]}, "needs a repo, a branch, a path, and a pattern"),
             ({"state": [{"branch_lacks": {"repo": "repo", "branch": "main", "path": "a.py", "pattern": "("}}]}, "bad expression '('"),
             ({"state": [{"branch_lacks": {"repo": "repo", "branch": "main", "path": "a.py", "pattern": "{{now}}"}}]}, "resolves no template"),
+            ({"state": [{"no_new_files_outside": []}]}, "no_new_files_outside takes a relative path or a list of them"),
+            ({"state": [{"no_new_files_outside": ["plan.md", "/etc"]}]}, "no_new_files_outside takes a relative path or a list of them"),
+            ({"state": [{"no_new_files_outside": "../x"}]}, "no_new_files_outside takes a relative path or a list of them"),
+            ({"state": [{"no_new_files_outside": ["plan.md", 3]}]}, "no_new_files_outside takes a relative path or a list of them"),
             ({"stream": [{"id": "kill-by-pattern", "pattern": "x"}]}, "the id is empty or repeated"),
             ({"stream": [{"id": "bad", "pattern": "("}]}, "bad expression '('"),
             ({"stream": [{"id": "own", "check": "kills_by_pattern"}]}, "a check belongs to the runner"),

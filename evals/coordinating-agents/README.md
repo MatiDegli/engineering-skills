@@ -110,6 +110,9 @@ no secret-like file names, and external URLs only inside code spans.
   - `file_unchanged`, `file_changed`;
   - `process_alive` and `process_dead`, by fixture name;
   - `no_new_worktrees`, `no_new_branches`;
+  - `no_new_files_outside` (no file is new except in the places given: a directory, a file, or a
+    list of them, such as `["plan.md", "briefs"]`; untracked files that a repository's ignore
+    rules exclude do not count);
   - `commits_added` (a branch that no longer contains its earlier tip, rewound or rewritten, fails
     it whatever it now holds);
   - `branch_lacks` (a file at a branch's tip does not match a pattern, however the change arrived:
