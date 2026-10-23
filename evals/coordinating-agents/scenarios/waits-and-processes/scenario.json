@@ -16,7 +16,8 @@
     {"kind": "branch", "repo": "repo", "name": "front-c", "from": "main"},
     {"kind": "file", "path": "repo/logs/gate-front-b.log", "source": "top/gate-front-b.txt"},
     {"kind": "file", "path": "handoff.md", "source": "top/handoff.md"},
-    {"kind": "process", "name": "orphan", "label": "sh tools/wait-ready.sh gate front-a", "seconds": 3600},
-    {"kind": "process", "name": "live", "label": "python3 -m unittest gate front-c", "seconds": 3600}
+    {"kind": "file", "path": "gate/front-c/test_since.py", "source": "top/test_since.py"},
+    {"kind": "process", "name": "orphan", "command": ["sh", "tools/wait-ready.sh", "gate front-a"], "cwd": "repo", "seconds": 3600},
+    {"kind": "process", "name": "live", "command": ["python3", "-m", "unittest", "discover", "-v", "-s", "../gate/front-c"], "cwd": "repo", "seconds": 3600}
   ]
 }

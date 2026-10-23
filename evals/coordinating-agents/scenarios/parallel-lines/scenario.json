@@ -12,6 +12,6 @@
     {"kind": "file", "path": "shared/runs.md", "source": "top/runs.md"},
     {"kind": "file", "path": "shared/bench.log", "source": "top/bench-start.txt"},
     {"kind": "file", "path": "shared/messages.md", "source": "top/messages.md"},
-    {"kind": "process", "name": "docs-bench", "label": "sh tools/bench.sh front-g", "seconds": 3600}
+    {"kind": "process", "name": "docs-bench", "command": ["sh", "tools/bench.sh", "front-g", "3600"], "cwd": "repo", "seconds": 3600}
   ]
 }

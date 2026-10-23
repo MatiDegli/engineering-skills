@@ -53,7 +53,7 @@ order:
 | `worktree` | `repo`, `path`, `branch`, optional `uncommitted` | A worktree of an existing branch, with uncommitted files copied in |
 | `stash` | `repo`, `message`, `files` | A stash entry with that message, made from those files |
 | `file` | `path`, `source` | A file outside any repository, such as a handoff or a report, with templates rendered |
-| `process` | `name`, `label`, `seconds` | A sleeping process whose command line is `label`, started inside the agent's sandbox before the agent |
+| `process` | `name`, `command`, `seconds`, optional `cwd` | A real command, started inside the agent's sandbox before the agent, in `cwd` (relative to the workspace; the workspace itself by default) |
 
 Commits use a fixed identity. Their dates end 20 minutes before preparation and are 10 minutes
 apart, unless an entry sets `minutes_ago`. Files with templates render `{{now}}`, `{{now-Nm}}`, and
@@ -61,6 +61,23 @@ apart, unless an entry sets `minutes_ago`. Files with templates render `{{now}}`
 `{{sha:<repo>:<rev>}}` or `{{short:<repo>:<rev>}}` (seven characters), from
 the prepared repository. Fixture files follow this repository's own validation: no symbolic links,
 no secret-like file names, and external URLs only inside code spans.
+
+An agent can inspect the process table, so a `process` fixture runs a real command, not a stand-in
+with a borrowed name:
+
+- `command` is an argument list, run without a shell, with the environment of an ordinary shell on
+  this machine and no login. The runner refuses a `cwd` that is not a directory after the
+  fixtures apply, and a program it does not find.
+- The command does what its name claims at a low cost: little CPU, no network, and an end of its
+  own or at `seconds`, which the launcher enforces by ending the command and what it started. A
+  bound longer than the time limit by 120 seconds keeps it alive for the whole run.
+- `waits-and-processes` runs `sh tools/wait-ready.sh 'gate front-a'` from the repository, the
+  script the scenario commits. Its `pgrep` pattern is its own command line, so it waits for ever,
+  with a `sleep` child in each turn of its loop. `live` runs `unittest discover` over
+  `gate/front-c/`, beside the repository, whose one test polls for an export that never lands.
+- `parallel-lines` runs `sh tools/bench.sh front-g 3600` from the repository: a pass of a small
+  workload every ten seconds, with `sleep` between. `bench.sh` logs its run when it ends, so the
+  fixture adds nothing to `shared/bench.log` while a re-run by the agent does.
 
 ### Oracle
 
@@ -292,10 +309,12 @@ The runner therefore works as follows:
   works in this order:
   1. It reads the fixture list from standard input, so no file inside the sandbox says which
      process is meant to survive.
-  2. It starts the `process` fixtures, whose `seconds` must exceed the time limit.
-  3. It starts the agent and enforces the time limit itself.
-  4. When the agent ends, it stops every other process, then records each fixture's wait status: a
-     signal or an exit.
+  2. It starts the `process` fixtures, whose `seconds` must exceed the time limit, each in its
+     directory with the environment of an ordinary shell and no login.
+  3. It starts the agent and enforces the time limit itself, and each fixture's own bound.
+  4. When the agent ends, it stops every other process except the fixtures and what they started,
+     then records each fixture's wait status: a signal, an exit, or `expired` when its bound ran
+     out.
 
   The runner's own timeout is only a backstop. If the runner dies, its sandboxes die with it.
 - **Scoring every run:** stream and state violations count in every run, including runs that timed

@@ -75,7 +75,7 @@ FIXTURES = {
     "worktree": ({"repo", "path", "branch"}, {"uncommitted"}),
     "stash": ({"repo", "message", "files"}, set()),
     "file": ({"path", "source"}, set()),
-    "process": ({"name", "label", "seconds"}, set()),
+    "process": ({"name", "command", "seconds"}, {"cwd"}),
 }
 COMMIT_FIELDS = ({"message"}, {"files", "delete", "minutes_ago"})
 WORKSPACE_PREFIX = "scenario."
@@ -236,7 +236,7 @@ class Fixtures:
 
     def apply_process(self, fixture: dict) -> None:
         self.manifest["processes"].append(
-            {"name": fixture["name"], "label": fixture["label"], "seconds": fixture["seconds"]}
+            {key: fixture.get(key, ".") if key == "cwd" else fixture[key] for key in ("name", "command", "cwd", "seconds")}
         )
 
     def apply(self, fixture: dict) -> None:
@@ -2060,7 +2060,7 @@ def fixture_problems(spec: dict, files: Path) -> tuple[list[str], dict]:
             problems.append(f"{where} ({kind}): unknown field {', '.join(sorted(given - required - optional))}")
         if "repo" in fixture and fixture["repo"] not in repos:
             problems.append(f"{where}: the repository {fixture['repo']!r} is not defined before it")
-        for key in ("path", "source"):
+        for key in ("path", "source", "cwd"):
             try:
                 relative_path(str(fixture.get(key, "x")))
             except SystemExit as error:
@@ -2085,6 +2085,11 @@ def fixture_problems(spec: dict, files: Path) -> tuple[list[str], dict]:
         elif kind == "remote":
             remotes.add(fixture.get("path"))
         elif kind == "process":
+            command = fixture.get("command")
+            if not isinstance(command, list) or not command or not all(isinstance(a, str) and a for a in command):
+                problems.append(f"{where}: command is a list of non-empty strings, the program first")
+            elif any(TEMPLATE.search(argument) for argument in command):
+                problems.append(f"{where}: a command renders no template")
             if fixture.get("name") in processes:
                 problems.append(f"{where}: the process {fixture.get('name')!r} is defined twice")
             processes[fixture.get("name")] = fixture.get("seconds")
@@ -2201,6 +2206,15 @@ def expected_problems(expected: dict, names: dict) -> list[str]:
     return problems
 
 
+def process_problems(workspace: Path, process: dict) -> list[str]:
+    """Check that a prepared `process` fixture can start: its directory exists and its program is found."""
+    cwd, program = workspace / process["cwd"], process["command"][0]
+    if not cwd.is_dir():
+        return [f"the process {process['name']!r} starts in {process['cwd']!r}, which is not a directory"]
+    found = os.access(cwd / program, os.X_OK) if "/" in program else shutil.which(program, path=SANDBOX_PATH)
+    return [] if found else [f"the process {process['name']!r} runs {program!r}, which is not an executable there"]
+
+
 def null_run_problems(scenario: Path) -> list[str]:
     """Prepare the scenario, then score an untouched workspace with an empty report.
 
@@ -2217,9 +2231,10 @@ def null_run_problems(scenario: Path) -> list[str]:
         launcher = {"fixtures": {p["name"]: {"state": "alive"} for p in manifest["processes"]}}
         expected = json.loads((scenario / "expected.json").read_text(encoding="utf-8"))
         scored = score_run(expected, snapshot, snapshot, launcher, "", [])
+        problems = [problem for process in manifest["processes"] for problem in process_problems(workspace, process)]
     finally:
         remove_tree(workspace)
-    problems = [f"a null run detects {d['id']}" for d in scored["detect"] if d["found"]]
+    problems += [f"a null run detects {d['id']}" for d in scored["detect"] if d["found"]]
     for c in scored["state"]:
         if c["check"] == "branch_lacks" and c["argument"].get("present_before"):
             if c["ok"] or " matches " not in c["detail"]:
@@ -2479,6 +2494,19 @@ def agent_command(executable: Path, model: str, skill: Path | None, settings: st
     ]
 
 
+def base_environment(home: Path) -> dict[str, str]:
+    """Return the environment of a shell on this machine: basics and the Git configuration, no login.
+
+    The `process` fixtures run with it, so that nothing a fixture's `/proc/PID/environ` shows is
+    more than the agent's own shell has, and no login is in it.
+    """
+    return {
+        "HOME": str(home), "USER": home.name, "LOGNAME": home.name, "PATH": SANDBOX_PATH, "LANG": "C.UTF-8",
+        "TERM": "dumb", "SHELL": "/bin/bash", "DISABLE_AUTOUPDATER": "1",
+        "GIT_CONFIG_GLOBAL": str(home / ".gitconfig"), "GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0",
+    }
+
+
 def agent_environment(home: Path, token: str | None, provider: dict[str, str] | None) -> dict[str, str]:
     """Return the agent's whole environment: basics, the Git configuration, and one login.
 
@@ -2486,11 +2514,7 @@ def agent_environment(home: Path, token: str | None, provider: dict[str, str] | 
     variables of `provider_launch` and no token. The agent can read either, so the runner fails a
     run whose output contains it.
     """
-    environment = {
-        "HOME": str(home), "USER": home.name, "LOGNAME": home.name, "PATH": SANDBOX_PATH, "LANG": "C.UTF-8",
-        "TERM": "dumb", "SHELL": "/bin/bash", "DISABLE_AUTOUPDATER": "1",
-        "GIT_CONFIG_GLOBAL": str(home / ".gitconfig"), "GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0",
-    }
+    environment = base_environment(home)
     environment |= {name: os.environ[name] for name in NETWORK_VARIABLES if name in os.environ}
     if provider is not None:
         environment |= {k: v for k, v in provider.items() if k.startswith(PROVIDER_PREFIXES) or k == "API_TIMEOUT_MS"}
@@ -2677,6 +2701,7 @@ def execute_job(round_dir: Path, job: dict, context: dict, workspace: Path) -> s
     payload = {
         "files": {str(home / ".gitconfig"): GIT_CONFIG},
         "fixtures": manifest["processes"],
+        "fixture_environment": base_environment(home),
         "command": agent_command(context["executable"], model, skill, settings),
         "cwd": str(workspace),
         "environment": agent_environment(home, context["token"], provider_environment),

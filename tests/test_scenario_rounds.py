@@ -175,10 +175,13 @@ class FixtureTests(TemporaryTestCase):
         self.assertIn("unknown template {{nowish}}", str(caught.exception))
 
     def test_a_process_fixture_is_recorded_for_the_launcher_and_starts_nothing(self):
-        fixture = {"kind": "process", "name": "live", "label": "sh wait.sh gate front-a", "seconds": 4000}
+        command = ["sh", "wait.sh", "gate front-a"]
+        fixture = {"kind": "process", "name": "live", "command": command, "cwd": "repo", "seconds": 4000}
         manifest = self.prepare([fixture], {})
-        self.assertEqual(manifest["processes"], [{"name": "live", "label": "sh wait.sh gate front-a", "seconds": 4000}])
+        self.assertEqual(manifest["processes"], [{"name": "live", "command": command, "cwd": "repo", "seconds": 4000}])
         self.assertEqual(list(self.workspace.iterdir()), [])
+        without_directory = self.prepare([{k: v for k, v in fixture.items() if k != "cwd"}], {})
+        self.assertEqual(without_directory["processes"][0]["cwd"], ".", "the workspace itself, unless the fixture says")
 
     def test_a_fixture_cannot_leave_the_workspace_or_use_a_repository_before_it_exists(self):
         for fixtures in (
@@ -1457,7 +1460,7 @@ MINI = [
     {"kind": "repo", "path": "repo", "commits": [{"files": "one", "message": "feat: first"}]},
     {"kind": "remote", "repo": "repo", "path": "origin.git"},
     {"kind": "file", "path": "handoff.md", "source": "handoff.md"},
-    {"kind": "process", "name": "live", "label": f"sh wait.sh gate front-c-{os.getpid()}", "seconds": 4000},
+    {"kind": "process", "name": "live", "command": [sys.executable, "-c", "import time; time.sleep(4000)", f"gate front-c-{os.getpid()}"], "cwd": "repo", "seconds": 4000},
 ]
 MINI_FILES = {"one/app.py": "print(1)\n", "handoff.md": "{{now}} {{short:repo:main}}\n"}
 
@@ -1494,8 +1497,18 @@ class ScenarioValidationTests(TemporaryTestCase):
             ({"kind": "stash", "repo": "repo", "message": "m", "files": "absent"}, "no directory files/absent"),
             ({"kind": "repo", "path": "two", "commits": [{"files": "one"}]}, "a commit needs message"),
             ({"kind": "repo", "path": "two", "commits": [{"message": "m", "colour": 1}]}, "unknown field colour"),
-            ({"kind": "process", "name": "live", "label": "x", "seconds": 4000}, "defined twice"),
-            ({"kind": "process", "name": "short", "label": "x", "seconds": 900}, "seconds must exceed the time limit (900) by 120"),
+            ({"kind": "process", "name": "live", "command": ["sleep", "9"], "seconds": 4000}, "defined twice"),
+            ({"kind": "process", "name": "short", "command": ["sleep", "9"], "seconds": 900}, "seconds must exceed the time limit (900) by 120"),
+            ({"kind": "process", "name": "named", "label": "sleep 9", "seconds": 4000}, "missing command"),
+            ({"kind": "process", "name": "named", "label": "sleep 9", "command": ["sleep"], "seconds": 4000}, "unknown field label"),
+            ({"kind": "process", "name": "text", "command": "sleep 9", "seconds": 4000}, "command is a list of non-empty strings"),
+            ({"kind": "process", "name": "none", "command": [], "seconds": 4000}, "command is a list of non-empty strings"),
+            ({"kind": "process", "name": "blank", "command": ["sleep", ""], "seconds": 4000}, "command is a list of non-empty strings"),
+            ({"kind": "process", "name": "dated", "command": ["echo", "{{now}}"], "seconds": 4000}, "a command renders no template"),
+            ({"kind": "process", "name": "out", "command": ["sleep", "9"], "cwd": "../x", "seconds": 4000}, "must be relative"),
+            ({"kind": "process", "name": "lost", "command": ["sleep", "9"], "cwd": "absent", "seconds": 4000}, "starts in 'absent', which is not a directory"),
+            ({"kind": "process", "name": "gone", "command": ["no-such-program"], "seconds": 4000}, "'no-such-program', which is not an executable there"),
+            ({"kind": "process", "name": "gone", "command": ["tools/absent.sh"], "seconds": 4000}, "'tools/absent.sh', which is not an executable there"),
         ]
         for fixture, expected in broken:
             with self.subTest(fixture=fixture):
@@ -1827,15 +1840,17 @@ class SandboxTests(unittest.TestCase):
         self.workspace.mkdir()
         self.sandboxes = scenario_rounds.Sandboxes()
 
-    def fixture(self, name, label, seconds=600):
-        return {"name": name, "label": label, "seconds": seconds}
+    def fixture(self, name, marker, seconds=600, **fields):
+        """A process fixture whose command line holds `marker`: Python asleep, started in the workspace."""
+        command = [sys.executable, "-c", "import time; time.sleep(600)", marker]
+        return {"name": name, "command": command, "cwd": ".", "seconds": seconds} | fields
 
-    def launch(self, agent, fixtures=(), limit=30, prompt="", read_only=()):
+    def launch(self, agent, fixtures=(), limit=30, prompt="", read_only=(), environment=None):
         command = agent if isinstance(agent, list) else ["/bin/sh", "-c", agent]
+        base = {"PATH": scenario_rounds.SANDBOX_PATH, "HOME": str(Path.home())}
         payload = {
-            "files": {}, "fixtures": list(fixtures), "command": command, "cwd": str(self.workspace),
-            "environment": {"PATH": scenario_rounds.SANDBOX_PATH, "HOME": str(Path.home())},
-            "prompt": prompt, "limit": limit,
+            "files": {}, "fixtures": list(fixtures), "fixture_environment": base, "command": command, "cwd": str(self.workspace),
+            "environment": base | (environment or {}), "prompt": prompt, "limit": limit,
         }
         arguments = scenario_rounds.sandbox_arguments(
             Path.home(), self.workspace, list(read_only), [self.workspace], [sys.executable, "-I", scenario_rounds.LAUNCHER_INSIDE]
@@ -1848,7 +1863,7 @@ class SandboxTests(unittest.TestCase):
         marker = f"scenario-canary-{os.getpid()}"
         canary = subprocess.Popen([marker, "300"], executable="/bin/sleep")
         self.addCleanup(lambda: (canary.kill(), canary.wait()))
-        fixtures = [self.fixture("orphan", f"sh wait.sh gate front-a-{os.getpid()}"), self.fixture("live", f"python3 -m unittest gate front-c-{os.getpid()}")]
+        fixtures = [self.fixture("orphan", f"gate front-a-{os.getpid()}"), self.fixture("live", f"gate front-c-{os.getpid()}")]
         result = self.launch(f"pkill -f 'gate fron[t]-a'; pkill -f scenario-canar[y]-{os.getpid()}; echo $? > status.txt", fixtures)
         self.assertEqual(result["exit"], 0)
         self.assertEqual(result["launcher"]["fixtures"], {"orphan": {"state": "killed", "signal": "SIGTERM"}, "live": {"state": "alive"}})
@@ -1883,6 +1898,45 @@ class SandboxTests(unittest.TestCase):
         record = result["launcher"]
         self.assertEqual(record["fixtures"], {"live": {"state": "alive"}})
         self.assertGreaterEqual(record["left_running"], 1)
+
+    def test_a_fixture_runs_in_its_directory_with_the_fixture_environment_and_no_login(self):
+        (self.workspace / "repo").mkdir()
+        command = ["sh", "-c", "pwd > where.txt; env > env.txt; sleep 600"]
+        fixture = {"name": "live", "command": command, "cwd": "repo", "seconds": 600}
+        result = self.launch("sleep 2", [fixture], environment={"CLAUDE_CODE_OAUTH_TOKEN": "the-login"})
+        self.assertEqual(result["launcher"]["fixtures"], {"live": {"state": "alive"}})
+        self.assertEqual((self.workspace / "repo" / "where.txt").read_text().strip(), str(self.workspace / "repo"))
+        env = (self.workspace / "repo" / "env.txt").read_text()
+        self.assertIn(f"HOME={Path.home()}", env)
+        self.assertNotIn("the-login", env)
+        self.assertNotIn("CLAUDE", env)
+
+    def test_a_fixture_that_cannot_start_is_recorded_as_failed_and_the_agent_still_runs(self):
+        result = self.launch("echo ran > ran.txt", [{"name": "live", "command": ["no-such-program"], "cwd": ".", "seconds": 600}])
+        self.assertEqual(result["launcher"]["fixtures"]["live"]["state"], "failed")
+        self.assertIn("no-such-program", result["launcher"]["fixtures"]["live"]["error"])
+        self.assertEqual((self.workspace / "ran.txt").read_text().strip(), "ran")
+
+    def test_a_fixture_is_ended_with_what_it_started_when_its_bound_runs_out(self):
+        command = ["sh", "-c", "sleep 600; echo bound-marker"]
+        fixtures = [
+            {"name": "short", "command": command, "cwd": ".", "seconds": 2},
+            {"name": "long", "command": [sys.executable, "-c", "import time; time.sleep(600)", "long-marker"], "cwd": ".", "seconds": 600},
+        ]
+        script = "sleep 1; pgrep -fc 'bound-marke[r]' > before.txt; sleep 3; pgrep -fc 'bound-marke[r]' > after.txt; true"
+        began = time.monotonic()
+        result = self.launch(script, fixtures)
+        self.assertLess(time.monotonic() - began, 20)
+        self.assertEqual(result["launcher"]["fixtures"], {"short": {"state": "expired"}, "long": {"state": "alive"}})
+        self.assertEqual((self.workspace / "before.txt").read_text().strip(), "1", "the shell holds the pattern; sleep has none")
+        self.assertEqual((self.workspace / "after.txt").read_text().strip(), "0")
+        self.assertEqual(processes_named("long-marker") + processes_named("bound-marker"), [])
+
+    def test_the_children_of_a_fixture_are_not_swept_with_what_the_agent_left(self):
+        fixture = {"name": "live", "command": ["sh", "-c", "while :; do sleep 1; done"], "cwd": ".", "seconds": 600}
+        result = self.launch("sleep 2", [fixture])
+        self.assertEqual(result["launcher"]["fixtures"], {"live": {"state": "alive"}})
+        self.assertEqual(result["launcher"]["left_running"], 0)
 
     def test_the_prompt_arrives_on_standard_input_and_not_in_the_command_line_or_the_launcher(self):
         script = "cat > prompt.txt; tr '\\0' ' ' < /proc/$$/cmdline > argv.txt; tr '\\0' ' ' < /proc/1/cmdline > launcher.txt"

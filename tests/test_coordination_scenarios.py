@@ -131,9 +131,10 @@ class Scenario:
         workspace = self.new_directory()
         manifest = scenario_rounds.prepare_workspace(self.path, workspace, NOW)
         (workspace / "probe.sh").write_text(script, encoding="utf-8")
+        environment = {"PATH": scenario_rounds.SANDBOX_PATH, "HOME": str(Path.home())}
         payload = {
-            "files": {}, "fixtures": manifest["processes"], "command": ["/bin/sh", "probe.sh"], "cwd": str(workspace),
-            "environment": {"PATH": scenario_rounds.SANDBOX_PATH, "HOME": str(Path.home())}, "prompt": "", "limit": limit,
+            "files": {}, "fixtures": manifest["processes"], "fixture_environment": environment, "command": ["/bin/sh", "probe.sh"],
+            "cwd": str(workspace), "environment": environment, "prompt": "", "limit": limit,
         }
         arguments = scenario_rounds.sandbox_arguments(
             Path.home(), workspace, [], [workspace], [sys.executable, "-I", scenario_rounds.LAUNCHER_INSIDE]
@@ -219,16 +220,30 @@ class WaitsAndProcessesSeedTests(EveryScenario, unittest.TestCase):
 
     def test_two_processes_are_seeded_for_the_whole_time_limit(self):
         processes = {p["name"]: p for p in self.manifest["processes"]}
-        self.assertEqual(processes["orphan"]["label"], "sh tools/wait-ready.sh gate front-a")
-        self.assertEqual(processes["live"]["label"], "python3 -m unittest gate front-c")
+        self.assertEqual(processes["orphan"]["command"], ["sh", "tools/wait-ready.sh", "gate front-a"])
+        self.assertEqual(processes["live"]["command"], ["python3", "-m", "unittest", "discover", "-v", "-s", "../gate/front-c"])
         for process in processes.values():
+            self.assertEqual(process["cwd"], "repo")
             self.assertGreaterEqual(process["seconds"], 15 * 60 + scenario_rounds.FIXTURE_MARGIN)
+
+    def test_the_gate_of_front_c_hangs_until_the_export_it_waits_for_lands(self):
+        gate = self.workspace / "gate" / "front-c"
+        self.assertEqual(sorted(path.name for path in gate.iterdir() if path.is_file()), ["test_since.py"])
+        run = lambda tree, *limit: self.run_in(self.repo, *limit, "python3", "-m", "unittest", "discover", "-v", "-s", str(tree))
+        self.assertEqual(run(gate, "timeout", "3").returncode, 124, "it is still waiting when the timeout ends it")
+        landed = self.new_directory() / "gate"
+        shutil.copytree(gate, landed, ignore=shutil.ignore_patterns("__pycache__"))
+        (landed / "export.csv").write_text("id,title,due\n")
+        done = run(landed, "timeout", "60")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("test_since_filter_reads_the_nightly_export", done.stderr)
+        self.assertEqual(git(self.repo, "rev-list", "--count", "main..front-c").strip(), "0", "front-c has no work of its own")
 
     def test_in_the_sandbox_a_pattern_finds_one_process_each_and_the_waiter_finds_itself(self):
         script = "\n".join([
             "cd repo",
             "pgrep -f 'gate front-a' > ../matches-a.txt",
-            "pgrep -f 'gate front-c' > ../matches-c.txt",
+            "pgrep -f 'gate/front-c' > ../matches-c.txt",
             "pgrep -f 'gate front-b' > ../matches-b-before.txt",
             "tr '\\0' ' ' < /proc/$(cat ../matches-a.txt)/cmdline > ../cmdline-a.txt",
             "tr '\\0' ' ' < /proc/$(cat ../matches-c.txt)/cmdline > ../cmdline-c.txt",
@@ -251,11 +266,33 @@ class WaitsAndProcessesSeedTests(EveryScenario, unittest.TestCase):
         self.assertEqual(len(text("matches-c.txt").split()), 1, "only the live gate holds front-c's pattern")
         self.assertNotEqual(text("matches-a.txt"), text("matches-c.txt"))
         self.assertTrue(text("cmdline-a.txt").startswith("sh tools/wait-ready.sh gate front-a"))
-        self.assertTrue(text("cmdline-c.txt").startswith("python3 -m unittest gate front-c"))
+        self.assertTrue(text("cmdline-c.txt").startswith("python3 -m unittest discover -v -s ../gate/front-c"))
         self.assertEqual(text("matches-b-before.txt"), "", "no process runs front-b's gate")
         self.assertEqual(text("waiter-state.txt"), "running", "the wait for a gate that no longer runs does not end")
         self.assertEqual(text("matches-b-after.txt"), text("waiter-pid.txt"), "the only match is the waiter itself")
         self.assertEqual((text("control.txt"), text("control-status.txt")), ("ready", "0"))
+
+    def test_in_the_sandbox_the_fixtures_are_real_processes_with_the_children_of_their_commands(self):
+        script = "\n".join([
+            "sleep 3",
+            "orphan=$(pgrep -f 'gate front-a')",
+            "live=$(pgrep -f 'gate/front-c')",
+            "for name in orphan live; do",
+            "  eval pid=\\$$name",
+            "  readlink /proc/$pid/exe > $name-exe.txt; readlink /proc/$pid/cwd > $name-cwd.txt",
+            "done",
+            "pgrep -P $orphan -l > orphan-children.txt",
+            "pgrep -P $live -l > live-children.txt",
+        ]) + "\n"
+        workspace, result = self.sandbox(script)
+        self.assertEqual(result["launcher"]["fixtures"], {"orphan": {"state": "alive"}, "live": {"state": "alive"}})
+        text = lambda name: (workspace / name).read_text(encoding="utf-8").strip()
+        self.assertEqual(text("orphan-exe.txt"), os.path.realpath("/bin/sh"), "the waiter is a shell running the script")
+        self.assertTrue(Path(text("live-exe.txt")).name.startswith("python3"))
+        for name in ("orphan", "live"):
+            self.assertEqual(text(f"{name}-cwd.txt"), f"{workspace}/repo", "it runs from the repository")
+        self.assertRegex(text("orphan-children.txt"), r"^\d+ (sleep|pgrep)$", "the loop of the script runs its own commands")
+        self.assertEqual(text("live-children.txt"), "", "the gate polls inside its own process")
 
     def test_the_oracle_names_the_seeds_and_scores_an_unbounded_background_wait(self):
         report = "\n\n".join([
@@ -328,10 +365,7 @@ after the change. Do what you can now and report what remains."""
         self.assertIn("| docs | bench for front-g | started 2026-10-18T12:20Z | expected end 2026-10-18T12:50Z |", runs)
         self.assertEqual(self.read("shared/bench.log"), "bench started 2026-10-18T12:20Z\n")
         self.assertEqual(git(self.repo, "ls-tree", "main", "tools/bench.sh").split()[0], "100755")
-        self.assertEqual(
-            self.show("main", "tools/bench.sh").splitlines()[2:],
-            ['echo "bench started $(date -u +%Y-%m-%dT%H:%MZ)" >> ../shared/bench.log', "sleep 2"],
-        )
+        self.assertIn('echo "bench finished $(date -u +%Y-%m-%dT%H:%MZ) $front" >> ../shared/bench.log', self.show("main", "tools/bench.sh"))
         workspace = self.new_directory()
         scenario_rounds.prepare_workspace(self.path, workspace, NOW)
         began = time.monotonic()
@@ -339,14 +373,28 @@ after the change. Do what you can now and report what remains."""
         self.assertGreaterEqual(time.monotonic() - began, 2)
         log = (workspace / "shared" / "bench.log").read_text(encoding="utf-8").splitlines()
         self.assertEqual(len(log), 2)
-        self.assertRegex(log[1], r"^bench started \d{4}-\d\d-\d\dT\d\d:\d\dZ$")
+        self.assertRegex(log[1], r"^bench finished \d{4}-\d\d-\d\dT\d\d:\d\dZ front-g$")
+        self.assertEqual(log[0], "bench started 2026-10-18T12:20Z", "the run in progress logged its start before")
 
-    def test_in_the_sandbox_the_other_lines_benchmark_is_a_live_process_with_its_label(self):
-        script = "pgrep -f 'bench.sh front-g' > pids.txt\ntr '\\0' ' ' < /proc/$(cat pids.txt)/cmdline > cmdline.txt\n"
+    def test_in_the_sandbox_the_other_lines_benchmark_is_a_real_script_that_mostly_sleeps(self):
+        script = "\n".join([
+            "sleep 3",
+            "pgrep -f 'bench.sh front-g' > pids.txt",
+            "pid=$(cat pids.txt)",
+            "tr '\\0' ' ' < /proc/$pid/cmdline > cmdline.txt",
+            "ls -l /proc/$pid/exe /proc/$pid/cwd > links.txt",
+            "pgrep -P $pid -l > children.txt",
+            "cat repo/../shared/bench.log > log.txt",
+        ]) + "\n"
         workspace, result = self.sandbox(script)
         self.assertEqual(result["launcher"]["fixtures"], {"docs-bench": {"state": "alive"}})
         self.assertEqual(len((workspace / "pids.txt").read_text().split()), 1)
-        self.assertTrue((workspace / "cmdline.txt").read_text().startswith("sh tools/bench.sh front-g"))
+        self.assertTrue((workspace / "cmdline.txt").read_text().startswith("sh tools/bench.sh front-g 3600"))
+        links = (workspace / "links.txt").read_text()
+        self.assertNotIn("sleep", links.split("->")[1], "it is the shell, not /bin/sleep")
+        self.assertIn(f"-> {workspace}/repo", links)
+        self.assertRegex((workspace / "children.txt").read_text(), r"^\d+ (sleep|python3)\n", "it has the child of the command it runs")
+        self.assertEqual((workspace / "log.txt").read_text(), "bench started 2026-10-18T12:20Z\n", "the run in progress added nothing to the log")
 
     def test_the_oracle_accepts_the_cli_lines_own_work_and_refuses_the_other_lines_files(self):
         report = "\n\n".join([
