@@ -1022,5 +1022,97 @@ class CodexTests(unittest.TestCase):
         self.assertIn("lower bound:", summary)
 
 
+
+class HelperCountTests(unittest.TestCase):
+    """Count helpers from small preserved sessions, never from the CLI's tool totals."""
+
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
+        self.stream = self.root / "run.jsonl"
+        self.stream.write_text(json.dumps({"type": "thread.started", "thread_id": "lead"}) + "\n")
+        self.sessions = self.stream.with_suffix(".sessions")
+        self.sessions.mkdir()
+        self.manifest = []
+
+    def session(self, identity, parent=None, spawns=0):
+        source = {"subagent": {"thread_spawn": {"parent_thread_id": parent}}} if parent else "cli"
+        events = [{"type": "session_meta", "payload": {
+            "id": identity, "thread_source": "subagent" if parent else "cli", "source": source,
+        }}]
+        for number in range(spawns):
+            key = f"{identity}-{number}"
+            events += [
+                {"type": "response_item", "payload": {"type": "function_call", "namespace": "collaboration",
+                    "name": "spawn_agent", "call_id": key}},
+                {"type": "response_item", "payload": {"type": "function_call_output", "call_id": key,
+                    "output": '{"task_name":"helper"}'}},
+            ]
+        events.append({"type": "event_msg", "payload": {"type": "task_complete"}})
+        path = self.sessions / f"{identity}.jsonl"
+        path.write_text("".join(json.dumps(event) + "\n" for event in events))
+        self.manifest.append({"thread": identity, "parent": parent, "file": path.name})
+        (self.sessions / "manifest.json").write_text(json.dumps(self.manifest))
+        return path
+
+    def test_counts_direct_helper_threads_not_nested_helpers(self):
+        self.session("lead", spawns=2)
+        self.session("first", "lead", spawns=1)
+        self.session("second", "lead")
+        self.session("nested", "first")
+        self.assertEqual(codex.helpers_started(self.stream), 2)
+
+    def test_lead_session_without_helpers_is_zero(self):
+        self.session("lead")
+        self.assertEqual(codex.helpers_started(self.stream), 0)
+
+    def test_failed_spawn_is_not_a_started_helper(self):
+        path = self.session("lead", spawns=1)
+        events = codex.records(path)
+        events[2]["payload"]["output"] = '{"error":"no slot"}'
+        path.write_text("".join(json.dumps(event) + "\n" for event in events))
+        self.assertEqual(codex.helpers_started(self.stream), 0)
+
+    def test_missing_session_evidence_is_unknown(self):
+        self.assertIsNone(codex.helpers_started(self.stream))
+        path = self.session("lead")
+        path.unlink()
+        self.assertIsNone(codex.helpers_started(self.stream))
+
+    def test_missing_successful_spawn_thread_is_unknown_not_zero(self):
+        self.session("lead", spawns=1)
+        self.assertIsNone(codex.helpers_started(self.stream))
+
+    def test_missing_lead_cannot_make_nested_helper_a_direct_start(self):
+        self.session("helper", "lead")
+        self.session("nested", "helper")
+        self.assertIsNone(codex.helpers_started(self.stream))
+
+    def test_missing_or_unreadable_stream_is_unknown(self):
+        self.session("lead")
+        self.stream.unlink()
+        self.assertIsNone(codex.helpers_started(self.stream))
+        self.stream.write_text("not json\n")
+        self.assertIsNone(codex.helpers_started(self.stream))
+        with mock.patch.object(Path, "read_text", side_effect=PermissionError):
+            self.assertIsNone(codex.helpers_started(self.stream))
+
+    def test_corrupt_session_is_unknown(self):
+        path = self.session("lead")
+        for content in ("", "broken\n", "[]\n", "null\n"):
+            with self.subTest(content=content):
+                path.write_text(content)
+                self.assertIsNone(codex.helpers_started(self.stream))
+
+    def test_unrelated_or_duplicate_session_evidence_is_unknown(self):
+        self.session("lead")
+        self.session("unrelated", "another-round")
+        self.assertIsNone(codex.helpers_started(self.stream))
+        self.manifest = self.manifest[:1] * 2
+        (self.sessions / "manifest.json").write_text(json.dumps(self.manifest))
+        self.assertIsNone(codex.helpers_started(self.stream))
+
+
 if __name__ == "__main__":
     unittest.main()

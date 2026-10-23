@@ -368,6 +368,37 @@ def copied_sessions(stream: Path) -> list[Path]:
         return []
 
 
+def helpers_started(stream: Path) -> int | None:
+    """Count preserved threads parented by the lead, or None when evidence is missing.
+
+    Descendants started by helpers and failed spawn calls are not starts by the lead. The lead's
+    successful spawns must have session copies, so a missing helper cannot look like no helpers.
+    """
+    try:
+        lead = next((e.get("thread_id") for e in records(stream) if e.get("type") == "thread.started"), None)
+        threads = {}
+        for path in copied_sessions(stream):
+            # Unlike diagnostic readers, a count must not silently skip corrupt evidence.
+            events = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+            if not events or any(not isinstance(e, dict) for e in events):
+                return None
+            info = session_info(path)
+            identity = info["meta"].get("id")
+            if not identity or identity in threads:
+                return None
+            threads[identity] = info
+        if not lead or lead not in threads or threads[lead]["parent"] is not None:
+            return None
+        if any(identity != lead and info["parent"] not in threads for identity, info in threads.items()):
+            return None
+        count = sum(info["parent"] == lead for info in threads.values())
+        if successful_spawns(threads[lead]["events"]) > count:
+            return None
+        return count
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+
+
 def diagnostic_texts(stream: Path) -> list[str]:
     """Read call arguments in every copied thread and command/file-change items in the stream.
 

@@ -1374,5 +1374,174 @@ class RoundTests(unittest.TestCase):
                 else:
                     self.assertNotIn("Overlap", summary)
 
+
+class SummaryActivityTests(unittest.TestCase):
+    """Small streams and summary tables, without an agent or a Git repository."""
+
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
+        self.stream = self.root / "stream.jsonl"
+
+    @staticmethod
+    def assistant(*names, parent=None):
+        return {"type": "assistant", "parent_tool_use_id": parent, "message": {"content": [
+            {"type": "tool_use", "name": name, "input": {}} for name in names
+        ]}}
+
+    def write_stream(self, *events):
+        self.stream.write_text("".join(json.dumps(event) + "\n" for event in events))
+
+    def test_helpers_started_counts_agent_and_task_calls(self):
+        self.write_stream(self.assistant("Agent", "Read", "Task", "Agent"))
+        self.assertEqual(claude_rounds.stream_activity(self.stream), (3, ["Task"]))
+
+    def test_readable_run_without_helper_starts_is_zero(self):
+        self.write_stream(self.assistant("Read", "Bash"), {"type": "result"})
+        self.assertEqual(claude_rounds.stream_activity(self.stream), (0, []))
+
+    def test_nested_helpers_are_not_starts_by_the_lead(self):
+        self.write_stream(self.assistant("Agent"), self.assistant("Agent", "Task", parent="lead-call"))
+        self.assertEqual(claude_rounds.stream_activity(self.stream), (1, ["Task"]))
+
+    def test_only_assistant_tool_use_blocks_count(self):
+        event = self.assistant("Agent", "Monitor") | {"type": "user"}
+        self.write_stream(event, {"type": "assistant", "message": {"content": [
+            {"type": "text", "name": "Agent", "text": "Agent Monitor"}
+        ]}})
+        self.assertEqual(claude_rounds.stream_activity(self.stream), (0, []))
+
+    def test_unreadable_stream_counts_are_unknown(self):
+        self.assertEqual(claude_rounds.stream_activity(self.stream), (None, []))
+        for content in (b"", b"bad json\n", b"[]\n", b"null\n", b"\xff"):
+            with self.subTest(content=content):
+                self.stream.write_bytes(content)
+                self.assertEqual(claude_rounds.stream_activity(self.stream), (None, []))
+        with mock.patch.object(Path, "read_text", side_effect=PermissionError):
+            self.assertEqual(claude_rounds.stream_activity(self.stream), (None, []))
+
+    def test_partial_stream_keeps_unexpected_tools_but_not_a_count(self):
+        self.write_stream(self.assistant("Agent", "Monitor"))
+        with self.stream.open("a") as output:
+            output.write("broken\n")
+        self.assertEqual(claude_rounds.stream_activity(self.stream), (None, ["Monitor"]))
+
+    def test_malformed_assistant_or_tool_cannot_establish_zero(self):
+        for message in ({}, {"content": "text"}, {"content": [{"type": "tool_use"}]}):
+            with self.subTest(message=message):
+                self.write_stream({"type": "assistant", "message": message})
+                self.assertIsNone(claude_rounds.stream_activity(self.stream)[0])
+
+    def test_unexpected_tools_include_lead_and_helpers_once_in_name_order(self):
+        self.write_stream(self.assistant("Monitor", "Read"), self.assistant("Zebra", "Monitor", parent="helper"))
+        self.assertEqual(claude_rounds.stream_activity(self.stream), (0, ["Monitor", "Zebra"]))
+
+    def test_tool_check_reads_the_commands_allowed_list(self):
+        self.write_stream(self.assistant("Monitor", "Read"))
+        with mock.patch.object(claude_rounds, "AUDIT_TOOLS", ("Monitor",)):
+            command = claude_rounds.claude_command("prompt", "model", [])
+            self.assertEqual(command[command.index("--tools") + 1:command.index("--allowedTools")], ["Monitor"])
+            self.assertEqual(claude_rounds.stream_activity(self.stream), (0, ["Read"]))
+
+    @staticmethod
+    def tables(summary):
+        tables, current = [], []
+        for line in summary.splitlines():
+            if line.startswith("| ---"):
+                continue
+            if line.startswith("| "):
+                current.append([cell.strip() for cell in line.strip("|").split("|")])
+            elif current:
+                tables.append([dict(zip(current[0], row)) for row in current[1:]])
+                current = []
+        return tables
+
+    def summary_fixture(self, entries, backend="claude"):
+        case = self.root / "case"
+        (case / "repo").mkdir(parents=True)
+        (case / "expected.json").write_text('{"must_find": [], "must_not_flag": []}')
+        for folder in ("streams", "reports"):
+            (self.root / folder).mkdir()
+        (self.root / "tmp-before.txt").write_text("")
+        jobs = []
+        for number, (events, status) in enumerate(entries, 1):
+            job = {"run": number, "name": "case", "case": str(case), "dir": str(case.parent),
+                   "backend": backend, "model": "claude-test-1-0"}
+            jobs.append(job)
+            stream = self.root / "streams" / f"run{number}-case.jsonl"
+            if events is not None:
+                stream.write_text("".join(json.dumps(e) + "\n" for e in events))
+            report = self.root / "reports" / f"run{number}-case.md"
+            report.write_text("## Findings\n")
+            record = {"status": status, "report_sha256": claude_rounds.sha256(report)}
+            (stream.with_suffix(".run.json")).write_text(json.dumps(record))
+        data = {"created": "2026-10-23T00:00:00Z", "skill_commit": "fixture", "level": "none", "jobs": jobs}
+        (self.root / "plan.json").write_text(json.dumps(data))
+        return jobs
+
+    def summarize(self):
+        with mock.patch.object(claude_rounds, "repository_problems", return_value=[]):
+            return self.tables(claude_rounds.summarize(self.root))
+
+    def test_summary_counts_unknowns_and_only_valid_zero_runs(self):
+        self.summary_fixture([
+            ([self.assistant("Agent", "Agent")], "valid"),
+            ([self.assistant("Read")], "valid"),
+            (None, "valid"),
+            ([self.assistant("Read")], "invalid"),
+            ([self.assistant("Read")], "legacy"),
+        ])
+        runs, models = self.summarize()
+        self.assertEqual([row["Helpers started"] for row in runs], ["2", "0", "—", "0", "0"])
+        self.assertEqual(models[0]["Mean helpers started"], "0.50 (4 of 5)")
+        self.assertEqual(models[0]["Valid runs with no helpers"], "1 of 2 (2 of 3 readable)")
+
+    def test_summary_problems_include_unexpected_tools_even_for_invalid_runs(self):
+        self.summary_fixture([
+            ([self.assistant("Monitor")], "valid"),
+            ([self.assistant("Read"), self.assistant("Monitor", parent="helper")], "invalid"),
+        ])
+        runs, models = self.summarize()
+        self.assertEqual(runs[0]["Problems"], "tools outside the list: Monitor")
+        self.assertEqual(runs[1]["Problems"], "uncredited report; tools outside the list: Monitor")
+        self.assertEqual(models[0]["Mean helpers started"], "0.00")
+        self.assertEqual(models[0]["Valid runs with no helpers"], "1 of 1")
+
+    def test_summary_with_no_readable_count_shows_no_zero(self):
+        self.summary_fixture([(None, "valid")])
+        runs, models = self.summarize()
+        self.assertEqual(runs[0]["Helpers started"], "—")
+        self.assertEqual(models[0]["Mean helpers started"], "—")
+        self.assertEqual(models[0]["Valid runs with no helpers"], "— (0 of 1 readable)")
+
+    def test_summary_survives_a_stream_read_error(self):
+        self.summary_fixture([([self.assistant("Read")], "valid")])
+        original = Path.read_text
+        def unreadable(path, *args, **kwargs):
+            if path.suffix == ".jsonl":
+                raise PermissionError("fixture stream")
+            return original(path, *args, **kwargs)
+        with mock.patch.object(Path, "read_text", unreadable):
+            runs, _ = self.summarize()
+        self.assertEqual(runs[0]["Helpers started"], "—")
+
+    def test_changed_artifacts_do_not_count_as_valid_zero_helper_runs(self):
+        self.summary_fixture([([self.assistant("Read")], "valid")])
+        (self.root / "reports/run1-case.md").write_text("changed report\n")
+        runs, models = self.summarize()
+        self.assertEqual(runs[0]["Helpers started"], "0")
+        self.assertEqual(runs[0]["Status"], "invalid: artifacts changed after the run")
+        self.assertEqual(models[0]["Valid runs with no helpers"], "—")
+
+    def test_codex_summary_uses_session_thread_count(self):
+        self.summary_fixture([([], "invalid")], backend="codex")
+        with mock.patch.object(claude_rounds.codex_backend, "helpers_started", return_value=4) as count:
+            runs, models = self.summarize()
+        count.assert_called_once_with(self.root / "streams/run1-case.jsonl")
+        self.assertEqual(runs[0]["Helpers started"], "4")
+        self.assertEqual(models[0]["Mean helpers started"], "4.00 (1 of 1)")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -387,17 +387,61 @@ def model_label(model: str) -> str:
     return model
 
 
-def stream_results(path: Path) -> list[dict]:
-    """Return the stream's result events; a run that used background helpers has several."""
-    results = []
-    for line in path.read_text(encoding="utf-8").splitlines():
+def stream_events(path: Path) -> tuple[list[dict], bool]:
+    """Read stream objects and say whether every nonblank line could be read."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return [], False
+    events, readable = [], True
+    for line in text.splitlines():
+        if not line.strip():
+            continue
         try:
             event = json.loads(line)
         except json.JSONDecodeError:
+            readable = False
             continue
-        if event.get("type") == "result":
-            results.append(event)
-    return results
+        if isinstance(event, dict):
+            events.append(event)
+        else:
+            readable = False
+    return events, readable and bool(events)
+
+
+def stream_results(path: Path) -> list[dict]:
+    """Return the stream's result events; a run that used background helpers has several."""
+    return [event for event in stream_events(path)[0] if event.get("type") == "result"]
+
+
+def stream_activity(path: Path) -> tuple[int | None, list[str]]:
+    """Count the lead's helper starts and name calls outside the command's tool list.
+
+    Helpers' calls are checked too, but their own helper starts do not belong to the lead.
+    An unreadable stream cannot establish a zero; keep any unexpected names that were readable.
+    """
+    events, readable = stream_events(path)
+    helpers, outside = 0, set()
+    for event in events:
+        if event.get("type") != "assistant":
+            continue
+        message = event.get("message")
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, list):
+            readable = False
+            continue
+        for item in content:
+            if not isinstance(item, dict) or item.get("type") != "tool_use":
+                continue
+            name = item.get("name")
+            if not isinstance(name, str) or not name:
+                readable = False
+                continue
+            if name not in AUDIT_TOOLS:
+                outside.add(name)
+            if not event.get("parent_tool_use_id") and name in ("Agent", "Task"):
+                helpers += 1
+    return helpers if readable else None, sorted(outside)
 
 
 def stream_usage(path: Path, results: list[dict]) -> dict[str, int]:
@@ -407,13 +451,11 @@ def stream_usage(path: Path, results: list[dict]) -> dict[str, int]:
     each event's `usage` covers only its own turns.
     """
     tools = 0
-    for line in path.read_text(encoding="utf-8").splitlines():
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        content = (event.get("message") or {}).get("content") if event.get("type") == "assistant" else None
-        tools += sum(item.get("type") == "tool_use" for item in content or [] if isinstance(item, dict))
+    for event in stream_events(path)[0]:
+        message = event.get("message")
+        content = message.get("content") if event.get("type") == "assistant" and isinstance(message, dict) else None
+        if isinstance(content, list):
+            tools += sum(item.get("type") == "tool_use" for item in content if isinstance(item, dict))
     models = (results[-1].get("modelUsage") or {}).values() if results else []
     return {
         "tools": tools,
@@ -1364,8 +1406,11 @@ def outside_paths(stream: Path, allowed: list[Path]) -> list[str]:
     that only look like paths and the files where the CLI keeps a long tool output for the run.
     """
     found = set()
-    texts = codex_backend.diagnostic_texts(stream)
-    for event in codex_backend.records(stream):
+    try:
+        texts = codex_backend.diagnostic_texts(stream)
+    except OSError:
+        texts = []
+    for event in stream_events(stream)[0]:
         message = event.get("message")
         content = message.get("content") if isinstance(message, dict) else None
         texts += [json.dumps(item.get("input")) for item in content if isinstance(item, dict)
@@ -1546,9 +1591,15 @@ def leftovers(paths: dict[str, Path], data: dict) -> list[str]:
     """Name new entries of the temporary directory that a run's stream mentions."""
     before = set(paths["tmp-before.txt"].read_text(encoding="utf-8").split())
     planned = {Path(job["dir"]).name for job in data["jobs"]} | {p.name for p in skill_exports(data)}
-    streams = {p.stem: p.read_text(encoding="utf-8") + "\n" + "\n".join(
-        path.read_text(encoding="utf-8") for path in codex_backend.copied_sessions(p) if path.is_file()
-    ) for p in sorted(paths["streams"].glob("*.jsonl"))}
+
+    def readable_text(path: Path) -> str:
+        try:
+            return path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            return ""
+
+    streams = {p.stem: "\n".join(readable_text(path) for path in [p, *codex_backend.copied_sessions(p)])
+               for p in sorted(paths["streams"].glob("*.jsonl"))}
     notes = []
     for entry in sorted(set(os.listdir(tempfile.gettempdir())) - before - planned):
         location = str(Path(tempfile.gettempdir()) / entry)
@@ -1614,6 +1665,24 @@ def summarize(round_dir: Path) -> str:
                 scored = score_job(job, data, paths, repos[job["case"]], totals[arm_label(data, job)], as_of)
             else:
                 scored = missing_report(job, data, paths, totals[arm_label(data, job)], as_of)
+            stream = paths["streams"] / f"{label}.jsonl"
+            if job.get("backend") == "codex":
+                helpers, outside_tools = codex_backend.helpers_started(stream), []
+            else:
+                helpers, outside_tools = stream_activity(stream)
+            if outside_tools:
+                problem = "tools outside the list: " + ", ".join(outside_tools)
+                previous = scored["cells"][-2]
+                scored["cells"][-2] = problem if previous == "—" else previous + "; " + problem
+            scored["helpers"] = str(helpers) if helpers is not None else "—"
+            t = totals[arm_label(data, job)]
+            t["helpers_valid"] += int(status == "valid")
+            if helpers is not None:
+                t["helpers"] += helpers
+                t["helpers_n"] += 1
+                if status == "valid":
+                    t["helpers_valid_n"] += 1
+                    t["helpers_none"] += int(helpers == 0)
             scored["usage"] = available_usage(job, paths)
             notes += [f"{label}: {note}" for note in read_record(round_dir, job).get("notes", [])]
             scored_jobs.append(scored)
@@ -1625,7 +1694,7 @@ def summarize(round_dir: Path) -> str:
     # Rounds of cases without dated defects keep the shape of older summaries.
     located = any(scored["defects"] for scored in scored_jobs)
     run_header = ["Case", "Run", "Model", "Seeded gaps found", "Passes the scorer"]
-    run_header += ["Top priorities in first five", "Problems", "Status", "Available usage"]
+    run_header += ["Top priorities in first five", "Problems", "Status", "Helpers started", "Available usage"]
     model_header = ["Model", "Seeded gaps found", "Reports that pass the scorer"]
     model_header += ["Top priorities in first five", "Bad citations", "Misplaced citations"]
     model_header += ["High findings", "Mean minutes", "Mean USD", "Mean tool calls"]
@@ -1633,7 +1702,7 @@ def summarize(round_dir: Path) -> str:
     has_codex = any(job.get("backend") == "codex" for job in data["jobs"])
     if has_codex:
         model_header += ["Mean uncached input", "Mean reasoning tokens"]
-    model_header += ["Valid runs"]
+    model_header += ["Mean helpers started", "Valid runs with no helpers", "Valid runs"]
     if located:
         run_header.insert(4, "Defects at location")
         model_header.insert(2, "Defects at location")
@@ -1642,7 +1711,7 @@ def summarize(round_dir: Path) -> str:
         cells = list(scored["cells"])
         if located:
             cells.insert(4, scored["defects"] or "—")
-        cells.append(scored["usage"])
+        cells += [scored["helpers"], scored["usage"]]
         rows.append("| " + " | ".join(cells) + " |")
     lines = [
         f"# Round summary ({now()})",
@@ -1663,6 +1732,11 @@ def summarize(round_dir: Path) -> str:
         metrics += [mean_metric(t, key, n) for key in ("tools", "tokens_written", "tokens_read", "tokens_out")]
         if has_codex:
             metrics += [mean_metric(t, key, n) for key in ("tokens_uncached", "tokens_reasoning")]
+        known = t["helpers_valid_n"]
+        none = f"{t['helpers_none']} of {known}" if known else "—"
+        if known != t["helpers_valid"]:
+            none += f" ({known} of {t['helpers_valid']} readable)"
+        metrics += [mean_metric(t, "helpers", n, 2), none]
         lines.append(
             f"| {model} | {t['found']} of {t['seeded']} "
             + (f"| {t['defects_found']} of {t['defects_counted']} " if located else "")

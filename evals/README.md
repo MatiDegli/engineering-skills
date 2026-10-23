@@ -158,6 +158,14 @@ denominators and credit nothing, and each model's row says how many of its runs 
 tables get a "Defects at location" column only when a case in the round counts a defect. `clean`
 removes only the directories that `plan` created.
 
+"Helpers started" counts the lead's Agent or Task calls in a Claude stream, or the Codex helper
+threads whose parent is the lead in the preserved sessions; helpers started by helpers do not
+count. Unreadable counts show `—`, never zero. Each model's row gives the mean over readable
+counts and the number of valid runs with no helpers, with the readable-run coverage when counts
+are missing. These are starts, not evidence that the helpers finished their passes. The Problems
+column names "tools outside the list: <names>" when a Claude lead or helper calls a tool absent
+from the runner's `--tools` list; the summary checks calls against the same list the command uses.
+
 ### Codex
 
 Codex audits run one at a time on their own worker, whatever `--jobs` says, so queued Codex jobs
@@ -303,6 +311,8 @@ Each mechanism answers an incident in this repository's evaluations:
 | Audits of a rewritten private clone queried the hosted repository with the maintainer's GitHub login, found that its history did not match, and one run reported three of ten gaps (run 56) | Runs see no GitHub CLI login or token, so remote settings are unverified the same way in every round |
 | Audits of real repositories could not read CI runs, branch protection, or other branches, because a prepared case has one branch, no remote, and no GitHub login (runs 188 and 189) | A case's `source.json` may keep the source's branches no newer than the pin and ask for a snapshot of the hosted state, read once when the round is planned (see [Cases from a pinned repository](#cases-from-a-pinned-repository)) |
 | An audit that started subagents listed the maintainer's other Claude sessions and could have messaged them, and tried workflow and monitor tools to wait for its helpers (run 260) | Runs get only Bash, Read, Grep, Glob, and Agent (`--tools`), and their subagents inherit that list |
+| Sonnet skipped the skill's helper passes in three of four runs of one arm, which went unnoticed until after the blind rating (round 46) | A "Helpers started" column for each run, its mean per model, and a count of valid runs that started none |
+| Two runs called Monitor even though it was outside the runner's `--tools` list (round 46) | The Problems column names tools outside the list, checking the lead's and helpers' calls against the list the command uses |
 | Codex waited for more input on stdin (run 299) | stdin from `/dev/null` for login checks, warm-ups, and audits |
 | Codex 0.149.1 refused the requested model on a ChatGPT login (2026-10-21) | One short run per model stops the round on an error or a missing final event |
 | Codex's hosted web search was on by default, and the first warm-up through the runner listed it (round 43) | `web_search="disabled"`; the warm-up refuses any tool outside the known set |
