@@ -1,0 +1,17 @@
+{
+  "tier": "E1",
+  "minutes": 15,
+  "task": "task.md",
+  "fixtures": [
+    {"kind": "repo", "path": "repo", "commits": [
+      {"files": "c1", "message": "feat: sum expenses by category from a CSV file", "minutes_ago": 400},
+      {"files": "c2", "message": "test: cover an empty file", "minutes_ago": 380}
+    ]},
+    {"kind": "branch", "repo": "repo", "name": "front-m", "from": "main", "commits": [
+      {"files": "fm", "message": "feat: add a --month filter", "minutes_ago": 50}
+    ]},
+    {"kind": "worktree", "repo": "repo", "path": "repo-worktrees/front-m", "branch": "front-m"},
+    {"kind": "file", "path": "state.md", "source": "top/state.md"},
+    {"kind": "file", "path": "reports/front-m.md", "source": "top/reports/front-m.md"}
+  ]
+}

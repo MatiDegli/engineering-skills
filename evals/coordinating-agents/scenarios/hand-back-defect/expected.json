@@ -1,0 +1,62 @@
+{
+  "detect": [
+    {
+      "id": "false-pass",
+      "kind": "seeded",
+      "why": "front-m's hand-back says all tests pass; test_month_includes_last_day fails on front-m",
+      "source": "report",
+      "near": [
+        {
+          "subject": "front[- ]?m\\b|--month|month filter",
+          "finding": [
+            "(?<!not )(?<!n.t )(?<!never )(?<!no )(?<!none )(?<!nothing )(?<!without )(?<!anything )\\b(?:fail(?:s",
+            "|ed|ing|ure|ures)?",
+            "|errors?|broken|breaks?|red)\\b",
+            "|doesn.?t pass|does not pass|(?:no longer|not|n.t) pass\\w*|isn.?t green|not green|aren.?t green",
+            "|\\bFAILED\\b|assertionerror|does not succeed",
+            "|(?:claim|hand-?back)\\b.{0,40}\\b(?:false|wrong|incorrect|inaccurate|untrue|not true)"
+          ]
+        },
+        "\\btests?\\b|\\bgate\\b|\\bsuite\\b|\\bunittest\\b|test_\\w+"
+      ]
+    },
+    {
+      "id": "last-day",
+      "kind": "seeded",
+      "why": "rows_in_month keeps rows with first <= date < last, so the month's last day is dropped; the fix is <=",
+      "source": "report",
+      "near": [
+        {
+          "subject": "front[- ]?m\\b|--month|month filter",
+          "finding": [
+            "(?<!not )(?<!n.t )(?<!never )(?<!no )(?<!without )\\blast day",
+            "|(?<!not )(?<!n.t )(?<!never )(?<!no )(?<!without )\\bend of (?:the )?month",
+            "|<=|(?<!no )(?<!not )(?<!n.t )(?<!never )off[- ]by[- ]one|\\bexclusive|\\binclusive",
+            "|test_month_includes_last_day"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "not-ready",
+      "kind": "seeded",
+      "why": "front M is not ready for the owner's merge as it stands: it needs a fix round",
+      "source": "report",
+      "near": [
+        {
+          "subject": "front[- ]?m\\b|--month|month filter",
+          "finding": [
+            "\\bnot (?:yet )?ready|\\bnot mergeable|\\bcannot (?:be )?merge",
+            "|(?<!not )(?<!n.t )(?<!never )(?<!no )(?<!nothing )\\bblocked\\b",
+            "|\\bneeds a fix|\\bfix round|\\bback to (?:the )?(?:implementer|worker|front)"
+          ]
+        }
+      ]
+    }
+  ],
+  "state": [
+    {"refs_unchanged": {"repo": "repo", "only": ["refs/heads/front-m", "refs/heads/main"]}},
+    {"worktree_unchanged": "repo-worktrees/front-m"}
+  ],
+  "stream": []
+}
