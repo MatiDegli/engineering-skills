@@ -15,7 +15,7 @@ judged by a model against a written rubric per seed, and the judgment must quote
 labelled phrasings measure the grader's accuracy before any round relies on it. The patterns stay
 as a second opinion, and the maintainer's blind comparison stays on top. The grader sees the
 report and the rubric, never the arm. The maintainer also approved the oracle changes through
-`3e6aaad` as the base for the baseline.
+`3e6aaad` (rebased onto main as `c79521e`) as the base for the baseline.
 
 ## 2026-10-23 — Provider-neutral coordination with a profile per repository
 

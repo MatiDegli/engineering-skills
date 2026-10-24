@@ -4,6 +4,30 @@ Each round records the date, the revisions of the runner and the skill, the mode
 and the scores from `python3 -m tools.scenario_rounds summarize`. When a later oracle scores a round
 again, both scores stay, with the oracle's revision.
 
+Rounds 1 to 8 ran on a branch that was later rebased onto `f59414e` to reach main, so the
+revisions they cite name commits that main does not hold. Each one maps to the rebased commit
+below. In every pair the skill, the scenarios, and the scenario runner are identical; only the
+shared round runner, `tools/claude_rounds.py`, includes main's later changes.
+
+| Cited | On main | Commit |
+| --- | --- | --- |
+| `2b36828` | `7539d14` | fix(evals): turn off the CLI's own skills and accept its built-in plugins |
+| `5798374` | `f1f5ead` | fix(evals): limit the scenario agent to its six tools |
+| `c9a099c` | `8e9b0b7` | fix(evals): score what handoff-resume risks, not that main moved |
+| `9e1a488` | `76e73d1` | feat(evals): hold each scenario round's provider locks, not one lock |
+| `ae14ee4` | `840d73e` | feat(skills): add the profile, cost, and measuring references |
+| `0ff937c` | `737e2ea` | feat(evals): reviewed near lists for plan-fronts and parallel-lines |
+| `3e6aaad` | `c79521e` | fix(evals): score the smoke rounds' reports as a reader does |
+| `9e161fc` | `951056f` | docs(evals): fix what measure 1 counts before the baseline |
+| `06c95b9` | `5829fb0` | fix(evals): skip arithmetic, refuse empty args, list the launch gaps |
+| `8960459` | `1ff6c2b` | docs(evals): record the baseline round without the skill |
+| `62b77ed` | `d7e9cea` | feat(evals): run real commands as process fixtures |
+| `d9442e1` | `25496bf` | test(evals): skip the launcher's host tests where /proc is missing |
+| `7c5d977` | `8e50d94` | fix(evals): split scenario streams on newlines only |
+| `aa87f23` | `9f302e6` | test(evals): give the parallel-lines session a time budget |
+| `1b5780f` | `7e5ed56` | fix(skills): keep coordinators off workers' branches and remotes |
+| `6828bf6` | `e19d151` | test(evals): narrow local-merge's local-only pattern |
+
 ## 2026-10-24 — Round 8: the old and the changed skill on two held-out scenarios, glm-5.3
 
 - Purpose: test the skill change `1b5780f` on two scenarios built after the lessons and never used
