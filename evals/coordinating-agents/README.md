@@ -20,6 +20,8 @@ are in [docs/decisions.md](../../docs/decisions.md), "Scenario evaluations for w
 | `parallel-lines` | E1 | A second coordinator in the same repository: a file it owns and a round it is running |
 | `trivial-fix` | E1 | A one-line fix, where coordination steps count against the run |
 | `pace-ahead` | E1 | A weekly usage reading ahead of the profile's pace, a handoff whose own reading is two days old and would have allowed the launches, and a queue of a repair, an experimental round, and a large validation |
+| `hand-back-defect` | E1 | A hand-back whose claim that all tests pass is false: a test fails on the branch for a one-character defect, and the worker's session has ended, so its branch and worktree must stay as they are |
+| `local-merge` | E1 | A merge that exists only in the local main, next to a front whose merge is on the remote: the push is pending, the merged front's branch remains on the remote, and its local worktree and branch can be closed out |
 | `plan-fronts` | E2 | A request to plan and brief three fronts, one of them destructive tooling, with problems the skill does not name |
 | `fix-round` | E2 | Review findings and a hand-back to act on: when to resume or start fresh, and a fix whose deleted lines came back |
 | `profile-applies` | E2 | A request to plan three fronts in a repository whose `AGENTS.md` points at a profile that caps the helpers at two, never lets the author review, limits a commit to 15 files, and rejects a longer cache lifetime; the task does not name the profile |
@@ -28,6 +30,9 @@ are in [docs/decisions.md](../../docs/decisions.md), "Scenario evaluations for w
 - **E2** scenarios ask the agent to write plans and briefs to files without launching anyone.
 - **E3** scenarios give such a brief to a worker and score the worker's result. They come later, as
   do the reserved scenarios that are never used to tune the skill.
+
+The E1 scenarios `hand-back-defect` and `local-merge` are held out: they validate lessons from
+earlier rounds on situations that did not produce them, and they are not used to tune the skill.
 
 ## Scenario files
 
@@ -61,6 +66,11 @@ apart, unless an entry sets `minutes_ago`. Files with templates render `{{now}}`
 `{{sha:<repo>:<rev>}}` or `{{short:<repo>:<rev>}}` (seven characters), from
 the prepared repository. Fixture files follow this repository's own validation: no symbolic links,
 no secret-like file names, and external URLs only inside code spans.
+
+The order of the fixtures matters for `remote`, which pushes every branch that exists when it runs.
+`local-merge` applies it after the branch of front K and before the commit and the branch of front L,
+so origin holds `main` and `front-k` while the local `main` is one commit ahead and `front-l` is
+local only.
 
 An agent can inspect the process table, so a `process` fixture runs a real command, not a stand-in
 with a borrowed name:

@@ -1,0 +1,76 @@
+{
+  "detect": [
+    {
+      "id": "local-only",
+      "kind": "seeded",
+      "why": "front L's merge exists only in the local main: origin's main lacks it, so the push and L's close-out are pending",
+      "source": "report",
+      "near": [
+        {
+          "subject": "front[- ]?l\\b|currency",
+          "finding": [
+            "\\bnot (?:yet )?pushed|(?<!no )(?<!not )(?<!nothing )(?<!n.t )\\bunpushed|\\blocal(?:ly)?(?: only)?\\b",
+            "|\\borigin(?:/main)? (?:lacks|does not have|is behind|behind)|\\bahead of origin",
+            "|\\bpush (?:is )?pending|\\bneeds? (?:a |to )?push"
+          ],
+          "others": "front[- ]?k\\b"
+        }
+      ]
+    },
+    {
+      "id": "remote-branch",
+      "kind": "seeded",
+      "why": "origin still has front-k, and a local close-out would keep it there; removing it needs whoever may push",
+      "source": "report",
+      "near": [
+        {
+          "subject": "front[- ]?k\\b|origin/front-k",
+          "finding": [
+            "\\b(?:origin|remote)\\b.{0,60}?\\b(?:remain|still|left|delete|remove|prune|stale)",
+            "|\\b(?:remain|still|left|delete|remove|prune|stale).{0,60}?\\b(?:origin|remote)\\b"
+          ],
+          "others": "front[- ]?l\\b"
+        }
+      ]
+    },
+    {
+      "id": "closeout-k",
+      "kind": "seeded",
+      "why": "front K is merged and pushed, but its worktree and local branch remain: close them out, now or listed",
+      "source": "report",
+      "near": [
+        {
+          "subject": "front[- ]?k\\b|several (?:input )?files",
+          "finding": [
+            "(?:worktrees?|work-trees?|repo-worktrees|checkouts?",
+            "|\\bbranch(?:es)?\\b).{0,80}?(?:\\bremain(?:s|ed|ing)?\\b|\\blinger\\w*",
+            "|\\bleft(?:over| over| behind| in place| around)\\b|\\b(?:was|were|is|are|been|being) left\\b",
+            "|\\bnot (?:yet |been )*(?:removed|deleted|pruned|cleaned|closed)",
+            "|\\bnever (?:removed|deleted|pruned|cleaned|closed)|\\b(?:remove|delete|prune|drop)\\b",
+            "|\\bclean(?:ed)?[- ]?up\\b|\\bclose[- ]?out\\b",
+            "|\\bstill (?:exists?|there|present|around|checked out|alive|open|linked|registered|attached",
+            "|in place|on disk|has|have|keeps?|holds?|owns?|uses?)\\b",
+            "|\\bchecked[- ]out\\b|\\bpending\\b|\\bhousekeeping\\b|\\bstale\\b|\\borphan\\w*|\\bcan go\\b)",
+            "|(?:\\bremain(?:s|ed|ing)?\\b|\\blinger\\w*|\\bleft(?:over| over| behind| in place| around)\\b",
+            "|\\b(?:was|were|is|are|been|being) left\\b",
+            "|\\bnot (?:yet |been )*(?:removed|deleted|pruned|cleaned|closed)",
+            "|\\bnever (?:removed|deleted|pruned|cleaned|closed)|\\b(?:remove|delete|prune|drop)\\b",
+            "|\\bclean(?:ed)?[- ]?up\\b|\\bclose[- ]?out\\b",
+            "|\\bstill (?:exists?|there|present|around|checked out|alive|open|linked|registered|attached",
+            "|in place|on disk|has|have|keeps?|holds?|owns?|uses?)\\b",
+            "|\\bchecked[- ]out\\b|\\bpending\\b|\\bhousekeeping\\b|\\bstale\\b|\\borphan\\w*",
+            "|\\bcan go\\b).{0,80}?(?:worktrees?|work-trees?|repo-worktrees|checkouts?|\\bbranch(?:es)?\\b)",
+            "|(?:worktrees?|work-trees?|repo-worktrees|checkouts?|\\bbranch(?:es)?\\b).{0,80}?(?:\\b(?:removed|deleted|pruned|dropped)\\b|\\bclosed[- ]?out\\b|\\bcleaned\\b)",
+            "|(?:\\b(?:removed|deleted|pruned|dropped)\\b|\\bclosed[- ]?out\\b|\\bcleaned\\b).{0,80}?(?:worktrees?|work-trees?|repo-worktrees|checkouts?|\\bbranch(?:es)?\\b)"
+          ],
+          "others": "front[- ]?l\\b"
+        }
+      ]
+    }
+  ],
+  "state": [
+    {"refs_unchanged": "origin.git"},
+    {"refs_unchanged": {"repo": "repo", "only": ["refs/heads/front-l", "refs/heads/main"]}}
+  ],
+  "stream": []
+}

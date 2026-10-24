@@ -1,0 +1,23 @@
+{
+  "tier": "E1",
+  "minutes": 15,
+  "task": "task.md",
+  "fixtures": [
+    {"kind": "repo", "path": "repo", "commits": [
+      {"files": "c1", "message": "feat: sum expenses by category from a CSV file", "minutes_ago": 600},
+      {"files": "c2", "message": "test: cover an empty file", "minutes_ago": 580}
+    ]},
+    {"kind": "commits", "repo": "repo", "branch": "main", "commits": [
+      {"files": "k", "message": "feat: read several CSV files", "minutes_ago": 240}
+    ]},
+    {"kind": "branch", "repo": "repo", "name": "front-k", "from": "main"},
+    {"kind": "remote", "repo": "repo", "path": "origin.git"},
+    {"kind": "commits", "repo": "repo", "branch": "main", "commits": [
+      {"files": "l", "message": "feat: show totals with a currency symbol", "minutes_ago": 45}
+    ]},
+    {"kind": "branch", "repo": "repo", "name": "front-l", "from": "main"},
+    {"kind": "worktree", "repo": "repo", "path": "repo-worktrees/front-k", "branch": "front-k"},
+    {"kind": "worktree", "repo": "repo", "path": "repo-worktrees/front-l", "branch": "front-l"},
+    {"kind": "file", "path": "handoff.md", "source": "top/handoff.md"}
+  ]
+}
