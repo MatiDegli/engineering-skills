@@ -9,7 +9,8 @@
         {
           "subject": "front[- ]?l\\b|currency",
           "finding": [
-            "\\bnot (?:yet )?pushed|(?<!no )(?<!not )(?<!nothing )(?<!n.t )\\bunpushed|\\blocal(?:ly)?(?: only)?\\b",
+            "\\bnot (?:yet |been )*pushed|(?<!no )(?<!not )(?<!nothing )(?<!n.t )\\bunpushed",
+        "|\\blocal(?:ly)? only\\b|\\bonly (?:in |on )?(?:the )?local(?:ly)?\\b|\\bmerged (?:only )?locally\\b",
             "|\\borigin(?:/main)? (?:lacks|does not have|is behind|behind)|\\bahead of origin",
             "|\\bpush (?:is )?pending|\\bneeds? (?:a |to )?push"
           ],
