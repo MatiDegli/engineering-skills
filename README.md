@@ -44,6 +44,30 @@ asking Claude to run the audit in a subagent, or by adding `context: fork` to yo
 That field is specific to Claude Code and outside the Agent Skills specification, so this repository
 does not ship it.
 
+## When a skill loads
+
+An installed skill does not act on its own: the agent keeps each skill's name and description in
+context, about a hundred tokens, and reads the rest only when it invokes the skill. Two kinds of
+skill are best installed differently:
+
+- A task skill does one job when asked and ends with a result: auditing-repositories writes a
+  report. Keep it installed for the next audit; nothing needs removing after one.
+- A reference skill guides ongoing work, such as coordinating-agents while you delegate. Leave it
+  free for the agent to invoke whenever the work matches its description.
+
+A task skill's description can still match a request it was not written for, such as a review of
+one change. To run it only when you name it, or to turn it off without deleting it, set one of these
+in your installed copy or your local settings:
+
+| Agent | Only when named | Off |
+| --- | --- | --- |
+| Claude Code | `disable-model-invocation: true` in `SKILL.md`, or `"user-invocable-only"` for the skill in `skillOverrides` (the `/skills` menu writes it) | `"off"` in `skillOverrides` |
+| Codex | `allow_implicit_invocation: false` under `policy` in `agents/openai.yaml` | `enabled = false` in a `[[skills.config]]` entry of `~/.codex/config.toml` |
+
+Each of these belongs to one agent and is outside the Agent Skills specification, so this repository
+ships none of them. In Claude Code, `/skill-doctor` reports each skill's context cost and how often
+it is used.
+
 ## Limits
 
 - The audit does not modify the repository, install dependencies, or run commands with external
