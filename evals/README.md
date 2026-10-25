@@ -124,20 +124,37 @@ first one wrote.
 only host variables, its own Claude Code configuration directory so the CLI does not use the user's
 Claude login, every model alias set to that model, and the key read by an `apiKeyHelper` from a file
 of mode 600; a run whose key source is not that helper is marked. That keeps the key out of the
-environment and the settings file. It does not hide the key from the audit, which runs as the same
-user with the Bash tool and no sandbox, so a shell command can read the file. The settings also deny
-`Read` on the key's directory with paths anchored at the filesystem root, which stops Claude Code's
-Read tool and the file commands it recognizes, such as `cat`, but not a script or a command that
-reads without naming the file.
+environment and the settings file.
+
+Whatever a provider run reads goes to that provider, so `run` confines each provider audit with
+bubblewrap, which must be installed (`bwrap`). The host's filesystem is read-only, and `/home`,
+`/root`, `/tmp`, `/var/tmp`, `/mnt`, `/media`, `/srv`, and `/run` are empty, except for what the
+audit needs: the job's directory and the run's configuration directory, both writable, the round's
+empty `gh` configuration, the skill or catalog its level gives, the key file, the CLI, and a named
+list of tools with their installations, such as Node, npm, pnpm, Bun, uv, and uv's Pythons, when
+they live under the home directory. The audit has its own processes, the host's network, and ends
+with the runner. The key stays readable inside,
+since the helper must read it; the settings deny `Read` on the key's directory with paths anchored
+at the filesystem root, which stops Claude Code's Read tool and the file commands it recognizes,
+such as `cat`, but not a script. Before the first audit of each provider model, `run` sends a probe
+through the same confinement. It must read a file in its own directory and fail to read two files
+outside it, one under the round directory and one in the temporary directory, through a shell
+command, Read, Grep, and Glob. An outside mark in its stream, or no inside mark, stops the round
+before any audit.
+
+Claude runs are not confined: they use the Claude login in the home directory, and what they read
+stays with the provider that already serves the maintainer's sessions. Claude Code's own sandbox
+was tried first and left out: with reads blocked outside the working directory, it asks before any
+command that runs a script, and background helpers cannot ask, so their commands are refused.
 
 ### Run status and resume
 
 Every planned job gets a record, `streams/<label>.run.json`, with its backend, model, revision,
 case, prompt hash, times, artifact hashes, usage, and a status: valid, invalid with its reasons,
 skipped with its reason, or legacy. A run is invalid on a non-zero exit, a timeout, an error it did
-not recover from, no final event or report, another model than the planned one, incomplete
-accounting, a web or MCP call, a change to its prepared repository, or an error in the runner
-itself. `run` exits non-zero when a job is neither valid nor legacy, and with 128 plus the signal
+not recover from, no final event or report, a full or catalog report with no `## Findings` section,
+another model than the planned one, incomplete accounting, a web or MCP call, a change to its
+prepared repository, or an error in the runner itself. `run` exits non-zero when a job is neither valid nor legacy, and with 128 plus the signal
 number when it was stopped.
 
 Run again on a round, `run` skips each job whose record is valid and matches the plan, and launches
@@ -329,6 +346,8 @@ Each mechanism answers an incident in this repository's evaluations:
 | Two lines of work could start rounds at once on one machine, sharing the login and the host | `run` holds one lock per provider for the whole round, all or none: `~/.cache/engineering-skills/rounds.lock` for the Claude login and `rounds-<host>.lock` beside it for another provider. A second round on a provider in use exits naming the holder, or waits `--lock-wait-minutes`. Rounds on different providers run at once; `log.txt` records the other rounds' locks at the start and the end, and `summarize` marks a round that overlapped another, since its minutes are not comparable |
 | The `haiku` alias resolved to an older model than intended, and an older CLI did not know the newer model's ID | Full model IDs; the short call stops the round when the CLI does not serve a model, and a run whose stream names another model is marked |
 | A Claude agent started inside a repository loads that repository's agent settings, hooks, skills, and agents | Runs load only user settings, with hooks off, and fix the effort level instead of inheriting it |
+| GLM helpers followed absolute paths in a real repository's files, read the maintainer's other projects through `ls`, `cat`, and `git`, and sent that content to the provider (round 51) | Provider audits run in a bubblewrap sandbox that shows only the job's directory and what the run needs, and a probe per provider model stops the round when that sandbox lets an outside file through or shows nothing |
+| A lead that waited for helpers already done ended with a promise of a report instead of one, and passed as valid (round 53) | A full or catalog audit whose reply has no `## Findings` section is invalid |
 | Rounds kept under `/tmp` lost their scripts and streams when WSL restarted | The round directory keeps the plan, streams, reports, and summary; `plan` warns when it is under the temporary directory |
 | The same skill cost 43% more in the afternoon than in the morning, and the rise was first blamed on a rule (runs 59 to 63) | A control arm in the same round, with jobs interleaved case by case |
 | Audits of a rewritten private clone queried the hosted repository with the maintainer's GitHub login, found that its history did not match, and one run reported three of ten gaps (run 56) | Runs see no GitHub CLI login or token, so remote settings are unverified the same way in every round |

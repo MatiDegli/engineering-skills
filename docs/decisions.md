@@ -1,5 +1,27 @@
 # Decisions
 
+## 2026-10-25 — Provider audits confined by the runner
+
+Round 51 ran GLM audits on two of the maintainer's repositories. Following absolute paths named in
+one repository's files, some helpers listed and read the maintainer's other projects, their agent
+settings, and their git history, and that content went to the provider. The reads used shell
+commands such as `ls`, `cat`, and `git`, and the runner fenced neither those nor the file tools.
+
+Claude Code's sandbox with reads blocked outside the working directory hides the home directory
+from commands, but it asks before any command that runs a script, and background helpers cannot
+ask, so a pilot audit lost its helpers' commands and ended without a report. The maintainer chose,
+on 2026-10-25, a sandbox around the whole CLI instead: the runner starts each provider audit in
+bubblewrap with a read-only host, empty home and temporary directories, and only the job's
+directory and what the run needs shown again. A probe per provider model, before any audit, stops
+the round when the sandbox lets an outside file through or shows nothing. Claude runs stay
+unconfined for now, since they need the Claude login and their reads stay with the provider that
+serves the maintainer's own sessions. The same review added a validity rule: a full or catalog
+audit whose reply has no findings section is invalid, since the pilot's lead passed as valid with
+only a promise of a report.
+
+The maintainer also kept two of round 51's runs on one repository in that round's results, with
+the exposure recorded privately.
+
 ## 2026-10-23 — Scenario findings judged by behaviour and a calibrated grader
 
 "Scenario evaluations for work skills" reads a run's report with patterns. Three review rounds

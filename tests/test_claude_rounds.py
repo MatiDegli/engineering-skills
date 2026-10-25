@@ -21,7 +21,7 @@ from tools.evals import git_environment
 
 FAKE_CLAUDE = r'''#!{python}
 """A stand-in for the claude CLI: it answers like the real one and starts no agent."""
-import json, os, signal, subprocess, sys, time
+import json, os, re, signal, subprocess, sys, time
 from pathlib import Path
 
 arguments = sys.argv[1:]
@@ -53,6 +53,21 @@ if "json" == arguments[arguments.index("--output-format") + 1]:
     raise SystemExit(0)
 if os.environ.get("GH_TOKEN") or not os.environ.get("GH_CONFIG_DIR", "").endswith("gh-config"):
     raise SystemExit("the audit could reach a GitHub CLI login")
+asked = arguments[arguments.index("-p") + 1]
+if asked.startswith("This is a fence probe"):
+    # A fence that holds shows the file inside and refuses the others; a probe-mode file breaks it.
+    # A provider launch passes no test variables, so the file sits beside this script's directory.
+    mode = Path(__file__).resolve().parents[1] / "state" / "probe-mode"
+    mode = mode.read_text() if mode.exists() else ""
+    seen = [open(re.search(r"`cat (\S+/inside\.txt)`", asked)[1]).read()]
+    if mode == "leak":
+        seen.append(open(re.search(r"\(2\) Bash `cat (\S+)`", asked)[1]).read())
+    if mode == "silent":
+        seen = []
+    for text in seen:
+        print(json.dumps({{"type": "user", "message": {{"content": [{{"type": "tool_result", "content": text}}]}}}}))
+    print(json.dumps({{"type": "result", "result": "done", "modelUsage": {{model: {{}}}}}}))
+    raise SystemExit(0)
 state = Path(os.environ.get("FAKE_STATE", "/nonexistent")) / (model + "-" + Path.cwd().parent.name)
 if os.environ.get("FAKE_STATE"):
     added = [arguments[i + 1] for i, a in enumerate(arguments) if a == "--add-dir"]
@@ -75,6 +90,10 @@ if model == "claude-flaky-1-0" and not state.exists():
     raise SystemExit(1)
 if model == "claude-no-report-1-0":
     raise SystemExit(2)
+if model == "claude-interim-1-0":
+    print(json.dumps({{"type": "result", "result": "Two helpers are still running; the report follows when they end.",
+                      "modelUsage": {{model: {{}}}}}}))
+    raise SystemExit(0)
 used = "claude-other-1-0" if model == "claude-mismatch-1-0" else model
 command = "cat /home/someone/notes.txt; grep -E '/home/|/Users/' x; cat /home/u/.claude/projects/-tmp-audit-x/out.txt"
 tool = {{"type": "tool_use", "name": "Bash", "input": {{"command": command}}}}
@@ -88,6 +107,18 @@ print(json.dumps({{"type": "result", "result": report, "duration_ms": 60000, "to
                   "modelUsage": {{used: usage}}}}))
 if model == "claude-nonzero-1-0":
     raise SystemExit(3)
+'''
+FAKE_BWRAP = r'''#!{python}
+"""A stand-in for bubblewrap: it records the sandbox it was asked for and runs the command unconfined."""
+import json, os, sys
+from pathlib import Path
+
+arguments = sys.argv[1:]
+with open(Path(__file__).resolve().parents[1] / "state" / "bwrap-calls", "a") as record:
+    record.write(json.dumps(arguments) + "\n")
+command = arguments[arguments.index("--") + 1:]
+os.chdir(arguments[arguments.index("--chdir") + 1])
+os.execv(command[0], command)
 '''
 FAKE_GH = r'''#!{python}
 """A stand-in for the GitHub CLI: `gh api` answers from the test's file and reaches no host."""
@@ -172,6 +203,8 @@ class RoundTests(unittest.TestCase):
         # Every test gets the stand-in, so no test can reach GitHub through the real CLI.
         (bin_dir / "gh").write_text(FAKE_GH.replace("{python}", sys.executable))
         (bin_dir / "gh").chmod(0o755)
+        (bin_dir / "bwrap").write_text(FAKE_BWRAP.replace("{python}", sys.executable))
+        (bin_dir / "bwrap").chmod(0o755)
         (self.root / "state").mkdir()
         self.environment = mock.patch.dict(
             os.environ,
@@ -469,6 +502,68 @@ class RoundTests(unittest.TestCase):
         log = (round_dir / "log.txt").read_text()
         self.assertEqual(log.count(": exit 0"), 1)
         self.assertIn("skipped, budget reached", log)
+
+    def test_a_provider_audit_and_its_probe_run_confined_and_a_claude_audit_does_not(self):
+        providers = self.providers(("glm-5.3", "https://provider.example"))
+        round_dir = self.plan("confined", ("1", "glm-5.3"), ("2", "claude-test-1-0"))
+        with mock.patch("builtins.print"):
+            self.assertEqual(
+                claude_rounds.run(round_dir, jobs=1, timeout=60, budget=100, pause=(0, 0), providers=providers), 0
+            )
+        calls = [json.loads(line) for line in (self.root / "state" / "bwrap-calls").read_text().splitlines()]
+        # The probe and the provider's audit; the Claude audit runs as before.
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(calls[0][calls[0].index("--") + 3].startswith("This is a fence probe"))
+        job = next(j for j in json.loads((round_dir / "plan.json").read_text())["jobs"] if j["model"] == "glm-5.3")
+        audit = calls[1]
+        pairs = [audit[i : i + 2] for i in range(len(audit))]
+        for hidden in ("/home", "/tmp", "/run"):
+            self.assertIn(["--tmpfs", hidden], pairs)
+        self.assertIn(["--bind", job["dir"]], pairs)
+        self.assertIn(["--ro-bind", str(providers["glm-5.3"]["key"])], pairs)
+        self.assertIn(["--ro-bind", job["skill"]], pairs)
+        self.assertEqual(audit[audit.index("--chdir") + 1], str(Path(job["dir"]) / job["name"]))
+
+    def test_the_sandbox_shows_named_tools_with_their_links_and_installations_only(self):
+        tools = Path(tempfile.mkdtemp(dir="/tmp"))
+        self.addCleanup(shutil.rmtree, tools)
+        (tools / "bin").mkdir()
+        (tools / "node-1" / "bin").mkdir(parents=True)
+        (tools / "node-1" / "bin" / "node").write_text("")
+        (tools / "bin" / "node").symlink_to(tools / "node-1" / "bin" / "node")
+        for name in ("uv", "other-tool"):
+            (tools / "bin" / name).write_text("")
+            (tools / "bin" / name).chmod(0o755)
+        (tools / "node-1" / "bin" / "node").chmod(0o755)
+        with mock.patch.dict(os.environ, {"PATH": f"{tools / 'bin'}{os.pathsep}{os.environ['PATH']}"}):
+            command = claude_rounds.confine(["claude", "-p", "x"], tools, [])
+        triples = [command[i : i + 3] for i in range(len(command))]
+        self.assertIn(["--symlink", str(tools / "node-1" / "bin" / "node"), str(tools / "bin" / "node")], triples)
+        self.assertIn(["--ro-bind", str(tools / "node-1"), str(tools / "node-1")], triples)
+        self.assertIn(["--ro-bind", str(tools / "bin" / "uv"), str(tools / "bin" / "uv")], triples)
+        self.assertNotIn(str(tools / "bin"), command)
+        self.assertNotIn(str(tools / "bin" / "other-tool"), command)
+
+    def test_the_fence_probe_stops_a_provider_round_whose_fence_leaks_or_shows_nothing(self):
+        providers = self.providers(("glm-5.3", "https://provider.example"))
+        for mode, words in (("leak", "the fence did not hold for glm-5.3: the probe read home"),
+                            ("silent", "did not read its own file")):
+            with self.subTest(mode=mode):
+                round_dir = self.plan("probe-" + mode, ("1", "glm-5.3"))
+                (self.root / "state" / "probe-mode").write_text(mode)
+                with mock.patch("builtins.print"):
+                    with self.assertRaises(SystemExit) as stop:
+                        claude_rounds.run(round_dir, jobs=1, timeout=60, budget=100, pause=(0, 0), providers=providers)
+                self.assertIn(words, str(stop.exception))
+                self.assertFalse(list((round_dir / "reports").glob("*.md")))
+
+    def test_a_full_audit_whose_reply_has_no_findings_section_is_invalid(self):
+        round_dir = self.plan("interim", ("1", "claude-interim-1-0"))
+        with mock.patch("builtins.print"):
+            code = claude_rounds.run(round_dir, jobs=1, timeout=60, budget=100, pause=(0, 0))
+        self.assertNotEqual(code, 0)
+        job = json.loads((round_dir / "plan.json").read_text())["jobs"][0]
+        self.assertIn("no findings section", claude_rounds.read_record(round_dir, job)["reasons"])
 
     def test_a_provider_model_runs_isolated_with_its_key_through_a_helper(self):
         key = self.root / "provider" / "key"
